@@ -495,7 +495,7 @@ export default function App() {
               <input 
                 type="range" 
                 min="60" 
-                max="320" 
+                max="350" 
                 value={itemScale} 
                 onChange={(e) => setItemScale(Number(e.target.value))}
               />
