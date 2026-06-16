@@ -1,0 +1,6 @@
+{
+  "name": "■ SOLID DESKTOP IMAGE VIEWER",
+  "description": "High-end local image viewer with File System Access API and IndexedDB caching. Features physical inertia animations and multiple layout formations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
