@@ -17,9 +17,9 @@ export const Panel = React.forwardRef<HTMLDivElement, PanelProps>(
         {...props}
       >
         {(title || headerRight) && (
-          <div className="flex justify-between items-center px-4 py-2 border-b border-panel-border bg-panel-header">
+          <div className="flex items-center px-4 py-2 border-b border-panel-border bg-panel-header w-full">
             {title && <h3 className="font-mono text-xs uppercase text-text-secondary tracking-widest">{title}</h3>}
-            {headerRight && <div className="text-xs text-text-muted">{headerRight}</div>}
+            {headerRight && <div className="text-xs text-text-muted ml-auto">{headerRight}</div>}
           </div>
         )}
         <div className={cn("flex-1 p-4 overflow-y-auto", contentClassName)}>
