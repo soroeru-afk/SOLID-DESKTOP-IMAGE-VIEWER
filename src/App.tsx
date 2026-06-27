@@ -4,6 +4,7 @@ import {
   AnimatePresence,
   useAnimation,
   useMotionValue,
+  Reorder,
 } from "motion/react";
 import {
   FolderOpen,
@@ -13,6 +14,7 @@ import {
   Trash2,
   Maximize2,
   Minimize2,
+  GripVertical,
   X,
   Image as ImageIcon,
   ArrowUp,
@@ -69,7 +71,17 @@ export default function App() {
   const [datasetCounts, setDatasetCounts] = useState<Record<string, number>>(
     {},
   );
-  const [activeDatasetId, setActiveDatasetId] = useState<string | null>(null);
+  const [activeDatasetId, setActiveDatasetId] = useState<string | null>(() => {
+    return localStorage.getItem("app_activeDatasetId") || null;
+  });
+
+  useEffect(() => {
+    if (activeDatasetId) {
+      localStorage.setItem("app_activeDatasetId", activeDatasetId);
+    } else {
+      localStorage.removeItem("app_activeDatasetId");
+    }
+  }, [activeDatasetId]);
   const [datasetViewMode, setDatasetViewMode] = useState<"list" | "dropdown">(
     "list",
   );
@@ -242,10 +254,8 @@ export default function App() {
   useEffect(() => {
     if (activeDatasetId) {
       loadImages(activeDatasetId);
-      localStorage.setItem("app_activeDatasetId", activeDatasetId);
     } else {
       setImages([]);
-      localStorage.removeItem("app_activeDatasetId");
     }
   }, [activeDatasetId]);
 
@@ -308,13 +318,11 @@ export default function App() {
       const total = await getTotalImageCount();
       setTotalImagesCount(total);
 
-      const savedActiveId = localStorage.getItem("app_activeDatasetId");
-      if (savedActiveId && dsList.find((d) => d.id === savedActiveId)) {
-        setActiveDatasetId(savedActiveId);
-      } else if (dsList.length > 0 && !activeDatasetId) {
+      if (dsList.length > 0 && !activeDatasetId) {
         setActiveDatasetId(dsList[0].id);
       } else if (
         activeDatasetId &&
+        activeDatasetId !== "all" &&
         !dsList.find((d) => d.id === activeDatasetId)
       ) {
         setActiveDatasetId(dsList.length > 0 ? dsList[0].id : null);
@@ -446,6 +454,17 @@ export default function App() {
         : Date.now();
     await updateDatasetDate(id, minDate - 1000);
     await loadDatasets();
+  };
+
+  const handleReorderDatasets = async (newOrder: DatasetRecord[]) => {
+    setDatasets(newOrder);
+    // Sort array implies top-to-bottom.
+    // Datasets are normally sorted by createdAt descending (newest on top).
+    // We update them so the first has the highest timestamp.
+    const now = Date.now();
+    for (let i = 0; i < newOrder.length; i++) {
+      await updateDatasetDate(newOrder[i].id, now - i * 1000);
+    }
   };
 
   const handleDeleteDataset = async (e: React.MouseEvent, id: string) => {
@@ -1054,60 +1073,50 @@ export default function App() {
                       ({totalImagesCount})
                     </span>
                   </div>
-                  {datasets.map((ds) => (
-                    <div
-                      key={ds.id}
-                      onClick={() => setActiveDatasetId(ds.id)}
-                    className={cn(
-                      "flex items-center justify-between px-3 py-2 text-xs font-mono cursor-pointer border transition-colors group min-h-[32px] overflow-hidden shrink-0",
-                      activeDatasetId === ds.id
-                        ? "bg-accent/10 border-accent/50 text-accent"
-                        : "border-transparent text-text-secondary hover:bg-panel-border hover:text-text-primary",
-                    )}
-                  >
-                    <span className="truncate flex-1 min-w-0 pr-2">
-                      {ds.name}{" "}
-                      <span className="text-text-muted text-[10px] ml-1">
-                        ({datasetCounts[ds.id] || 0})
-                      </span>
-                    </span>
-                    {activeDatasetId === ds.id && (
-                      <div className="flex gap-2 shrink-0 bg-transparent items-center">
-                        <button
-                          onClick={(e) => handleMoveDatasetTop(e, ds.id)}
-                          className="hover:text-amber-500 opacity-50 hover:opacity-100 transition-opacity"
-                          title="MOVE TO TOP"
-                        >
-                          <ArrowUp size={14} />
-                        </button>
-                        <button
-                          onClick={(e) => handleMoveDatasetBottom(e, ds.id)}
-                          className="hover:text-amber-500 opacity-50 hover:opacity-100 transition-opacity"
-                          title="MOVE TO BOTTOM"
-                        >
-                          <ArrowDown size={14} />
-                        </button>
-                        <button
-                          onClick={(e) =>
-                            handleRenameDatasetClick(e, ds.id, ds.name)
-                          }
-                          className="hover:text-amber-500 opacity-50 hover:opacity-100 transition-opacity"
-                          title="RENAME DATASET"
-                        >
-                          [E]
-                        </button>
-                        <button
-                          onClick={(e) => handleDeleteDataset(e, ds.id)}
-                          className="hover:text-red-500 opacity-50 hover:opacity-100 transition-opacity"
-                          title="DELETE DATASET"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </>
+                  <Reorder.Group axis="y" values={datasets} onReorder={handleReorderDatasets} className="flex flex-col gap-1 w-full min-h-0 relative">
+                    {datasets.map((ds) => (
+                      <Reorder.Item
+                        key={ds.id}
+                        value={ds}
+                        onClick={() => setActiveDatasetId(ds.id)}
+                        className={cn(
+                          "flex items-center px-3 py-2 text-xs font-mono cursor-grab active:cursor-grabbing border transition-colors group min-h-[32px] overflow-hidden shrink-0",
+                          activeDatasetId === ds.id
+                            ? "bg-accent/10 border-accent/50 text-accent"
+                            : "border-transparent text-text-secondary hover:bg-panel-border hover:text-text-primary",
+                        )}
+                      >
+                        <GripVertical size={14} className="shrink-0 mr-2 opacity-30 group-hover:opacity-100 transition-opacity" />
+                        <span className="truncate flex-1 min-w-0 pr-2 pointer-events-none">
+                          {ds.name}{" "}
+                          <span className="text-text-muted text-[10px] ml-1">
+                            ({datasetCounts[ds.id] || 0})
+                          </span>
+                        </span>
+                        {activeDatasetId === ds.id && (
+                          <div className="flex gap-2 shrink-0 bg-transparent items-center">
+                            <button
+                              onClick={(e) =>
+                                handleRenameDatasetClick(e, ds.id, ds.name)
+                              }
+                              className="hover:text-amber-500 opacity-50 hover:opacity-100 transition-opacity"
+                              title="RENAME DATASET"
+                            >
+                              [E]
+                            </button>
+                            <button
+                              onClick={(e) => handleDeleteDataset(e, ds.id)}
+                              className="hover:text-red-500 opacity-50 hover:opacity-100 transition-opacity"
+                              title="DELETE DATASET"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        )}
+                      </Reorder.Item>
+                    ))}
+                  </Reorder.Group>
+                </>
               ) : (
                 <div className="flex flex-col gap-3 h-full">
                   <select
