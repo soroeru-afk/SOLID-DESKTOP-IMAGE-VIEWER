@@ -28,6 +28,8 @@ import {
   Plus,
   Minus,
   RotateCw,
+  RefreshCw,
+  Edit2,
 } from "lucide-react";
 import {
   ImageRecord,
@@ -40,6 +42,7 @@ import {
   storeImages,
   clearAll,
   deleteImage,
+  renameImage,
   updateImagesDataset,
   renameDataset,
   getTotalImageCount,
@@ -178,6 +181,14 @@ export default function App() {
     new Set(),
   );
   const [isAppFullscreen, setIsAppFullscreen] = useState(false);
+  const [notification, setNotification] = useState<string | null>(null);
+
+  const showNotification = (msg: string) => {
+    setNotification(msg);
+    setTimeout(() => {
+      setNotification((prev) => (prev === msg ? null : prev));
+    }, 3000);
+  };
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -209,6 +220,9 @@ export default function App() {
   const [showNewDatasetModal, setShowNewDatasetModal] = useState(false);
   const [datasetNameInput, setDatasetNameInput] = useState("");
   const [editingDatasetId, setEditingDatasetId] = useState<string | null>(null);
+  const [showRenameFileModal, setShowRenameFileModal] = useState(false);
+  const [fileNameInput, setFileNameInput] = useState("");
+  const [editingFileId, setEditingFileId] = useState<string | null>(null);
   const [showClearAllModal, setShowClearAllModal] = useState(false);
   const [sortField, setSortField] = useState<"name" | "size" | "type" | "date">(
     "name",
@@ -373,20 +387,44 @@ export default function App() {
     setIsReadingDirectory(true);
 
     try {
-      const records = files.map((f) => ({
-        id: `${datasetId}-${f.name}-${f.lastModified}-${f.size}`,
-        datasetId,
-        name: f.name,
-        type: f.type,
-        size: f.size,
-        lastModified: f.lastModified,
-        data: f,
-      }));
+      const existingImages = await getImagesByDataset(datasetId);
+      const existingNames = new Set(existingImages.map((img) => img.name));
 
-      await storeImages(records);
-      await loadDatasets();
-      if (datasetId === activeDatasetId) {
-        await loadImages(datasetId);
+      const newFiles: File[] = [];
+      let skippedCount = 0;
+
+      for (const f of files) {
+        if (existingNames.has(f.name)) {
+          skippedCount++;
+        } else {
+          newFiles.push(f);
+        }
+      }
+
+      if (newFiles.length > 0) {
+        const records = newFiles.map((f) => ({
+          id: `${datasetId}-${f.name}-${f.lastModified}-${f.size}`,
+          datasetId,
+          name: f.name,
+          type: f.type,
+          size: f.size,
+          lastModified: f.lastModified,
+          data: f,
+        }));
+
+        await storeImages(records);
+        await loadDatasets();
+        if (datasetId === activeDatasetId) {
+          await loadImages(datasetId);
+        }
+      }
+
+      if (skippedCount > 0) {
+        showNotification(
+          language === "JP"
+            ? `${skippedCount} 件のファイルは既に存在するためスキップしました`
+            : `Skipped ${skippedCount} file(s) that already exist`
+        );
       }
     } catch (e) {
       console.error(e);
@@ -438,6 +476,25 @@ export default function App() {
     }
     setShowNewDatasetModal(false);
     await loadDatasets();
+  };
+
+  const handleRenameFileClick = (
+    e: React.MouseEvent,
+    id: string,
+    oldName: string,
+  ) => {
+    e.stopPropagation();
+    setFileNameInput(oldName);
+    setEditingFileId(id);
+    setShowRenameFileModal(true);
+  };
+
+  const submitFileRenameForm = async () => {
+    if (!fileNameInput.trim() || !editingFileId || !activeDatasetId) return;
+    await renameImage(editingFileId, fileNameInput.trim());
+    setShowRenameFileModal(false);
+    setEditingFileId(null);
+    await loadImages(activeDatasetId);
   };
 
   const handleMoveDatasetTop = async (e: React.MouseEvent, id: string) => {
@@ -729,6 +786,20 @@ export default function App() {
               DROP FILES HERE
             </h2>
             <p className="text-text-secondary">ADDING TO ACTIVE DATASET</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Notification Toast */}
+      <AnimatePresence>
+        {notification && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[110] bg-panel-border text-text-primary px-4 py-2 font-mono text-sm shadow-xl flex items-center gap-2 border border-accent/20"
+          >
+            <span className="text-accent">!</span> {notification}
           </motion.div>
         )}
       </AnimatePresence>
@@ -1254,6 +1325,13 @@ export default function App() {
                     >
                       {selectedImage.name}
                     </span>
+                    <button
+                      onClick={(e) => handleRenameFileClick(e, selectedImage.id, selectedImage.name)}
+                      className="text-text-muted hover:text-accent transition-colors flex-shrink-0"
+                      title="RENAME FILE"
+                    >
+                      <Edit2 size={12} />
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1388,6 +1466,17 @@ export default function App() {
                       </button>
                     ))}
                   </div>
+                  <button
+                    onClick={() => {
+                      if (activeDatasetId) {
+                        loadImages(activeDatasetId);
+                      }
+                    }}
+                    title="RELOAD DATASET"
+                    className="text-[10px] uppercase font-mono tracking-wider text-text-secondary transition-colors hover:text-accent border border-panel-border hover:border-accent/50 px-2 py-0.5 rounded-sm flex items-center justify-center bg-panel-bg"
+                  >
+                    <RefreshCw size={12} className="mr-1" /> RELOAD
+                  </button>
                   <button
                     onClick={() => setIsSelectionMode(true)}
                     className="text-[10px] uppercase font-mono tracking-wider text-accent transition-colors hover:text-accent border border-accent/20 hover:border-accent/50 px-2 py-0.5 rounded-sm flex items-center justify-center bg-accent/5"
@@ -1565,7 +1654,7 @@ export default function App() {
                               "w-full aspect-square flex items-center justify-center",
                             viewMode === "free" && "absolute shadow-xl",
                             viewMode === "list" &&
-                              "w-full flex items-center px-4 shrink-0 gap-4",
+                              "w-full flex items-center px-4 shrink-0 gap-4 group/listitem",
                           )}
                           style={
                             viewMode === "free"
@@ -1625,8 +1714,16 @@ export default function App() {
                                   />
                                 </div>
                               </div>
-                              <div className="font-mono text-sm flex-1 truncate text-text-primary px-2">
-                                {img.name}
+                              <div className="font-mono text-sm flex-1 min-w-0 text-text-primary px-2 flex items-center justify-between group/name transition-colors rounded hover:bg-panel-border/30">
+                                <span className="truncate block pr-2">{img.name}</span>
+                                <button
+                                  onClick={(e) => handleRenameFileClick(e, img.id, img.name)}
+                                  onDoubleClick={(e) => e.stopPropagation()}
+                                  className="text-text-muted hover:text-accent transition-colors flex-shrink-0 opacity-0 group-hover/name:opacity-100 px-2 flex items-center justify-center"
+                                  title="RENAME FILE"
+                                >
+                                  <Edit2 size={14} />
+                                </button>
                               </div>
                               <div className="font-mono text-sm text-text-muted w-24 text-right shrink-0">
                                 {formatBytes(img.size)}
@@ -1848,12 +1945,17 @@ export default function App() {
               {/* Overlay Meta */}
               <div className="absolute top-0 left-0 p-3 pointer-events-none max-w-[80%] flex flex-col gap-1">
                 <h2
+                  onClick={(e) => {
+                    handleRenameFileClick(e, selectedImage.id, selectedImage.name);
+                  }}
                   className={cn(
-                    "font-mono text-[8px] md:text-[9px] font-bold mb-0.5 truncate drop-shadow-md",
+                    "font-mono text-[8px] md:text-[9px] font-bold mb-0.5 truncate drop-shadow-md pointer-events-auto cursor-pointer flex items-center gap-1 group/fsname",
                     isFullscreenDarkText ? "text-black" : "text-white",
                   )}
+                  title="RENAME FILE"
                 >
-                  {selectedImage.name}
+                  <span className="truncate">{selectedImage.name}</span>
+                  <Edit2 size={10} className="opacity-0 group-hover/fsname:opacity-100 transition-opacity flex-shrink-0" />
                 </h2>
                 <div
                   className={cn(
@@ -1972,6 +2074,47 @@ export default function App() {
                 </SolidButton>
                 <SolidButton
                   onClick={submitDatasetForm}
+                  className="text-accent hover:text-accent"
+                >
+                  CONFIRM
+                </SolidButton>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Rename File Modal */}
+      <AnimatePresence>
+        {showRenameFileModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+          >
+            <div className="bg-panel-bg border border-panel-border p-6 font-mono w-[400px]">
+              <h2 className="text-text-primary mb-4 uppercase">
+                RENAME FILE
+              </h2>
+              <input
+                autoFocus
+                type="text"
+                value={fileNameInput}
+                onChange={(e) => setFileNameInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && submitFileRenameForm()}
+                className="w-full bg-root-bg border border-panel-border text-text-primary px-3 py-2 mb-6 outline-none focus:border-accent"
+                placeholder="ENTER FILE NAME..."
+              />
+              <div className="flex justify-end gap-3">
+                <SolidButton
+                  onClick={() => setShowRenameFileModal(false)}
+                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
+                >
+                  CANCEL
+                </SolidButton>
+                <SolidButton
+                  onClick={submitFileRenameForm}
                   className="text-accent hover:text-accent"
                 >
                   CONFIRM

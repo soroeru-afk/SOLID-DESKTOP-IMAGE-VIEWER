@@ -158,6 +158,18 @@ export async function deleteImage(id: string) {
   return db.delete(STORE_NAME_IMAGES, id);
 }
 
+export async function renameImage(id: string, newName: string) {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME_IMAGES, 'readwrite');
+  const store = tx.objectStore(STORE_NAME_IMAGES);
+  const img = await store.get(id);
+  if (img) {
+    img.name = newName;
+    await store.put(img);
+  }
+  await tx.done;
+}
+
 export async function clearAll() {
   const db = await initDB();
   const tx = db.transaction([STORE_NAME_DATASETS, STORE_NAME_IMAGES], 'readwrite');
