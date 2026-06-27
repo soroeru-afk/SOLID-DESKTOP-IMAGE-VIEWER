@@ -12,6 +12,7 @@ import {
   ScatterChart,
   Trash2,
   Maximize2,
+  Minimize2,
   X,
   Image as ImageIcon,
   ArrowUp,
@@ -164,6 +165,30 @@ export default function App() {
   const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(
     new Set(),
   );
+  const [isAppFullscreen, setIsAppFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsAppFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, []);
+
+  const toggleAppFullscreen = async () => {
+    if (!document.fullscreenElement) {
+      await document.documentElement.requestFullscreen().catch((err) => {
+        console.error(`Error attempting to enable fullscreen: ${err.message}`);
+      });
+    } else {
+      if (document.exitFullscreen) {
+        await document.exitFullscreen();
+      }
+    }
+  };
+
   const [moveTargetId, setMoveTargetId] = useState<string>("");
   const [lastSelectedIdx, setLastSelectedIdx] = useState<number | null>(null);
   const [showDeleteSelectedModal, setShowDeleteSelectedModal] = useState(false);
@@ -798,7 +823,18 @@ export default function App() {
             </button>
           </div>
 
-          <div className="flex items-center h-full border-l border-panel-border pl-4">
+          <div className="flex items-center gap-2 h-full border-l border-panel-border pl-4">
+            <SolidButton
+              onClick={toggleAppFullscreen}
+              className="px-2"
+              title="TOGGLE FULLSCREEN (F11)"
+            >
+              {isAppFullscreen ? (
+                <Minimize2 size={16} />
+              ) : (
+                <Maximize2 size={16} />
+              )}
+            </SolidButton>
             <SolidButton
               onClick={() =>
                 setSidebarPosition((p) => (p === "left" ? "right" : "left"))
