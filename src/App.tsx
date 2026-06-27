@@ -242,8 +242,10 @@ export default function App() {
   useEffect(() => {
     if (activeDatasetId) {
       loadImages(activeDatasetId);
+      localStorage.setItem("app_activeDatasetId", activeDatasetId);
     } else {
       setImages([]);
+      localStorage.removeItem("app_activeDatasetId");
     }
   }, [activeDatasetId]);
 
@@ -306,7 +308,10 @@ export default function App() {
       const total = await getTotalImageCount();
       setTotalImagesCount(total);
 
-      if (dsList.length > 0 && !activeDatasetId) {
+      const savedActiveId = localStorage.getItem("app_activeDatasetId");
+      if (savedActiveId && dsList.find((d) => d.id === savedActiveId)) {
+        setActiveDatasetId(savedActiveId);
+      } else if (dsList.length > 0 && !activeDatasetId) {
         setActiveDatasetId(dsList[0].id);
       } else if (
         activeDatasetId &&
