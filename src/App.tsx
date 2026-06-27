@@ -24,6 +24,7 @@ import {
   ChevronRight,
   Plus,
   Minus,
+  RotateCw,
 } from "lucide-react";
 import {
   ImageRecord,
@@ -32,9 +33,11 @@ import {
   createDataset,
   deleteDataset,
   getImagesByDataset,
+  getAllImages,
   storeImages,
   clearAll,
   deleteImage,
+  updateImagesDataset,
   renameDataset,
   getTotalImageCount,
   getImageCountByDataset,
@@ -71,19 +74,52 @@ export default function App() {
   );
   const [images, setImages] = useState<LoadedImage[]>([]);
   const [totalImagesCount, setTotalImagesCount] = useState<number>(0);
-  const [viewMode, setViewMode] = useState<ViewMode>("grid-sq");
-  const [scales, setScales] = useState<Record<ViewMode, number>>({
-    "grid-sq": 140,
-    "grid-ma": 140,
-    list: 140,
-    free: 140,
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const saved = localStorage.getItem("app_viewMode");
+    return (saved as ViewMode) || "grid-sq";
   });
-  const [gaps, setGaps] = useState<Record<ViewMode, number>>({
-    "grid-sq": 24,
-    "grid-ma": 24,
-    list: 8,
-    free: 0,
+  const [openAction, setOpenAction] = useState<"click" | "dblclick">(() => {
+    const saved = localStorage.getItem("app_openAction");
+    return (saved as "click" | "dblclick") || "dblclick";
   });
+  const [scales, setScales] = useState<Record<ViewMode, number>>(() => {
+    const saved = localStorage.getItem("app_scales");
+    return saved
+      ? JSON.parse(saved)
+      : {
+          "grid-sq": 140,
+          "grid-ma": 140,
+          list: 140,
+          free: 140,
+        };
+  });
+  const [gaps, setGaps] = useState<Record<ViewMode, number>>(() => {
+    const saved = localStorage.getItem("app_gaps");
+    return saved
+      ? JSON.parse(saved)
+      : {
+          "grid-sq": 24,
+          "grid-ma": 24,
+          list: 0,
+          free: 0,
+        };
+  });
+
+  useEffect(() => {
+    localStorage.setItem("app_viewMode", viewMode);
+  }, [viewMode]);
+
+  useEffect(() => {
+    localStorage.setItem("app_openAction", openAction);
+  }, [openAction]);
+
+  useEffect(() => {
+    localStorage.setItem("app_scales", JSON.stringify(scales));
+  }, [scales]);
+
+  useEffect(() => {
+    localStorage.setItem("app_gaps", JSON.stringify(gaps));
+  }, [gaps]);
 
   const itemScale = scales[viewMode];
   const gridGap = gaps[viewMode];
@@ -101,6 +137,7 @@ export default function App() {
   const [isReadingDirectory, setIsReadingDirectory] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenScale, setFullscreenScale] = useState(1);
+  const [fullscreenRotation, setFullscreenRotation] = useState(0);
   const imgControls = useAnimation();
   const imgX = useMotionValue(0);
   const imgY = useMotionValue(0);
@@ -108,9 +145,10 @@ export default function App() {
 
   useEffect(() => {
     setFullscreenScale(1);
+    setFullscreenRotation(0);
     imgX.set(0);
     imgY.set(0);
-    imgControls.start({ x: 0, y: 0, scale: 1 });
+    imgControls.start({ x: 0, y: 0, scale: 1, rotate: 0 });
     setImgDims({ w: 0, h: 0 });
   }, [isFullscreen, selectedImage, imgControls, imgX, imgY]);
 
@@ -118,7 +156,7 @@ export default function App() {
     "left",
   );
   const [sidebarVisible, setSidebarVisible] = useState(true);
-  const [isTrackInfoCollapsed, setIsTrackInfoCollapsed] = useState(false);
+  const [isTrackInfoCollapsed, setIsTrackInfoCollapsed] = useState(true);
   const [language, setLanguage] = useState<"EN" | "JP">("EN");
   const [isDragging, setIsDragging] = useState(false);
 
@@ -126,6 +164,8 @@ export default function App() {
   const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(
     new Set(),
   );
+  const [moveTargetId, setMoveTargetId] = useState<string>("");
+  const [lastSelectedIdx, setLastSelectedIdx] = useState<number | null>(null);
   const [showDeleteSelectedModal, setShowDeleteSelectedModal] = useState(false);
 
   // Custom Prompts/Modals because alert/prompt/confirm are unreliable in iframe
@@ -259,7 +299,7 @@ export default function App() {
   const loadImages = async (datasetId: string) => {
     setIsLoading(true);
     try {
-      const dbImages = await getImagesByDataset(datasetId);
+      const dbImages = datasetId === "all" ? await getAllImages() : await getImagesByDataset(datasetId);
       // Revoke old URLs
       images.forEach((img) => URL.revokeObjectURL(img.url));
 
@@ -380,7 +420,7 @@ export default function App() {
 
   const handleDeleteDataset = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    // Use clear custom ui instead of window.confirm
+    if (!window.confirm("Are you sure you want to delete this dataset?")) return;
     await deleteDataset(id);
     await loadDatasets();
   };
@@ -391,6 +431,7 @@ export default function App() {
       await deleteImage(id);
     }
     setSelectedImageIds(new Set());
+    setLastSelectedIdx(null);
     setIsSelectionMode(false);
     setShowDeleteSelectedModal(false);
     if (activeDatasetId) {
@@ -398,6 +439,29 @@ export default function App() {
       await loadDatasets();
     }
     setIsLoading(false);
+  };
+
+  const handleMoveSelected = async (newDatasetId: string) => {
+    setIsLoading(true);
+    await updateImagesDataset(Array.from(selectedImageIds), newDatasetId);
+    setSelectedImageIds(new Set());
+    setLastSelectedIdx(null);
+    setIsSelectionMode(false);
+    if (activeDatasetId) {
+      await loadImages(activeDatasetId);
+      await loadDatasets();
+    }
+    setIsLoading(false);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedImageIds.size === images.length) {
+      setSelectedImageIds(new Set());
+      setLastSelectedIdx(null);
+    } else {
+      setSelectedImageIds(new Set(images.map((img) => img.id)));
+      setLastSelectedIdx(null);
+    }
   };
 
   const goToNextImage = React.useCallback(() => {
@@ -424,15 +488,88 @@ export default function App() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isFullscreen) return;
+
+      const getDragBounds = () => {
+        let mX = 0;
+        let mY = 0;
+        const cw = window.innerWidth * 0.95;
+        const ch = window.innerHeight * 0.95;
+        if (imgDims.w > 0 && imgDims.h > 0) {
+          const aspectImg = imgDims.w / imgDims.h;
+          const aspectScreen = cw / ch;
+          const renderedW = aspectImg > aspectScreen ? cw : ch * aspectImg;
+          const renderedH = aspectImg > aspectScreen ? cw / aspectImg : ch;
+          const rotW = Math.abs(fullscreenRotation % 180) === 90 ? renderedH : renderedW;
+          const rotH = Math.abs(fullscreenRotation % 180) === 90 ? renderedW : renderedH;
+          mX = Math.max(0, (rotW * fullscreenScale - cw) / 2);
+          mY = Math.max(0, (rotH * fullscreenScale - ch) / 2);
+        }
+        return { mX, mY };
+      };
+
       if (e.key === "ArrowRight") {
-        goToNextImage();
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          const { mX } = getDragBounds();
+          const newX = Math.max(imgX.get() - 100, -mX);
+          imgControls.start({ x: newX });
+        } else {
+          goToNextImage();
+        }
       } else if (e.key === "ArrowLeft") {
-        goToPrevImage();
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          const { mX } = getDragBounds();
+          const newX = Math.min(imgX.get() + 100, mX);
+          imgControls.start({ x: newX });
+        } else {
+          goToPrevImage();
+        }
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (e.ctrlKey || e.metaKey) {
+          const { mY } = getDragBounds();
+          const newY = Math.min(imgY.get() + 100, mY);
+          imgControls.start({ y: newY, transition: { duration: 0.1 } });
+        } else {
+          setFullscreenScale((s) => {
+            const newScale = Math.min(s + 0.5, 10);
+            imgControls.start({ scale: newScale });
+            return newScale;
+          });
+        }
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (e.ctrlKey || e.metaKey) {
+          const { mY } = getDragBounds();
+          const newY = Math.max(imgY.get() - 100, -mY);
+          imgControls.start({ y: newY, transition: { duration: 0.1 } });
+        } else {
+          setFullscreenScale((s) => {
+            const newScale = Math.max(1, s - 0.5);
+            if (newScale === 1) {
+              imgControls.start({ x: 0, y: 0, scale: 1 });
+            } else {
+              imgControls.start({ scale: newScale });
+            }
+            return newScale;
+          });
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isFullscreen, goToNextImage, goToPrevImage]);
+  }, [
+    isFullscreen,
+    goToNextImage,
+    goToPrevImage,
+    imgControls,
+    fullscreenScale,
+    fullscreenRotation,
+    imgDims,
+    imgX,
+    imgY,
+  ]);
 
   const handleClear = () => {
     setShowClearAllModal(true);
@@ -448,7 +585,7 @@ export default function App() {
 
   // Setup Global Drag & Drop on the window
   useEffect(() => {
-    if (!activeDatasetId) return;
+    if (!activeDatasetId || activeDatasetId === "all") return;
 
     let dragCounter = 0;
 
@@ -519,8 +656,10 @@ export default function App() {
     }
     const scaledW = renderedW * fullscreenScale;
     const scaledH = renderedH * fullscreenScale;
-    maxDragX = Math.max(0, (scaledW - cW) / 2);
-    maxDragY = Math.max(0, (scaledH - cH) / 2);
+    const rotW = Math.abs(fullscreenRotation % 180) === 90 ? scaledH : scaledW;
+    const rotH = Math.abs(fullscreenRotation % 180) === 90 ? scaledW : scaledH;
+    maxDragX = Math.max(0, (rotW - cW) / 2);
+    maxDragY = Math.max(0, (rotH - cH) / 2);
   }
 
   const isFullscreenDarkText = canvasBg === "white" || canvasBg === "checker" || (canvasBg === "theme" && (theme.toUpperCase() === "LIGHT" || theme.toUpperCase() === "PAPER"));
@@ -547,11 +686,11 @@ export default function App() {
 
       {/* Top Header */}
       <header className="flex justify-between items-center shrink-0 h-10">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-panel-border flex items-center justify-center rounded-sm text-accent">
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 bg-panel-border flex items-center justify-center rounded-none text-accent">
             <ScatterChart size={18} />
           </div>
-          <div className="flex flex-col mr-8 justify-center">
+          <div className="flex flex-col mr-8 pt-0.5">
             <h1 className="font-sans font-semibold tracking-widest text-lg text-text-primary uppercase leading-none">
               SOLID DESKTOP IMAGE VIEWER
             </h1>
@@ -688,7 +827,7 @@ export default function App() {
         <aside
           className={cn(
             "flex flex-col gap-4 shrink-0 transition-all duration-300",
-            sidebarVisible ? "w-[340px]" : "w-0 overflow-hidden opacity-0",
+            sidebarVisible ? "w-[300px]" : "w-0 overflow-hidden opacity-0",
           )}
         >
           <Panel
@@ -742,7 +881,7 @@ export default function App() {
               <input
                 type="range"
                 min="60"
-                max="350"
+                max="600"
                 value={itemScale}
                 onChange={(e) => setItemScale(Number(e.target.value))}
               />
@@ -764,6 +903,28 @@ export default function App() {
                 value={gridGap}
                 onChange={(e) => setGridGap(Number(e.target.value))}
               />
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-panel-border flex flex-col gap-2">
+              <span className="text-[10px] font-mono text-text-muted uppercase tracking-widest mb-1">
+                OPEN IMAGE ACTION
+              </span>
+              <div className="flex gap-2">
+                <SolidButton
+                  active={openAction === "click"}
+                  onClick={() => setOpenAction("click")}
+                  className="flex-1 justify-center text-[10px] h-8"
+                >
+                  SINGLE CLICK
+                </SolidButton>
+                <SolidButton
+                  active={openAction === "dblclick"}
+                  onClick={() => setOpenAction("dblclick")}
+                  className="flex-1 justify-center text-[10px] h-8"
+                >
+                  DOUBLE CLICK
+                </SolidButton>
+              </div>
             </div>
           </Panel>
 
@@ -815,7 +976,7 @@ export default function App() {
               />
               <SolidButton
                 onClick={handleReadDirectoryClick}
-                disabled={isLoading || isReadingDirectory || !activeDatasetId}
+                disabled={isLoading || isReadingDirectory || !activeDatasetId || activeDatasetId === "all"}
                 className="w-full text-[10px] relative"
               >
                 <div className="absolute left-4 top-1/2 -translate-y-1/2">
@@ -835,10 +996,27 @@ export default function App() {
 
             <div className="pt-3 border-t border-panel-border overflow-y-auto flex flex-col gap-1 min-h-[80px] flex-1 scrollbar-dark pr-1">
               {datasetViewMode === "list" ? (
-                datasets.map((ds) => (
+                <>
                   <div
-                    key={ds.id}
-                    onClick={() => setActiveDatasetId(ds.id)}
+                    onClick={() => setActiveDatasetId("all")}
+                    className={cn(
+                      "flex items-center justify-between px-3 py-2 text-xs font-mono cursor-pointer border transition-colors group min-h-[32px] overflow-hidden shrink-0",
+                      activeDatasetId === "all"
+                        ? "bg-accent/10 border-accent/50 text-accent"
+                        : "border-transparent text-text-secondary hover:bg-panel-border hover:text-text-primary",
+                    )}
+                  >
+                    <span className="truncate flex-1 min-w-0 pr-2">
+                      {t("ALL IMAGES", "すべての画像")}
+                    </span>
+                    <span className="text-text-muted text-[10px] shrink-0">
+                      ({totalImagesCount})
+                    </span>
+                  </div>
+                  {datasets.map((ds) => (
+                    <div
+                      key={ds.id}
+                      onClick={() => setActiveDatasetId(ds.id)}
                     className={cn(
                       "flex items-center justify-between px-3 py-2 text-xs font-mono cursor-pointer border transition-colors group min-h-[32px] overflow-hidden shrink-0",
                       activeDatasetId === ds.id
@@ -887,7 +1065,8 @@ export default function App() {
                       </div>
                     )}
                   </div>
-                ))
+                ))}
+              </>
               ) : (
                 <div className="flex flex-col gap-3 h-full">
                   <select
@@ -895,8 +1074,9 @@ export default function App() {
                     value={activeDatasetId || ""}
                     onChange={(e) => setActiveDatasetId(e.target.value)}
                   >
+                    <option value="all" className="bg-white text-black">{t("ALL IMAGES", "すべての画像")}</option>
                     {datasets.map((ds) => (
-                      <option key={ds.id} value={ds.id}>
+                      <option key={ds.id} value={ds.id} className="bg-white text-black">
                         {ds.name} ({datasetCounts[ds.id] || 0})
                       </option>
                     ))}
@@ -1063,7 +1243,6 @@ export default function App() {
 
           <Panel
             title={t("04 DATA BANKS", "04 データバンク")}
-            className="flex-1 w-full"
             contentClassName="p-0 transition-colors duration-300 relative"
             headerRight={
               isSelectionMode ? (
@@ -1072,6 +1251,39 @@ export default function App() {
                     <Check size={12} className="text-accent" />{" "}
                     {selectedImageIds.size} SELECTED
                   </span>
+                  <button
+                    onClick={handleSelectAll}
+                    className="text-[10px] uppercase font-mono tracking-wider transition-colors text-text-secondary hover:text-text-primary"
+                  >
+                    {selectedImageIds.size === images.length && images.length > 0 ? "DESELECT ALL" : "SELECT ALL"}
+                  </button>
+                  <div className="flex items-center gap-1">
+                    <select
+                      value={moveTargetId}
+                      onChange={(e) => setMoveTargetId(e.target.value)}
+                      disabled={selectedImageIds.size === 0}
+                      className={cn(
+                        "bg-transparent outline-none text-[10px] uppercase font-mono tracking-wider transition-colors",
+                        selectedImageIds.size > 0 ? "text-text-primary cursor-pointer border py-0.5 px-1 border-panel-border rounded" : "text-text-muted cursor-not-allowed border py-0.5 px-1 border-transparent"
+                      )}
+                    >
+                      <option value="" className="bg-white text-black">MOVE TO...</option>
+                      {datasets.filter(d => d.id !== activeDatasetId).map(ds => (
+                        <option key={ds.id} value={ds.id} className="bg-white text-black">{ds.name}</option>
+                      ))}
+                    </select>
+                    {moveTargetId && selectedImageIds.size > 0 && (
+                      <button
+                        onClick={() => {
+                          handleMoveSelected(moveTargetId);
+                          setMoveTargetId("");
+                        }}
+                        className="text-[10px] uppercase font-mono tracking-wider transition-colors text-accent hover:text-accent/80 px-2 py-0.5 bg-accent/10 rounded"
+                      >
+                        MOVE
+                      </button>
+                    )}
+                  </div>
                   <button
                     onClick={() => setShowDeleteSelectedModal(true)}
                     disabled={selectedImageIds.size === 0}
@@ -1088,6 +1300,7 @@ export default function App() {
                     onClick={() => {
                       setIsSelectionMode(false);
                       setSelectedImageIds(new Set());
+                      setLastSelectedIdx(null);
                     }}
                     className="text-[10px] uppercase font-mono tracking-wider text-text-secondary hover:text-text-primary"
                   >
@@ -1182,7 +1395,7 @@ export default function App() {
                   >
                     {(() => {
                       const renderImageCard = (
-                        img: ImageRecord,
+                        img: LoadedImage,
                         i: number,
                         isSelected: boolean,
                         isMultiSelected: boolean,
@@ -1259,15 +1472,28 @@ export default function App() {
                                 : Math.min(i * 0.015, 1.0),
                             },
                           }}
-                          onClick={() => {
+                          onClick={(e) => {
                             if (isSelectionMode) {
                               const next = new Set(selectedImageIds);
-                              if (next.has(img.id)) next.delete(img.id);
-                              else next.add(img.id);
+                              
+                              if (e.shiftKey && lastSelectedIdx !== null) {
+                                const start = Math.min(lastSelectedIdx, i);
+                                const end = Math.max(lastSelectedIdx, i);
+                                for (let idx = start; idx <= end; idx++) {
+                                  next.add(sortedImages[idx].id);
+                                }
+                              } else {
+                                if (next.has(img.id)) next.delete(img.id);
+                                else next.add(img.id);
+                              }
+                              
                               setSelectedImageIds(next);
+                              if (!e.shiftKey || lastSelectedIdx === null) {
+                                setLastSelectedIdx(i);
+                              }
                             } else {
                               setSelectedImage(img);
-                              if (viewMode !== "free") {
+                              if (openAction === "click" && viewMode !== "free") {
                                 setIsFullscreen(true);
                               }
                             }
@@ -1275,7 +1501,9 @@ export default function App() {
                           onDoubleClick={() => {
                             if (isSelectionMode) return;
                             setSelectedImage(img);
-                            setIsFullscreen(true);
+                            if (openAction === "dblclick" || viewMode === "free") {
+                              setIsFullscreen(true);
+                            }
                           }}
                           className={cn(
                             "cursor-pointer overflow-hidden border min-w-0 min-h-0 relative transition-colors rounded-none bg-panel-bg",
@@ -1388,6 +1616,19 @@ export default function App() {
                               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                             </div>
                           )}
+                          
+                          {isSelectionMode && (
+                            <div className="absolute top-2 left-2 z-20 pointer-events-none">
+                              <div className={cn(
+                                "w-5 h-5 flex items-center justify-center transition-colors shadow-sm rounded-sm outline outline-1",
+                                isMultiSelected 
+                                  ? "bg-accent outline-accent text-root-bg" 
+                                  : "bg-black/40 outline-white/50"
+                              )}>
+                                {isMultiSelected && <Check size={14} />}
+                              </div>
+                            </div>
+                          )}
                         </motion.div>
                       );
 
@@ -1447,8 +1688,8 @@ export default function App() {
         {isFullscreen && selectedImage && (
           <motion.div
             initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
-            animate={{ opacity: 1, backdropFilter: "blur(10px)" }}
-            exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
+            animate={{ opacity: 1, backdropFilter: "blur(10px)", transition: { duration: 0.1 } }}
+            exit={{ opacity: 0, backdropFilter: "blur(0px)", transition: { duration: 0 } }}
             className="fixed inset-0 z-50 bg-root-bg/80 flex items-center justify-center p-8"
             onPointerDown={(e) => {
               if (e.target === e.currentTarget) {
@@ -1457,7 +1698,6 @@ export default function App() {
             }}
           >
             <motion.div
-              layoutId={selectedImage.id} // Seamless expand
               className="relative w-full h-full max-w-[95vw] max-h-[95vh] rounded-none overflow-hidden border border-panel-border shadow-[0_0_50px_rgba(0,0,0,0.8)] flex items-center justify-center bg-panel-bg"
               onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
@@ -1548,7 +1788,8 @@ export default function App() {
                   onDoubleClick={(e) => {
                     e.stopPropagation();
                     setFullscreenScale(1);
-                    imgControls.start({ x: 0, y: 0, scale: 1 });
+                    setFullscreenRotation(0);
+                    imgControls.start({ x: 0, y: 0, scale: 1, rotate: 0 });
                   }}
                   title="Drag to Move / Scroll to Zoom / Double-click to Reset"
                 />
@@ -1611,6 +1852,27 @@ export default function App() {
                   </button>
                 </>
               )}
+
+              {/* Rotate Button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFullscreenRotation(r => {
+                    const next = r + 90;
+                    imgControls.start({ rotate: next, transition: { duration: 0.2 } });
+                    return next;
+                  });
+                }}
+                className={cn(
+                  "absolute bottom-6 right-6 p-2 transition-colors drop-shadow-md hover:scale-110 outline-none focus:outline-none",
+                  isFullscreenDarkText
+                    ? "text-black/50 hover:text-black"
+                    : "text-white/50 hover:text-white",
+                )}
+                title="ROTATE IMAGE"
+              >
+                <RotateCw size={24} />
+              </button>
 
               {/* Close Button */}
               <button

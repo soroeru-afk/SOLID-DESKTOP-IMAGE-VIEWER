@@ -124,6 +124,11 @@ export async function getImagesByDataset(datasetId: string): Promise<ImageRecord
   return db.getAllFromIndex(STORE_NAME_IMAGES, 'by-dataset', datasetId);
 }
 
+export async function getAllImages(): Promise<ImageRecord[]> {
+  const db = await initDB();
+  return db.getAll(STORE_NAME_IMAGES);
+}
+
 export async function getTotalImageCount(): Promise<number> {
   const db = await initDB();
   return db.count(STORE_NAME_IMAGES);
@@ -132,6 +137,20 @@ export async function getTotalImageCount(): Promise<number> {
 export async function getImageCountByDataset(datasetId: string): Promise<number> {
   const db = await initDB();
   return db.countFromIndex(STORE_NAME_IMAGES, 'by-dataset', datasetId);
+}
+
+export async function updateImagesDataset(imageIds: string[], newDatasetId: string) {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME_IMAGES, 'readwrite');
+  
+  for (const id of imageIds) {
+    const img = await tx.store.get(id);
+    if (img) {
+      img.datasetId = newDatasetId;
+      await tx.store.put(img);
+    }
+  }
+  await tx.done;
 }
 
 export async function deleteImage(id: string) {
