@@ -56,6 +56,68 @@ import { ReactSortable } from "react-sortablejs";
 
 type ViewMode = "grid-sq" | "grid-ma" | "list" | "free";
 
+const analyzeImageBlob = async (blob: Blob): Promise<"black" | "white" | "checkerboard"> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return resolve("checkerboard");
+
+      const MAX_SIZE = 64;
+      let width = img.width;
+      let height = img.height;
+      if (width > MAX_SIZE || height > MAX_SIZE) {
+        const ratio = Math.min(MAX_SIZE / width, MAX_SIZE / height);
+        width = Math.floor(width * ratio);
+        height = Math.floor(height * ratio);
+      }
+      if (width === 0 || height === 0) return resolve("checkerboard");
+      
+      canvas.width = width;
+      canvas.height = height;
+      ctx.drawImage(img, 0, 0, width, height);
+
+      try {
+        const imageData = ctx.getImageData(0, 0, width, height).data;
+        let isTransparent = false;
+        let totalBrightness = 0;
+        let nonTransparentCount = 0;
+
+        for (let i = 0; i < imageData.length; i += 4) {
+          const a = imageData[i + 3];
+          if (a < 250) {
+            isTransparent = true;
+          }
+          if (a > 10) {
+            const r = imageData[i];
+            const g = imageData[i + 1];
+            const b = imageData[i + 2];
+            const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+            totalBrightness += lum;
+            nonTransparentCount++;
+          }
+        }
+
+        const avgBrightness = nonTransparentCount > 0 ? totalBrightness / nonTransparentCount : 128;
+        
+        // If the non-transparent parts are mostly bright, use a black background for contrast.
+        // If they are mostly dark, use a white background.
+        return resolve(avgBrightness > 128 ? "black" : "white");
+      } catch (e) {
+        resolve("checkerboard");
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve("checkerboard");
+    };
+    img.src = url;
+  });
+};
+
 interface LoadedImage extends ImageRecord {
   url: string;
   randomX: number;
@@ -371,13 +433,22 @@ export default function App() {
       // Revoke old URLs
       images.forEach((img) => URL.revokeObjectURL(img.url));
 
-      const loaded = dbImages.map((img) => ({
-        ...img,
-        url: URL.createObjectURL(img.data),
-        randomX: Math.random() * 80 - 40, // -40% to 40%
-        randomY: Math.random() * 80 - 40,
-        randomRotation: Math.random() * 30 - 15, // -15 to 15 deg
-      }));
+      const loaded = await Promise.all(
+        dbImages.map(async (img) => {
+          let autoBg = img.autoBg;
+          if (!autoBg || autoBg === "checkerboard") {
+            autoBg = await analyzeImageBlob(img.data);
+          }
+          return {
+            ...img,
+            url: URL.createObjectURL(img.data),
+            randomX: Math.random() * 80 - 40,
+            randomY: Math.random() * 80 - 40,
+            randomRotation: Math.random() * 30 - 15,
+            autoBg,
+          };
+        })
+      );
       setImages(loaded);
     } catch (e) {
       console.error(e);
@@ -418,15 +489,22 @@ export default function App() {
       }
 
       if (newFiles.length > 0) {
-        const records = newFiles.map((f) => ({
-          id: `${datasetId}-${f.name}-${f.lastModified}-${f.size}`,
-          datasetId,
-          name: f.name,
-          type: f.type,
-          size: f.size,
-          lastModified: f.lastModified,
-          data: f,
-        }));
+        // Compute autoBg asynchronously for each file
+        const records = await Promise.all(
+          newFiles.map(async (f) => {
+            const autoBg = await analyzeImageBlob(f);
+            return {
+              id: `${datasetId}-${f.name}-${f.lastModified}-${f.size}`,
+              datasetId,
+              name: f.name,
+              type: f.type,
+              size: f.size,
+              lastModified: f.lastModified,
+              data: f,
+              autoBg,
+            };
+          })
+        );
 
         await storeImages(records);
         await loadDatasets();
@@ -833,7 +911,20 @@ export default function App() {
     maxDragY = Math.max(0, (rotH - cH) / 2);
   }
 
-  const isFullscreenDarkText = canvasBg === "white" || canvasBg === "checker" || (canvasBg === "theme" && (theme.toUpperCase() === "LIGHT" || theme.toUpperCase() === "PAPER"));
+  const getCanvasBgClass = (imgBg?: "black" | "white" | "checkerboard") => {
+    const effectiveBg = canvasBg === "theme" && imgBg ? imgBg : canvasBg;
+    if (effectiveBg === "black") return "bg-black";
+    if (effectiveBg === "white") return "bg-white";
+    if (effectiveBg === "checker" || effectiveBg === "checkerboard") return "bg-checkerboard";
+    return "";
+  };
+
+  const isFullscreenDarkText = (() => {
+    if (canvasBg === "theme" && selectedImage?.autoBg) {
+      return selectedImage.autoBg === "white" || selectedImage.autoBg === "checkerboard";
+    }
+    return canvasBg === "white" || canvasBg === "checker" || (canvasBg === "theme" && (theme.toUpperCase() === "LIGHT" || theme.toUpperCase() === "PAPER"));
+  })();
 
   return (
     <div className="h-screen w-screen flex flex-col p-4 gap-4 box-border overflow-hidden select-none">
@@ -1355,13 +1446,7 @@ export default function App() {
                   <div
                     className={cn(
                       "relative flex items-center justify-center w-full h-full absolute inset-0",
-                      canvasBg === "black"
-                        ? "bg-black"
-                        : canvasBg === "white"
-                          ? "bg-white"
-                          : canvasBg === "checker"
-                            ? "bg-checkerboard"
-                            : "",
+                      getCanvasBgClass(selectedImage.autoBg),
                     )}
                   >
                     <img
@@ -1801,13 +1886,7 @@ export default function App() {
                                 <div
                                   className={cn(
                                     "relative flex items-center justify-center max-w-full max-h-full",
-                                    canvasBg === "black"
-                                      ? "bg-black"
-                                      : canvasBg === "white"
-                                        ? "bg-white"
-                                        : canvasBg === "checker"
-                                          ? "bg-checkerboard"
-                                          : "",
+                                    getCanvasBgClass(img.autoBg),
                                   )}
                                 >
                                   <img
@@ -1842,13 +1921,7 @@ export default function App() {
                               <div
                                 className={cn(
                                   "relative flex items-center justify-center w-full h-full transition-transform duration-500 will-change-transform group-hover:scale-105",
-                                  canvasBg === "black"
-                                    ? "bg-black"
-                                    : canvasBg === "white"
-                                      ? "bg-white"
-                                      : canvasBg === "checker"
-                                        ? "bg-checkerboard"
-                                        : "",
+                                  getCanvasBgClass(img.autoBg),
                                 )}
                               >
                                 <img
@@ -1958,13 +2031,7 @@ export default function App() {
                 ref={fullscreenContainerRef}
                 className={cn(
                   "relative flex items-center justify-center w-full h-full overflow-hidden",
-                  canvasBg === "black"
-                    ? "bg-black"
-                    : canvasBg === "white"
-                      ? "bg-white"
-                      : canvasBg === "checker"
-                        ? "bg-checkerboard"
-                        : "",
+                  getCanvasBgClass(selectedImage.autoBg),
                 )}
                 onWheel={(e) => {
                   e.stopPropagation();

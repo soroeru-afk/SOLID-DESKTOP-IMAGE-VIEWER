@@ -15,6 +15,7 @@ export interface ImageRecord {
   lastModified: number;
   data: Blob;
   orderIndex?: number;
+  autoBg?: "black" | "white" | "checkerboard";
 }
 
 interface ImageViewerDB extends DBSchema {
@@ -30,7 +31,7 @@ interface ImageViewerDB extends DBSchema {
 }
 
 const DB_NAME = 'solid-image-viewer-db';
-const DB_VERSION = 2; // upgrade to version 2
+const DB_VERSION = 3; // upgrade to version 3
 const STORE_NAME_IMAGES = 'images';
 const STORE_NAME_DATASETS = 'datasets';
 
@@ -48,6 +49,7 @@ export async function initDB() {
         const imgStore = transaction.objectStore(STORE_NAME_IMAGES);
         imgStore.createIndex('by-dataset', 'datasetId');
       }
+      // v3 adds autoBg to ImageRecord, no schema changes needed
     },
   });
 }
