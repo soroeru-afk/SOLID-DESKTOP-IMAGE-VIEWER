@@ -338,6 +338,23 @@ export default function App() {
   const [canvasBg, setCanvasBg] = useState<
     "theme" | "black" | "white" | "checker"
   >("white");
+
+  useEffect(() => {
+    if (activeDatasetId) {
+      const savedCanvasBg = localStorage.getItem(`app_canvasBg_${activeDatasetId}`);
+      if (savedCanvasBg) {
+        setCanvasBg(savedCanvasBg as "theme" | "black" | "white" | "checker");
+      } else {
+        setCanvasBg("white");
+      }
+    }
+  }, [activeDatasetId]);
+
+  useEffect(() => {
+    if (activeDatasetId) {
+      localStorage.setItem(`app_canvasBg_${activeDatasetId}`, canvasBg);
+    }
+  }, [canvasBg, activeDatasetId]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const fullscreenContainerRef = React.useRef<HTMLDivElement>(null);
 
