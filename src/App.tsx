@@ -1524,16 +1524,16 @@ export default function App() {
                             }
                           }}
                           className={cn(
-                            "h-6 min-w-[72px] flex items-center justify-center text-[9px] uppercase font-mono tracking-wider transition-colors border-r border-panel-border last:border-r-0 px-2",
+                            "h-6 min-w-[80px] flex items-center justify-center text-[9px] uppercase font-mono tracking-wider transition-colors border-r border-panel-border last:border-r-0 px-2 relative",
                             sortField === f
                               ? "text-accent bg-accent/5"
                               : "text-text-secondary hover:text-text-primary hover:bg-root-bg",
                           )}
                         >
-                          <span className="flex items-center">
+                          <span className="flex items-center justify-center w-full pr-3">
                             <span>{f}</span>
                             {f !== "random" && (
-                              <span className={cn("ml-1 w-2 flex items-center justify-center", sortField === f ? "opacity-100" : "opacity-0")}>
+                              <span className={cn("absolute right-1 w-3 flex items-center justify-center", sortField === f ? "opacity-100" : "opacity-0")}>
                                 {sortField === f ? (sortOrder === "asc" ? "↑" : "↓") : "↑"}
                               </span>
                             )}
@@ -1592,7 +1592,19 @@ export default function App() {
                     const Container: any = isSortable ? ReactSortable : "div";
                     const containerProps = isSortable ? {
                       list: sortedImages.map(img => ({ ...img, id: img.id })),
-                      setList: () => {},
+                      setList: (newList: any[]) => {
+                        // setList must update state to avoid react-sortablejs resetting the DOM on drag end
+                        setImages((prev) => {
+                          const copy = [...prev];
+                          newList.forEach((item, idx) => {
+                            const found = copy.find(c => c.id === item.id);
+                            if (found) {
+                              found.orderIndex = idx;
+                            }
+                          });
+                          return copy;
+                        });
+                      },
                       onEnd: handleSortEnd,
                       animation: 150,
                       disabled: sortOrder !== "asc",
