@@ -443,6 +443,7 @@ export default function App() {
 
       const loaded = await Promise.all(
         dbImages.map(async (img) => {
+          // Force re-analysis with latest contrast logic, ignoring any outdated stored database autoBg cache
           const autoBg = await analyzeImageBlob(img.data);
           return {
             ...img,
