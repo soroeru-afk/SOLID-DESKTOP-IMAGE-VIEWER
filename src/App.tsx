@@ -171,28 +171,46 @@ export default function App() {
     const saved = localStorage.getItem("app_openAction");
     return (saved as "click" | "dblclick") || "dblclick";
   });
-  const [scales, setScales] = useState<Record<ViewMode, number>>(() => {
-    const saved = localStorage.getItem("app_scales");
-    return saved
-      ? JSON.parse(saved)
-      : {
+  const [scales, setScales] = useState<Record<ViewMode, number>>({
+    "grid-sq": 140,
+    "grid-ma": 140,
+    list: 140,
+    free: 140,
+  });
+  const [gaps, setGaps] = useState<Record<ViewMode, number>>({
+    "grid-sq": 24,
+    "grid-ma": 24,
+    list: 0,
+    free: 0,
+  });
+
+  useEffect(() => {
+    if (activeDatasetId) {
+      const savedScales = localStorage.getItem(`app_scales_${activeDatasetId}`);
+      if (savedScales) {
+        setScales(JSON.parse(savedScales));
+      } else {
+        setScales({
           "grid-sq": 140,
           "grid-ma": 140,
           list: 140,
           free: 140,
-        };
-  });
-  const [gaps, setGaps] = useState<Record<ViewMode, number>>(() => {
-    const saved = localStorage.getItem("app_gaps");
-    return saved
-      ? JSON.parse(saved)
-      : {
+        });
+      }
+
+      const savedGaps = localStorage.getItem(`app_gaps_${activeDatasetId}`);
+      if (savedGaps) {
+        setGaps(JSON.parse(savedGaps));
+      } else {
+        setGaps({
           "grid-sq": 24,
           "grid-ma": 24,
           list: 0,
           free: 0,
-        };
-  });
+        });
+      }
+    }
+  }, [activeDatasetId]);
 
   useEffect(() => {
     localStorage.setItem("app_viewMode", viewMode);
@@ -203,12 +221,16 @@ export default function App() {
   }, [openAction]);
 
   useEffect(() => {
-    localStorage.setItem("app_scales", JSON.stringify(scales));
-  }, [scales]);
+    if (activeDatasetId) {
+      localStorage.setItem(`app_scales_${activeDatasetId}`, JSON.stringify(scales));
+    }
+  }, [scales, activeDatasetId]);
 
   useEffect(() => {
-    localStorage.setItem("app_gaps", JSON.stringify(gaps));
-  }, [gaps]);
+    if (activeDatasetId) {
+      localStorage.setItem(`app_gaps_${activeDatasetId}`, JSON.stringify(gaps));
+    }
+  }, [gaps, activeDatasetId]);
 
   const itemScale = scales[viewMode];
   const gridGap = gaps[viewMode];
