@@ -49,6 +49,7 @@ import {
   getImageCountByDataset,
   updateDatasetDate,
   updateImagesOrder,
+  updateImageAutoBg,
 } from "./lib/db";
 import { Panel, SolidButton } from "./components/ui";
 import { cn } from "./lib/utils";
@@ -443,8 +444,14 @@ export default function App() {
 
       const loaded = await Promise.all(
         dbImages.map(async (img) => {
-          // Force re-analysis with latest contrast logic, ignoring any outdated stored database autoBg cache
-          const autoBg = await analyzeImageBlob(img.data);
+          // Use cached autoBg if available, otherwise analyze and save to DB
+          let autoBg = img.autoBg;
+          if (!autoBg) {
+            autoBg = await analyzeImageBlob(img.data);
+            updateImageAutoBg(img.id, autoBg).catch((err) =>
+              console.error("Failed to update autoBg cache", err)
+            );
+          }
           return {
             ...img,
             url: URL.createObjectURL(img.data),
