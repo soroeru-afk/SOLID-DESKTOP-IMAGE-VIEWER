@@ -14,6 +14,7 @@ export interface ImageRecord {
   size: number;
   lastModified: number;
   data: Blob;
+  orderIndex?: number;
 }
 
 interface ImageViewerDB extends DBSchema {
@@ -166,6 +167,19 @@ export async function renameImage(id: string, newName: string) {
   if (img) {
     img.name = newName;
     await store.put(img);
+  }
+  await tx.done;
+}
+
+export async function updateImagesOrder(updates: {id: string, orderIndex: number}[]) {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME_IMAGES, 'readwrite');
+  for (const { id, orderIndex } of updates) {
+    const img = await tx.store.get(id);
+    if (img) {
+      img.orderIndex = orderIndex;
+      await tx.store.put(img);
+    }
   }
   await tx.done;
 }
