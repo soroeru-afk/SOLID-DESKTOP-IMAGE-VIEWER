@@ -1524,16 +1524,16 @@ export default function App() {
                             }
                           }}
                           className={cn(
-                            "h-6 min-w-[80px] flex items-center justify-center text-[9px] uppercase font-mono tracking-wider transition-colors border-r border-panel-border last:border-r-0 px-2 relative",
+                            "h-6 min-w-[72px] flex items-center justify-center text-[9px] uppercase font-mono tracking-wider transition-colors border-r border-panel-border last:border-r-0 px-2",
                             sortField === f
                               ? "text-accent bg-accent/5"
                               : "text-text-secondary hover:text-text-primary hover:bg-root-bg",
                           )}
                         >
-                          <span className="flex items-center justify-center w-full pr-3">
+                          <span className="relative flex items-center justify-center">
                             <span>{f}</span>
                             {f !== "random" && (
-                              <span className={cn("absolute right-1 w-3 flex items-center justify-center", sortField === f ? "opacity-100" : "opacity-0")}>
+                              <span className={cn("absolute left-full ml-1 flex items-center justify-center", sortField === f ? "opacity-100" : "opacity-0")}>
                                 {sortField === f ? (sortOrder === "asc" ? "↑" : "↓") : "↑"}
                               </span>
                             )}
