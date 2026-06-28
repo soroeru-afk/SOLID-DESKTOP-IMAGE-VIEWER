@@ -82,14 +82,14 @@ const analyzeImageBlob = async (blob: Blob): Promise<"black" | "white" | "checke
 
       try {
         const imageData = ctx.getImageData(0, 0, width, height).data;
-        let isTransparent = false;
+        let transparentCount = 0;
         let totalBrightness = 0;
         let nonTransparentCount = 0;
 
         for (let i = 0; i < imageData.length; i += 4) {
           const a = imageData[i + 3];
           if (a < 250) {
-            isTransparent = true;
+            transparentCount++;
           }
           if (a > 10) {
             const r = imageData[i];
@@ -102,10 +102,18 @@ const analyzeImageBlob = async (blob: Blob): Promise<"black" | "white" | "checke
         }
 
         const avgBrightness = nonTransparentCount > 0 ? totalBrightness / nonTransparentCount : 128;
+        const totalPixels = width * height;
+        const isMostlyTransparent = (transparentCount / totalPixels) > 0.05;
         
-        // If the non-transparent parts are mostly bright, use a black background for contrast.
-        // If they are mostly dark, use a white background.
-        return resolve(avgBrightness > 128 ? "black" : "white");
+        if (isMostlyTransparent) {
+          // For transparent images (logos/marks), we want contrast against the mark.
+          // If mark is bright, use black canvas. If mark is dark, use white canvas.
+          return resolve(avgBrightness > 128 ? "black" : "white");
+        } else {
+          // For opaque images, we want the canvas to blend with the background.
+          // The background dominates the average brightness.
+          return resolve(avgBrightness > 128 ? "white" : "black");
+        }
       } catch (e) {
         resolve("checkerboard");
       }
@@ -435,10 +443,7 @@ export default function App() {
 
       const loaded = await Promise.all(
         dbImages.map(async (img) => {
-          let autoBg = img.autoBg;
-          if (!autoBg || autoBg === "checkerboard") {
-            autoBg = await analyzeImageBlob(img.data);
-          }
+          const autoBg = await analyzeImageBlob(img.data);
           return {
             ...img,
             url: URL.createObjectURL(img.data),
