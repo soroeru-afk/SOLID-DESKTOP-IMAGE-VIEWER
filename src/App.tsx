@@ -188,7 +188,11 @@ export default function App() {
     if (activeDatasetId) {
       const savedScales = localStorage.getItem(`app_scales_${activeDatasetId}`);
       if (savedScales) {
-        setScales(JSON.parse(savedScales));
+        try {
+          setScales(JSON.parse(savedScales));
+        } catch (e) {
+          console.error("Failed to parse saved scales:", e);
+        }
       } else {
         setScales({
           "grid-sq": 140,
@@ -200,7 +204,11 @@ export default function App() {
 
       const savedGaps = localStorage.getItem(`app_gaps_${activeDatasetId}`);
       if (savedGaps) {
-        setGaps(JSON.parse(savedGaps));
+        try {
+          setGaps(JSON.parse(savedGaps));
+        } catch (e) {
+          console.error("Failed to parse saved gaps:", e);
+        }
       } else {
         setGaps({
           "grid-sq": 24,
