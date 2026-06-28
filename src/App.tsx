@@ -12,8 +12,8 @@ import {
   List,
   ScatterChart,
   Trash2,
-  Maximize2,
-  Minimize2,
+  Maximize,
+  Minimize,
   GripVertical,
   X,
   Image as ImageIcon,
@@ -48,9 +48,11 @@ import {
   getTotalImageCount,
   getImageCountByDataset,
   updateDatasetDate,
+  updateImagesOrder,
 } from "./lib/db";
 import { Panel, SolidButton } from "./components/ui";
 import { cn } from "./lib/utils";
+import { ReactSortable } from "react-sortablejs";
 
 type ViewMode = "grid-sq" | "grid-ma" | "list" | "free";
 
@@ -224,9 +226,10 @@ export default function App() {
   const [fileNameInput, setFileNameInput] = useState("");
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
   const [showClearAllModal, setShowClearAllModal] = useState(false);
-  const [sortField, setSortField] = useState<"name" | "size" | "type" | "date">(
+  const [sortField, setSortField] = useState<"name" | "size" | "type" | "date" | "custom" | "random">(
     "name",
   );
+  const [randomSeed, setRandomSeed] = useState(0);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [theme, setTheme] = useState<"NAVY" | "BLACK" | "LIGHT" | "PAPER">(
     "BLACK",
@@ -274,6 +277,15 @@ export default function App() {
   }, [activeDatasetId]);
 
   const sortedImages = useMemo(() => {
+    if (sortField === "random") {
+      const shuffled = [...images];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      return shuffled;
+    }
+
     return [...images].sort((a, b) => {
       let comparison = 0;
       switch (sortField) {
@@ -289,10 +301,14 @@ export default function App() {
         case "date":
           comparison = a.lastModified - b.lastModified;
           break;
+        case "custom":
+          comparison = (a.orderIndex ?? 0) - (b.orderIndex ?? 0);
+          if (comparison === 0) comparison = a.lastModified - b.lastModified;
+          break;
       }
       return sortOrder === "asc" ? comparison : -comparison;
     });
-  }, [images, sortField, sortOrder]);
+  }, [images, sortField, sortOrder, randomSeed]);
 
   const masonryColumns = useMemo(() => {
     if (viewMode !== "grid-ma") return [];
@@ -501,6 +517,55 @@ export default function App() {
     e.stopPropagation();
     await updateDatasetDate(id, Date.now() + 1000);
     await loadDatasets();
+  };
+
+  const handleSortEnd = async (evt: any) => {
+    if (sortField !== "custom") return;
+
+    const oldIndex = evt.oldIndex;
+    const newIndex = evt.newIndex;
+    if (oldIndex === undefined || newIndex === undefined || oldIndex === newIndex) return;
+
+    let newSorted = [...sortedImages];
+    const draggedItem = sortedImages[oldIndex];
+
+    if (isSelectionMode && selectedImageIds.has(draggedItem.id) && selectedImageIds.size > 1) {
+      const selectedItems = sortedImages.filter(img => selectedImageIds.has(img.id));
+      const remainingItems = sortedImages.filter(img => !selectedImageIds.has(img.id));
+
+      let simArray = [...sortedImages];
+      simArray.splice(oldIndex, 1);
+      simArray.splice(newIndex, 0, draggedItem);
+
+      let unselectedCount = 0;
+      for (let i = 0; i < newIndex; i++) {
+        if (!selectedImageIds.has(simArray[i].id)) {
+          unselectedCount++;
+        }
+      }
+
+      newSorted = [...remainingItems];
+      newSorted.splice(unselectedCount, 0, ...selectedItems);
+    } else {
+      const [moved] = newSorted.splice(oldIndex, 1);
+      newSorted.splice(newIndex, 0, moved);
+    }
+
+    const updates = newSorted.map((img, idx) => ({
+      id: img.id,
+      orderIndex: idx,
+    }));
+
+    setImages((prev) => {
+      const copy = [...prev];
+      for (const update of updates) {
+        const pImg = copy.find((c) => c.id === update.id);
+        if (pImg) pImg.orderIndex = update.orderIndex;
+      }
+      return copy;
+    });
+
+    await updateImagesOrder(updates);
   };
 
   const handleMoveDatasetBottom = async (e: React.MouseEvent, id: string) => {
@@ -925,9 +990,9 @@ export default function App() {
               title="TOGGLE FULLSCREEN (F11)"
             >
               {isAppFullscreen ? (
-                <Minimize2 size={16} />
+                <Minimize size={16} />
               ) : (
-                <Maximize2 size={16} />
+                <Maximize size={16} />
               )}
             </SolidButton>
             <SolidButton
@@ -1305,7 +1370,7 @@ export default function App() {
                     />
                   </div>
                   <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white pointer-events-none">
-                    <Maximize2 size={24} />
+                    <Maximize size={24} />
                   </div>
                 </div>
 
@@ -1438,33 +1503,44 @@ export default function App() {
               ) : (
                 <div className="flex items-center gap-6">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] uppercase text-text-muted mr-1">
+                    <span className="text-[10px] uppercase text-text-muted">
                       SORT:
                     </span>
-                    {(["name", "size", "type", "date"] as const).map((f) => (
-                      <button
-                        key={f}
-                        onClick={() => {
-                          if (sortField === f)
-                            setSortOrder((prev) =>
-                              prev === "asc" ? "desc" : "asc",
-                            );
-                          else {
-                            setSortField(f);
-                            setSortOrder("asc");
-                          }
-                        }}
-                        className={cn(
-                          "text-[10px] uppercase font-mono tracking-wider transition-colors",
-                          sortField === f
-                            ? "text-accent"
-                            : "text-text-secondary hover:text-text-primary",
-                        )}
-                      >
-                        {f}{" "}
-                        {sortField === f && (sortOrder === "asc" ? "↑" : "↓")}
-                      </button>
-                    ))}
+                    <div className="flex items-center border border-panel-border bg-panel-bg rounded-[2px] overflow-hidden">
+                      {(["name", "size", "type", "date", "custom", "random"] as const).map((f) => (
+                        <button
+                          key={f}
+                          onClick={() => {
+                            if (f === "random") {
+                              setSortField("random");
+                              setRandomSeed((prev) => prev + 1);
+                            } else if (sortField === f) {
+                              setSortOrder((prev) =>
+                                prev === "asc" ? "desc" : "asc",
+                              );
+                            } else {
+                              setSortField(f);
+                              setSortOrder("asc");
+                            }
+                          }}
+                          className={cn(
+                            "h-6 min-w-[72px] flex items-center justify-center text-[9px] uppercase font-mono tracking-wider transition-colors border-r border-panel-border last:border-r-0 px-2",
+                            sortField === f
+                              ? "text-accent bg-accent/5"
+                              : "text-text-secondary hover:text-text-primary hover:bg-root-bg",
+                          )}
+                        >
+                          <span className="flex items-center">
+                            <span>{f}</span>
+                            {f !== "random" && (
+                              <span className={cn("ml-1 w-2 flex items-center justify-center", sortField === f ? "opacity-100" : "opacity-0")}>
+                                {sortField === f ? (sortOrder === "asc" ? "↑" : "↓") : "↑"}
+                              </span>
+                            )}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   <button
                     onClick={() => {
@@ -1483,7 +1559,7 @@ export default function App() {
                   >
                     EDIT
                   </button>
-                  <span className="text-accent pl-2 border-l border-panel-border h-4 flex items-center">
+                  <span className="text-accent pl-4 border-l border-panel-border h-4 flex items-center justify-end w-[110px]">
                     {viewMode.toUpperCase()}{" "}
                     {viewMode === "free" ? "BOARD" : "VIEW"}
                   </span>
@@ -1511,27 +1587,42 @@ export default function App() {
                     viewMode === "free" && "overflow-hidden",
                   )}
                 >
-                  <div
-                    className={cn(
-                      "w-full h-auto",
-                      viewMode === "grid-sq" &&
-                        "grid content-start justify-center",
-                      viewMode === "grid-ma" && "flex items-start",
-                      viewMode === "list" && "flex flex-col",
-                    )}
-                    style={{
-                      ...(viewMode === "grid-sq"
-                        ? {
-                            gridTemplateColumns: `repeat(auto-fill, minmax(${itemScale}px, 1fr))`,
-                            gap: `${gridGap}px`,
-                          }
-                        : {}),
-                      ...(viewMode === "grid-ma"
-                        ? { gap: `${gridGap}px` }
-                        : {}),
-                      ...(viewMode === "list" ? { gap: `${gridGap}px` } : {}),
-                    }}
-                  >
+                  {(() => {
+                    const isSortable = (viewMode === "grid-sq" || viewMode === "list" || viewMode === "grid-ma") && sortField === "custom";
+                    const Container: any = isSortable ? ReactSortable : "div";
+                    const containerProps = isSortable ? {
+                      list: sortedImages.map(img => ({ ...img, id: img.id })),
+                      setList: () => {},
+                      onEnd: handleSortEnd,
+                      animation: 150,
+                      disabled: sortOrder !== "asc",
+                      delay: 150,
+                      delayOnTouchOnly: true,
+                    } : {};
+
+                    return (
+                      <Container
+                        {...containerProps}
+                        className={cn(
+                          "w-full h-auto",
+                          viewMode === "grid-sq" &&
+                            "grid content-start justify-center",
+                          viewMode === "grid-ma" && "flex items-start",
+                          viewMode === "list" && "flex flex-col",
+                        )}
+                        style={{
+                          ...(viewMode === "grid-sq"
+                            ? {
+                                gridTemplateColumns: `repeat(auto-fill, minmax(${itemScale}px, 1fr))`,
+                                gap: `${gridGap}px`,
+                              }
+                            : {}),
+                          ...(viewMode === "grid-ma"
+                            ? { gap: `${gridGap}px` }
+                            : {}),
+                          ...(viewMode === "list" ? { gap: `${gridGap}px` } : {}),
+                        }}
+                      >
                     {(() => {
                       const renderImageCard = (
                         img: LoadedImage,
@@ -1592,9 +1683,9 @@ export default function App() {
                           }
                           transition={{
                             layout: {
-                              type: "spring",
-                              stiffness: 250,
-                              damping: 25,
+                              type: "tween",
+                              ease: "circOut",
+                              duration: 0.3,
                             },
                             opacity: {
                               duration: 0.1,
@@ -1603,9 +1694,9 @@ export default function App() {
                                 : Math.min(i * 0.015, 1.0),
                             },
                             scale: {
-                              type: "spring",
-                              stiffness: 300,
-                              damping: 20,
+                              type: "tween",
+                              ease: "circOut",
+                              duration: 0.2,
                               delay: isSelectionMode
                                 ? 0
                                 : Math.min(i * 0.015, 1.0),
@@ -1816,7 +1907,9 @@ export default function App() {
                         );
                       });
                     })()}
-                  </div>
+                  </Container>
+                    );
+                  })()}
                   {sortedImages.length === 0 && !isLoading && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center text-text-muted font-mono text-xs pointer-events-none">
                       <ImageIcon size={48} className="mb-4 opacity-20" />
