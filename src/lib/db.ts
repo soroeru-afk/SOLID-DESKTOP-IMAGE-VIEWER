@@ -193,16 +193,3 @@ export async function clearAll() {
   await tx.objectStore(STORE_NAME_IMAGES).clear();
   await tx.done;
 }
-
-export async function updateImageAutoBg(id: string, autoBg: "black" | "white" | "checkerboard") {
-  const db = await initDB();
-  const tx = db.transaction(STORE_NAME_IMAGES, 'readwrite');
-  const store = tx.objectStore(STORE_NAME_IMAGES);
-  const img = await store.get(id);
-  if (img) {
-    img.autoBg = autoBg;
-    await store.put(img);
-  }
-  await tx.done;
-}
-

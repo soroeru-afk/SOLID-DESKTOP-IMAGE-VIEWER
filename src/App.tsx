@@ -49,7 +49,6 @@ import {
   getImageCountByDataset,
   updateDatasetDate,
   updateImagesOrder,
-  updateImageAutoBg,
 } from "./lib/db";
 import { Panel, SolidButton } from "./components/ui";
 import { cn } from "./lib/utils";
@@ -147,8 +146,9 @@ export default function App() {
   const [datasetCounts, setDatasetCounts] = useState<Record<string, number>>(
     {},
   );
-  const initialDatasetId = localStorage.getItem("app_activeDatasetId") || null;
-  const [activeDatasetId, setActiveDatasetId] = useState<string | null>(initialDatasetId);
+  const [activeDatasetId, setActiveDatasetId] = useState<string | null>(() => {
+    return localStorage.getItem("app_activeDatasetId") || null;
+  });
 
   useEffect(() => {
     if (activeDatasetId) {
@@ -170,16 +170,111 @@ export default function App() {
     const saved = localStorage.getItem("app_openAction");
     return (saved as "click" | "dblclick") || "dblclick";
   });
-  const [scales, setScales] = useState<Record<ViewMode, number>>(() => {
-    const saved = localStorage.getItem(`app_scales_${initialDatasetId}`);
-    if (saved) { try { return JSON.parse(saved); } catch (e) {} }
-    return { "grid-sq": 140, "grid-ma": 140, list: 140, free: 140 };
+  const [theme, setTheme] = useState<"NAVY" | "BLACK" | "LIGHT" | "PAPER">(
+    () => {
+      const saved = localStorage.getItem("app_theme");
+      return (saved as "NAVY" | "BLACK" | "LIGHT" | "PAPER") || "BLACK";
+    }
+  );
+  const [canvasBg, setCanvasBg] = useState<
+    "theme" | "black" | "white" | "checker"
+  >("white");
+  const [sortField, setSortField] = useState<"name" | "size" | "type" | "date" | "custom" | "random">(
+    "name",
+  );
+  const [randomSeed, setRandomSeed] = useState(0);
+  const [sortOrders, setSortOrders] = useState<Record<string, "asc" | "desc">>({
+    name: "asc",
+    size: "desc",
+    type: "asc",
+    date: "desc",
+    custom: "asc",
   });
-  const [gaps, setGaps] = useState<Record<ViewMode, number>>(() => {
-    const saved = localStorage.getItem(`app_gaps_${initialDatasetId}`);
-    if (saved) { try { return JSON.parse(saved); } catch (e) {} }
-    return { "grid-sq": 24, "grid-ma": 24, list: 0, free: 0 };
+  const [scales, setScales] = useState<Record<ViewMode, number>>({
+    "grid-sq": 140,
+    "grid-ma": 140,
+    list: 140,
+    free: 140,
   });
+  const [gaps, setGaps] = useState<Record<ViewMode, number>>({
+    "grid-sq": 24,
+    "grid-ma": 24,
+    list: 0,
+    free: 0,
+  });
+
+  useEffect(() => {
+    if (activeDatasetId) {
+      const savedScales = localStorage.getItem(`app_scales_${activeDatasetId}`);
+      if (savedScales) {
+        setScales(JSON.parse(savedScales));
+      } else {
+        setScales({
+          "grid-sq": 140,
+          "grid-ma": 140,
+          list: 140,
+          free: 140,
+        });
+      }
+
+      const savedGaps = localStorage.getItem(`app_gaps_${activeDatasetId}`);
+      if (savedGaps) {
+        setGaps(JSON.parse(savedGaps));
+      } else {
+        setGaps({
+          "grid-sq": 24,
+          "grid-ma": 24,
+          list: 0,
+          free: 0,
+        });
+      }
+
+      const savedCanvasBg = localStorage.getItem(`app_canvasBg_${activeDatasetId}`);
+      if (savedCanvasBg) {
+        setCanvasBg(savedCanvasBg as any);
+      } else {
+        setCanvasBg("white");
+      }
+
+      const savedSortField = localStorage.getItem(`app_sortField_${activeDatasetId}`);
+      if (savedSortField) {
+        setSortField(savedSortField as any);
+      } else {
+        setSortField("name");
+      }
+
+      const savedSortOrders = localStorage.getItem(`app_sortOrders_${activeDatasetId}`);
+      if (savedSortOrders) {
+        try {
+          setSortOrders({
+            name: "asc",
+            size: "desc",
+            type: "asc",
+            date: "desc",
+            custom: "asc",
+            ...JSON.parse(savedSortOrders)
+          });
+        } catch(e) {
+          // ignore
+        }
+      } else {
+        setSortOrders({
+          name: "asc",
+          size: "desc",
+          type: "asc",
+          date: "desc",
+          custom: "asc",
+        });
+      }
+
+      const savedRandomSeed = localStorage.getItem(`app_randomSeed_${activeDatasetId}`);
+      if (savedRandomSeed) {
+        setRandomSeed(parseInt(savedRandomSeed, 10));
+      } else {
+        setRandomSeed(0);
+      }
+    }
+  }, [activeDatasetId]);
 
   useEffect(() => {
     localStorage.setItem("app_viewMode", viewMode);
@@ -200,6 +295,34 @@ export default function App() {
       localStorage.setItem(`app_gaps_${activeDatasetId}`, JSON.stringify(gaps));
     }
   }, [gaps, activeDatasetId]);
+
+  useEffect(() => {
+    localStorage.setItem("app_theme", theme);
+  }, [theme]);
+
+  useEffect(() => {
+    if (activeDatasetId) {
+      localStorage.setItem(`app_canvasBg_${activeDatasetId}`, canvasBg);
+    }
+  }, [canvasBg, activeDatasetId]);
+
+  useEffect(() => {
+    if (activeDatasetId) {
+      localStorage.setItem(`app_sortField_${activeDatasetId}`, sortField);
+    }
+  }, [sortField, activeDatasetId]);
+
+  useEffect(() => {
+    if (activeDatasetId) {
+      localStorage.setItem(`app_sortOrders_${activeDatasetId}`, JSON.stringify(sortOrders));
+    }
+  }, [sortOrders, activeDatasetId]);
+
+  useEffect(() => {
+    if (activeDatasetId) {
+      localStorage.setItem(`app_randomSeed_${activeDatasetId}`, randomSeed.toString());
+    }
+  }, [randomSeed, activeDatasetId]);
 
   const itemScale = scales[viewMode];
   const gridGap = gaps[viewMode];
@@ -230,7 +353,60 @@ export default function App() {
     imgY.set(0);
     imgControls.start({ x: 0, y: 0, scale: 1, rotate: 0 });
     setImgDims({ w: 0, h: 0 });
-  }, [isFullscreen, selectedImage, imgControls, imgX, imgY]);
+  }, [isFullscreen, imgControls, imgX, imgY]);
+
+  // When selectedImage changes (next/prev image), reset only image dimensions and wait for the onLoad trigger
+  useEffect(() => {
+    setImgDims({ w: 0, h: 0 });
+  }, [selectedImage]);
+
+  // Preserve scale and rotation across image switch, and clamp x/y position to the new image bounds once loaded
+  useEffect(() => {
+    if (isFullscreen && imgDims.w > 0 && imgDims.h > 0) {
+      const currentCW = typeof window !== "undefined" ? window.innerWidth * 0.95 : 1000;
+      const currentCH = typeof window !== "undefined" ? window.innerHeight * 0.95 : 1000;
+
+      const aspectImg = imgDims.w / imgDims.h;
+      const aspectScreen = currentCW / currentCH;
+      let renderedW, renderedH;
+      if (aspectImg > aspectScreen) {
+        renderedW = currentCW;
+        renderedH = currentCW / aspectImg;
+      } else {
+        renderedH = currentCH;
+        renderedW = currentCH * aspectImg;
+      }
+      const scaledW = renderedW * fullscreenScale;
+      const scaledH = renderedH * fullscreenScale;
+      const rotW = Math.abs(fullscreenRotation % 180) === 90 ? scaledH : scaledW;
+      const rotH = Math.abs(fullscreenRotation % 180) === 90 ? scaledW : scaledH;
+      const mX = Math.max(0, (rotW - currentCW) / 2);
+      const mY = Math.max(0, (rotH - currentCH) / 2);
+
+      let currentX = imgX.get();
+      let currentY = imgY.get();
+
+      if (fullscreenScale <= 1.0) {
+        currentX = 0;
+        currentY = 0;
+      } else {
+        if (currentX > mX) currentX = mX;
+        if (currentX < -mX) currentX = -mX;
+        if (currentY > mY) currentY = mY;
+        if (currentY < -mY) currentY = -mY;
+      }
+
+      imgX.set(currentX);
+      imgY.set(currentY);
+      imgControls.start({
+        scale: fullscreenScale,
+        rotate: fullscreenRotation,
+        x: currentX,
+        y: currentY,
+        transition: { duration: 0 }
+      });
+    }
+  }, [imgDims, isFullscreen, fullscreenScale, fullscreenRotation, imgControls, imgX, imgY]);
 
   const [sidebarPosition, setSidebarPosition] = useState<"left" | "right">(
     "left",
@@ -288,80 +464,6 @@ export default function App() {
   const [fileNameInput, setFileNameInput] = useState("");
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
   const [showClearAllModal, setShowClearAllModal] = useState(false);
-  const [sortField, setSortField] = useState<"name" | "size" | "type" | "date" | "custom" | "random">(() => {
-    const saved = localStorage.getItem(`app_sortField_${localStorage.getItem("app_activeDatasetId")}`);
-    return (saved as any) || "name";
-  });
-  const [randomSeed, setRandomSeed] = useState(() => {
-    const saved = localStorage.getItem(`app_randomSeed_${localStorage.getItem("app_activeDatasetId")}`);
-    return saved ? parseInt(saved, 10) : 0;
-  });
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">(() => {
-    const dsId = localStorage.getItem("app_activeDatasetId");
-    const savedSortField = localStorage.getItem(`app_sortField_${dsId}`);
-    const parsedSortField = savedSortField ? (savedSortField as any) : "name";
-    const saved = localStorage.getItem(`app_sortOrder_${dsId}_${parsedSortField}`);
-    return (saved as any) || (parsedSortField === "date" || parsedSortField === "custom" ? "desc" : "asc");
-  });
-  const [theme, setTheme] = useState<"NAVY" | "BLACK" | "LIGHT" | "PAPER">(
-    "BLACK",
-  );
-  const [canvasBg, setCanvasBg] = useState<"theme" | "black" | "white" | "checker">(() => {
-    const saved = localStorage.getItem(`app_canvasBg_${localStorage.getItem("app_activeDatasetId")}`);
-    return (saved as any) || "white";
-  });
-
-  const switchDataset = (newId: string | null) => {
-    setActiveDatasetId(newId);
-    if (newId) {
-      const savedCanvasBg = localStorage.getItem(`app_canvasBg_${newId}`);
-      setCanvasBg(savedCanvasBg ? (savedCanvasBg as any) : "white");
-      
-      const savedSortField = localStorage.getItem(`app_sortField_${newId}`);
-      const parsedSortField = savedSortField ? (savedSortField as any) : "name";
-      setSortField(parsedSortField);
-      
-      const savedSortOrder = localStorage.getItem(`app_sortOrder_${newId}_${parsedSortField}`);
-      setSortOrder(savedSortOrder ? (savedSortOrder as any) : (parsedSortField === "date" || parsedSortField === "custom" ? "desc" : "asc"));
-      
-      const savedRandomSeed = localStorage.getItem(`app_randomSeed_${newId}`);
-      setRandomSeed(savedRandomSeed ? parseInt(savedRandomSeed, 10) : 0);
-      
-      const savedScales = localStorage.getItem(`app_scales_${newId}`);
-      if (savedScales) {
-        try { setScales(JSON.parse(savedScales)); } catch (e) {}
-      }
-      
-      const savedGaps = localStorage.getItem(`app_gaps_${newId}`);
-      if (savedGaps) {
-        try { setGaps(JSON.parse(savedGaps)); } catch (e) {}
-      }
-    }
-  };
-
-  useEffect(() => {
-    if (activeDatasetId) {
-      localStorage.setItem(`app_canvasBg_${activeDatasetId}`, canvasBg);
-    }
-  }, [canvasBg, activeDatasetId]);
-
-  useEffect(() => {
-    if (activeDatasetId) {
-      localStorage.setItem(`app_sortField_${activeDatasetId}`, sortField);
-    }
-  }, [sortField, activeDatasetId]);
-
-  useEffect(() => {
-    if (activeDatasetId) {
-      localStorage.setItem(`app_sortOrder_${activeDatasetId}_${sortField}`, sortOrder);
-    }
-  }, [sortOrder, sortField, activeDatasetId]);
-
-  useEffect(() => {
-    if (activeDatasetId) {
-      localStorage.setItem(`app_randomSeed_${activeDatasetId}`, randomSeed.toString());
-    }
-  }, [randomSeed, activeDatasetId]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const fullscreenContainerRef = React.useRef<HTMLDivElement>(null);
 
@@ -427,13 +529,13 @@ export default function App() {
           comparison = a.lastModified - b.lastModified;
           break;
         case "custom":
-          comparison = (b.orderIndex ?? 0) - (a.orderIndex ?? 0);
+          comparison = (a.orderIndex ?? 0) - (b.orderIndex ?? 0);
           if (comparison === 0) comparison = a.lastModified - b.lastModified;
           break;
       }
-      return sortOrder === "asc" ? comparison : -comparison;
+      return sortOrders[sortField] === "asc" ? comparison : -comparison;
     });
-  }, [images, sortField, sortOrder, randomSeed]);
+  }, [images, sortField, sortOrders, randomSeed]);
 
   const masonryColumns = useMemo(() => {
     if (viewMode !== "grid-ma") return [];
@@ -474,13 +576,13 @@ export default function App() {
       setTotalImagesCount(total);
 
       if (dsList.length > 0 && !activeDatasetId) {
-        switchDataset(dsList[0].id);
+        setActiveDatasetId(dsList[0].id);
       } else if (
         activeDatasetId &&
         activeDatasetId !== "all" &&
         !dsList.find((d) => d.id === activeDatasetId)
       ) {
-        switchDataset(dsList.length > 0 ? dsList[0].id : null);
+        setActiveDatasetId(dsList.length > 0 ? dsList[0].id : null);
       }
     } catch (e) {
       console.error(e);
@@ -498,13 +600,11 @@ export default function App() {
 
       const loaded = await Promise.all(
         dbImages.map(async (img) => {
-          // Use cached autoBg if available, otherwise analyze and save to DB
           let autoBg = img.autoBg;
           if (!autoBg) {
             autoBg = await analyzeImageBlob(img.data);
-            updateImageAutoBg(img.id, autoBg).catch((err) =>
-              console.error("Failed to update autoBg cache", err)
-            );
+            // Update the DB record in the background to cache it
+            storeImages([{ ...img, autoBg }]).catch(console.error);
           }
           return {
             ...img,
@@ -633,7 +733,7 @@ export default function App() {
       );
     } else {
       const ds = await createDataset(datasetNameInput.trim().toUpperCase());
-      switchDataset(ds.id);
+      setActiveDatasetId(ds.id);
     }
     setShowNewDatasetModal(false);
     await loadDatasets();
@@ -1352,7 +1452,7 @@ export default function App() {
               {datasetViewMode === "list" ? (
                 <>
                   <div
-                    onClick={() => switchDataset("all")}
+                    onClick={() => setActiveDatasetId("all")}
                     className={cn(
                       "flex items-center justify-between px-3 py-2 text-xs font-mono cursor-pointer border transition-colors group min-h-[32px] overflow-hidden shrink-0",
                       activeDatasetId === "all"
@@ -1372,7 +1472,7 @@ export default function App() {
                       <Reorder.Item
                         key={ds.id}
                         value={ds}
-                        onClick={() => switchDataset(ds.id)}
+                        onClick={() => setActiveDatasetId(ds.id)}
                         className={cn(
                           "flex items-center px-3 py-2 text-xs font-mono cursor-grab active:cursor-grabbing border transition-colors group min-h-[32px] overflow-hidden shrink-0",
                           activeDatasetId === ds.id
@@ -1416,7 +1516,7 @@ export default function App() {
                   <select
                     className="w-full bg-root-bg border border-panel-border text-text-primary px-3 py-2 outline-none text-xs font-mono"
                     value={activeDatasetId || ""}
-                    onChange={(e) => switchDataset(e.target.value)}
+                    onChange={(e) => setActiveDatasetId(e.target.value)}
                   >
                     <option value="all" className="bg-white text-black">{t("ALL IMAGES", "すべての画像")}</option>
                     {datasets.map((ds) => (
@@ -1667,13 +1767,12 @@ export default function App() {
                               setSortField("random");
                               setRandomSeed((prev) => prev + 1);
                             } else if (sortField === f) {
-                              setSortOrder((prev) =>
-                                prev === "asc" ? "desc" : "asc",
-                              );
+                              setSortOrders((prev) => ({
+                                ...prev,
+                                [f]: prev[f] === "asc" ? "desc" : "asc",
+                              }));
                             } else {
                               setSortField(f);
-                              const savedSortOrder = localStorage.getItem(`app_sortOrder_${activeDatasetId}_${f}`);
-                              setSortOrder(savedSortOrder ? (savedSortOrder as any) : (f === "date" || f === "custom" ? "desc" : "asc"));
                             }
                           }}
                           className={cn(
@@ -1687,7 +1786,7 @@ export default function App() {
                             <span>{f}</span>
                             {f !== "random" && (
                               <span className={cn("absolute left-full ml-1 flex items-center justify-center", sortField === f ? "opacity-100" : "opacity-0")}>
-                                {sortField === f ? (sortOrder === "asc" ? "↑" : "↓") : "↑"}
+                                {sortField === f ? (sortOrders[f] === "asc" ? "↑" : "↓") : "↑"}
                               </span>
                             )}
                           </span>
@@ -1745,22 +1844,10 @@ export default function App() {
                     const Container: any = isSortable ? ReactSortable : "div";
                     const containerProps = isSortable ? {
                       list: sortedImages.map(img => ({ ...img, id: img.id })),
-                      setList: (newList: any[]) => {
-                        // setList must update state to avoid react-sortablejs resetting the DOM on drag end
-                        setImages((prev) => {
-                          const copy = [...prev];
-                          newList.forEach((item, idx) => {
-                            const found = copy.find(c => c.id === item.id);
-                            if (found) {
-                              found.orderIndex = idx;
-                            }
-                          });
-                          return copy;
-                        });
-                      },
+                      setList: () => {},
                       onEnd: handleSortEnd,
                       animation: 150,
-                      disabled: sortOrder !== "desc",
+                      disabled: sortOrders[sortField] !== "asc",
                       delay: 150,
                       delayOnTouchOnly: true,
                     } : {};
@@ -2151,6 +2238,7 @@ export default function App() {
                   key={selectedImage.id}
                   src={selectedImage.url}
                   style={{ x: imgX, y: imgY }}
+                  initial={{ scale: fullscreenScale, rotate: fullscreenRotation }}
                   className={cn(
                     "max-w-full max-h-full object-contain block",
                     fullscreenScale > 1.0 ? "cursor-move" : "cursor-default",
@@ -2244,6 +2332,74 @@ export default function App() {
                   </button>
                 </>
               )}
+
+              {/* BG Toggle Button Group */}
+              <div
+                className={cn(
+                  "absolute bottom-6 right-16 flex items-center gap-1.5 font-mono text-[9px] border px-2 py-1.5 rounded bg-black/15 backdrop-blur-sm transition-colors pointer-events-auto",
+                  isFullscreenDarkText
+                    ? "border-black/15 text-black"
+                    : "border-white/15 text-white",
+                )}
+              >
+                <span className={isFullscreenDarkText ? "text-black/60" : "text-white/60"}>BG:</span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCanvasBg("theme");
+                  }}
+                  className={cn(
+                    "px-1.5 py-0.5 rounded transition-all",
+                    canvasBg === "theme"
+                      ? (isFullscreenDarkText ? "bg-black text-white font-bold" : "bg-white text-black font-bold")
+                      : "opacity-60 hover:opacity-100"
+                  )}
+                >
+                  AUTO
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCanvasBg("white");
+                  }}
+                  className={cn(
+                    "px-1.5 py-0.5 rounded transition-all",
+                    canvasBg === "white"
+                      ? (isFullscreenDarkText ? "bg-black text-white font-bold" : "bg-white text-black font-bold")
+                      : "opacity-60 hover:opacity-100"
+                  )}
+                >
+                  WHT
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCanvasBg("black");
+                  }}
+                  className={cn(
+                    "px-1.5 py-0.5 rounded transition-all",
+                    canvasBg === "black"
+                      ? (isFullscreenDarkText ? "bg-black text-white font-bold" : "bg-white text-black font-bold")
+                      : "opacity-60 hover:opacity-100"
+                  )}
+                >
+                  BLK
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCanvasBg("checker");
+                  }}
+                  className={cn(
+                    "px-1.5 py-0.5 rounded transition-all",
+                    canvasBg === "checker"
+                      ? (isFullscreenDarkText ? "bg-black text-white font-bold" : "bg-white text-black font-bold")
+                      : "opacity-60 hover:opacity-100"
+                  )}
+                >
+                  CHK
+                </button>
+              </div>
 
               {/* Rotate Button */}
               <button
