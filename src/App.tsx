@@ -297,8 +297,11 @@ export default function App() {
     return saved ? parseInt(saved, 10) : 0;
   });
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">(() => {
-    const saved = localStorage.getItem(`app_sortOrder_${localStorage.getItem("app_activeDatasetId")}`);
-    return (saved as any) || "asc";
+    const dsId = localStorage.getItem("app_activeDatasetId");
+    const savedSortField = localStorage.getItem(`app_sortField_${dsId}`);
+    const parsedSortField = savedSortField ? (savedSortField as any) : "name";
+    const saved = localStorage.getItem(`app_sortOrder_${dsId}_${parsedSortField}`);
+    return (saved as any) || (parsedSortField === "date" || parsedSortField === "custom" ? "desc" : "asc");
   });
   const [theme, setTheme] = useState<"NAVY" | "BLACK" | "LIGHT" | "PAPER">(
     "BLACK",
