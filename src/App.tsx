@@ -424,7 +424,7 @@ export default function App() {
           break;
         case "custom":
           comparison = (a.orderIndex ?? 0) - (b.orderIndex ?? 0);
-          if (comparison === 0) comparison = a.lastModified - b.lastModified;
+          if (comparison === 0) comparison = b.lastModified - a.lastModified;
           break;
       }
       return sortOrder === "asc" ? comparison : -comparison;
@@ -1662,6 +1662,9 @@ export default function App() {
                             if (f === "random") {
                               setSortField("random");
                               setRandomSeed((prev) => prev + 1);
+                            } else if (f === "custom") {
+                              setSortField("custom");
+                              setSortOrder("asc");
                             } else if (sortField === f) {
                               setSortOrder((prev) =>
                                 prev === "asc" ? "desc" : "asc",
@@ -1680,7 +1683,7 @@ export default function App() {
                         >
                           <span className="relative flex items-center justify-center">
                             <span>{f}</span>
-                            {f !== "random" && (
+                            {f !== "random" && f !== "custom" && (
                               <span className={cn("absolute left-full ml-1 flex items-center justify-center", sortField === f ? "opacity-100" : "opacity-0")}>
                                 {sortField === f ? (sortOrder === "asc" ? "↑" : "↓") : "↑"}
                               </span>
