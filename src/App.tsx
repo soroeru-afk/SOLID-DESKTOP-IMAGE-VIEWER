@@ -315,10 +315,11 @@ export default function App() {
       setCanvasBg(savedCanvasBg ? (savedCanvasBg as any) : "white");
       
       const savedSortField = localStorage.getItem(`app_sortField_${newId}`);
-      setSortField(savedSortField ? (savedSortField as any) : "name");
+      const parsedSortField = savedSortField ? (savedSortField as any) : "name";
+      setSortField(parsedSortField);
       
-      const savedSortOrder = localStorage.getItem(`app_sortOrder_${newId}`);
-      setSortOrder(savedSortOrder ? (savedSortOrder as any) : "asc");
+      const savedSortOrder = localStorage.getItem(`app_sortOrder_${newId}_${parsedSortField}`);
+      setSortOrder(savedSortOrder ? (savedSortOrder as any) : (parsedSortField === "date" || parsedSortField === "custom" ? "desc" : "asc"));
       
       const savedRandomSeed = localStorage.getItem(`app_randomSeed_${newId}`);
       setRandomSeed(savedRandomSeed ? parseInt(savedRandomSeed, 10) : 0);
@@ -349,9 +350,9 @@ export default function App() {
 
   useEffect(() => {
     if (activeDatasetId) {
-      localStorage.setItem(`app_sortOrder_${activeDatasetId}`, sortOrder);
+      localStorage.setItem(`app_sortOrder_${activeDatasetId}_${sortField}`, sortOrder);
     }
-  }, [sortOrder, activeDatasetId]);
+  }, [sortOrder, sortField, activeDatasetId]);
 
   useEffect(() => {
     if (activeDatasetId) {
@@ -1668,7 +1669,8 @@ export default function App() {
                               );
                             } else {
                               setSortField(f);
-                              setSortOrder(f === "date" || f === "custom" ? "desc" : "asc");
+                              const savedSortOrder = localStorage.getItem(`app_sortOrder_${activeDatasetId}_${f}`);
+                              setSortOrder(savedSortOrder ? (savedSortOrder as any) : (f === "date" || f === "custom" ? "desc" : "asc"));
                             }
                           }}
                           className={cn(
