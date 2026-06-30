@@ -1,3 +1,8 @@
 @echo off
 cd /d "%~dp0"
-npm run preview
+if not exist node_modules (
+    echo Installing dependencies...
+    call npm install
+)
+call npm run preview
+pause

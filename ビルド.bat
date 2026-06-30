@@ -1,3 +1,8 @@
 @echo off
 cd /d "%~dp0"
-npm run build
+if not exist node_modules (
+    echo Installing dependencies...
+    call npm install
+)
+call npm run build
+pause

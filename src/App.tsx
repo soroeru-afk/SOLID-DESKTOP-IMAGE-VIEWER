@@ -147,9 +147,8 @@ export default function App() {
   const [datasetCounts, setDatasetCounts] = useState<Record<string, number>>(
     {},
   );
-  const [activeDatasetId, setActiveDatasetId] = useState<string | null>(() => {
-    return localStorage.getItem("app_activeDatasetId") || null;
-  });
+  const initialDatasetId = localStorage.getItem("app_activeDatasetId") || null;
+  const [activeDatasetId, setActiveDatasetId] = useState<string | null>(initialDatasetId);
 
   useEffect(() => {
     if (activeDatasetId) {
@@ -171,54 +170,16 @@ export default function App() {
     const saved = localStorage.getItem("app_openAction");
     return (saved as "click" | "dblclick") || "dblclick";
   });
-  const [scales, setScales] = useState<Record<ViewMode, number>>({
-    "grid-sq": 140,
-    "grid-ma": 140,
-    list: 140,
-    free: 140,
+  const [scales, setScales] = useState<Record<ViewMode, number>>(() => {
+    const saved = localStorage.getItem(`app_scales_${initialDatasetId}`);
+    if (saved) { try { return JSON.parse(saved); } catch (e) {} }
+    return { "grid-sq": 140, "grid-ma": 140, list: 140, free: 140 };
   });
-  const [gaps, setGaps] = useState<Record<ViewMode, number>>({
-    "grid-sq": 24,
-    "grid-ma": 24,
-    list: 0,
-    free: 0,
+  const [gaps, setGaps] = useState<Record<ViewMode, number>>(() => {
+    const saved = localStorage.getItem(`app_gaps_${initialDatasetId}`);
+    if (saved) { try { return JSON.parse(saved); } catch (e) {} }
+    return { "grid-sq": 24, "grid-ma": 24, list: 0, free: 0 };
   });
-
-  useEffect(() => {
-    if (activeDatasetId) {
-      const savedScales = localStorage.getItem(`app_scales_${activeDatasetId}`);
-      if (savedScales) {
-        try {
-          setScales(JSON.parse(savedScales));
-        } catch (e) {
-          console.error("Failed to parse saved scales:", e);
-        }
-      } else {
-        setScales({
-          "grid-sq": 140,
-          "grid-ma": 140,
-          list: 140,
-          free: 140,
-        });
-      }
-
-      const savedGaps = localStorage.getItem(`app_gaps_${activeDatasetId}`);
-      if (savedGaps) {
-        try {
-          setGaps(JSON.parse(savedGaps));
-        } catch (e) {
-          console.error("Failed to parse saved gaps:", e);
-        }
-      } else {
-        setGaps({
-          "grid-sq": 24,
-          "grid-ma": 24,
-          list: 0,
-          free: 0,
-        });
-      }
-    }
-  }, [activeDatasetId]);
 
   useEffect(() => {
     localStorage.setItem("app_viewMode", viewMode);
@@ -327,34 +288,76 @@ export default function App() {
   const [fileNameInput, setFileNameInput] = useState("");
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
   const [showClearAllModal, setShowClearAllModal] = useState(false);
-  const [sortField, setSortField] = useState<"name" | "size" | "type" | "date" | "custom" | "random">(
-    "name",
-  );
-  const [randomSeed, setRandomSeed] = useState(0);
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [sortField, setSortField] = useState<"name" | "size" | "type" | "date" | "custom" | "random">(() => {
+    const saved = localStorage.getItem(`app_sortField_${localStorage.getItem("app_activeDatasetId")}`);
+    return (saved as any) || "name";
+  });
+  const [randomSeed, setRandomSeed] = useState(() => {
+    const saved = localStorage.getItem(`app_randomSeed_${localStorage.getItem("app_activeDatasetId")}`);
+    return saved ? parseInt(saved, 10) : 0;
+  });
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">(() => {
+    const saved = localStorage.getItem(`app_sortOrder_${localStorage.getItem("app_activeDatasetId")}`);
+    return (saved as any) || "asc";
+  });
   const [theme, setTheme] = useState<"NAVY" | "BLACK" | "LIGHT" | "PAPER">(
     "BLACK",
   );
-  const [canvasBg, setCanvasBg] = useState<
-    "theme" | "black" | "white" | "checker"
-  >("white");
+  const [canvasBg, setCanvasBg] = useState<"theme" | "black" | "white" | "checker">(() => {
+    const saved = localStorage.getItem(`app_canvasBg_${localStorage.getItem("app_activeDatasetId")}`);
+    return (saved as any) || "white";
+  });
 
-  useEffect(() => {
-    if (activeDatasetId) {
-      const savedCanvasBg = localStorage.getItem(`app_canvasBg_${activeDatasetId}`);
-      if (savedCanvasBg) {
-        setCanvasBg(savedCanvasBg as "theme" | "black" | "white" | "checker");
-      } else {
-        setCanvasBg("white");
+  const switchDataset = (newId: string | null) => {
+    setActiveDatasetId(newId);
+    if (newId) {
+      const savedCanvasBg = localStorage.getItem(`app_canvasBg_${newId}`);
+      setCanvasBg(savedCanvasBg ? (savedCanvasBg as any) : "white");
+      
+      const savedSortField = localStorage.getItem(`app_sortField_${newId}`);
+      setSortField(savedSortField ? (savedSortField as any) : "name");
+      
+      const savedSortOrder = localStorage.getItem(`app_sortOrder_${newId}`);
+      setSortOrder(savedSortOrder ? (savedSortOrder as any) : "asc");
+      
+      const savedRandomSeed = localStorage.getItem(`app_randomSeed_${newId}`);
+      setRandomSeed(savedRandomSeed ? parseInt(savedRandomSeed, 10) : 0);
+      
+      const savedScales = localStorage.getItem(`app_scales_${newId}`);
+      if (savedScales) {
+        try { setScales(JSON.parse(savedScales)); } catch (e) {}
+      }
+      
+      const savedGaps = localStorage.getItem(`app_gaps_${newId}`);
+      if (savedGaps) {
+        try { setGaps(JSON.parse(savedGaps)); } catch (e) {}
       }
     }
-  }, [activeDatasetId]);
+  };
 
   useEffect(() => {
     if (activeDatasetId) {
       localStorage.setItem(`app_canvasBg_${activeDatasetId}`, canvasBg);
     }
   }, [canvasBg, activeDatasetId]);
+
+  useEffect(() => {
+    if (activeDatasetId) {
+      localStorage.setItem(`app_sortField_${activeDatasetId}`, sortField);
+    }
+  }, [sortField, activeDatasetId]);
+
+  useEffect(() => {
+    if (activeDatasetId) {
+      localStorage.setItem(`app_sortOrder_${activeDatasetId}`, sortOrder);
+    }
+  }, [sortOrder, activeDatasetId]);
+
+  useEffect(() => {
+    if (activeDatasetId) {
+      localStorage.setItem(`app_randomSeed_${activeDatasetId}`, randomSeed.toString());
+    }
+  }, [randomSeed, activeDatasetId]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const fullscreenContainerRef = React.useRef<HTMLDivElement>(null);
 
@@ -467,13 +470,13 @@ export default function App() {
       setTotalImagesCount(total);
 
       if (dsList.length > 0 && !activeDatasetId) {
-        setActiveDatasetId(dsList[0].id);
+        switchDataset(dsList[0].id);
       } else if (
         activeDatasetId &&
         activeDatasetId !== "all" &&
         !dsList.find((d) => d.id === activeDatasetId)
       ) {
-        setActiveDatasetId(dsList.length > 0 ? dsList[0].id : null);
+        switchDataset(dsList.length > 0 ? dsList[0].id : null);
       }
     } catch (e) {
       console.error(e);
@@ -626,7 +629,7 @@ export default function App() {
       );
     } else {
       const ds = await createDataset(datasetNameInput.trim().toUpperCase());
-      setActiveDatasetId(ds.id);
+      switchDataset(ds.id);
     }
     setShowNewDatasetModal(false);
     await loadDatasets();
@@ -1345,7 +1348,7 @@ export default function App() {
               {datasetViewMode === "list" ? (
                 <>
                   <div
-                    onClick={() => setActiveDatasetId("all")}
+                    onClick={() => switchDataset("all")}
                     className={cn(
                       "flex items-center justify-between px-3 py-2 text-xs font-mono cursor-pointer border transition-colors group min-h-[32px] overflow-hidden shrink-0",
                       activeDatasetId === "all"
@@ -1365,7 +1368,7 @@ export default function App() {
                       <Reorder.Item
                         key={ds.id}
                         value={ds}
-                        onClick={() => setActiveDatasetId(ds.id)}
+                        onClick={() => switchDataset(ds.id)}
                         className={cn(
                           "flex items-center px-3 py-2 text-xs font-mono cursor-grab active:cursor-grabbing border transition-colors group min-h-[32px] overflow-hidden shrink-0",
                           activeDatasetId === ds.id
@@ -1409,7 +1412,7 @@ export default function App() {
                   <select
                     className="w-full bg-root-bg border border-panel-border text-text-primary px-3 py-2 outline-none text-xs font-mono"
                     value={activeDatasetId || ""}
-                    onChange={(e) => setActiveDatasetId(e.target.value)}
+                    onChange={(e) => switchDataset(e.target.value)}
                   >
                     <option value="all" className="bg-white text-black">{t("ALL IMAGES", "すべての画像")}</option>
                     {datasets.map((ds) => (
