@@ -251,7 +251,7 @@ export default function App() {
             size: "desc",
             type: "asc",
             date: "desc",
-            custom: "asc",
+            custom: "desc",
             ...JSON.parse(savedSortOrders)
           });
         } catch(e) {
@@ -263,7 +263,7 @@ export default function App() {
           size: "desc",
           type: "asc",
           date: "desc",
-          custom: "asc",
+          custom: "desc",
         });
       }
 
@@ -529,7 +529,7 @@ export default function App() {
           comparison = a.lastModified - b.lastModified;
           break;
         case "custom":
-          comparison = (a.orderIndex ?? 0) - (b.orderIndex ?? 0);
+          comparison = (b.orderIndex ?? 0) - (a.orderIndex ?? 0);
           if (comparison === 0) comparison = a.lastModified - b.lastModified;
           break;
       }
@@ -1847,7 +1847,7 @@ export default function App() {
                       setList: () => {},
                       onEnd: handleSortEnd,
                       animation: 150,
-                      disabled: sortOrders[sortField] !== "asc",
+                      disabled: sortOrders[sortField] !== "desc",
                       delay: 150,
                       delayOnTouchOnly: true,
                     } : {};
