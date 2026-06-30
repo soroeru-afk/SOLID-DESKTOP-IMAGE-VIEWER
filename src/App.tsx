@@ -423,8 +423,8 @@ export default function App() {
           comparison = a.lastModified - b.lastModified;
           break;
         case "custom":
-          comparison = (a.orderIndex ?? 0) - (b.orderIndex ?? 0);
-          if (comparison === 0) comparison = b.lastModified - a.lastModified;
+          comparison = (b.orderIndex ?? 0) - (a.orderIndex ?? 0);
+          if (comparison === 0) comparison = a.lastModified - b.lastModified;
           break;
       }
       return sortOrder === "asc" ? comparison : -comparison;
@@ -1668,7 +1668,7 @@ export default function App() {
                               );
                             } else {
                               setSortField(f);
-                              setSortOrder(f === "date" ? "desc" : "asc");
+                              setSortOrder(f === "date" || f === "custom" ? "desc" : "asc");
                             }
                           }}
                           className={cn(
@@ -1755,7 +1755,7 @@ export default function App() {
                       },
                       onEnd: handleSortEnd,
                       animation: 150,
-                      disabled: sortOrder !== "asc",
+                      disabled: sortOrder !== "desc",
                       delay: 150,
                       delayOnTouchOnly: true,
                     } : {};
