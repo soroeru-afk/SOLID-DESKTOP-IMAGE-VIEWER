@@ -30,6 +30,7 @@ import {
   RotateCw,
   RefreshCw,
   Edit2,
+  Search,
 } from "lucide-react";
 import {
   ImageRecord,
@@ -161,6 +162,7 @@ export default function App() {
     "list",
   );
   const [images, setImages] = useState<LoadedImage[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [totalImagesCount, setTotalImagesCount] = useState<number>(0);
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     const saved = localStorage.getItem("app_viewMode");
@@ -259,7 +261,7 @@ export default function App() {
             size: "desc",
             type: "asc",
             date: "desc",
-            custom: "desc",
+            custom: "asc",
             ...JSON.parse(savedSortOrders)
           });
         } catch(e) {
@@ -271,7 +273,7 @@ export default function App() {
           size: "desc",
           type: "asc",
           date: "desc",
-          custom: "desc",
+          custom: "asc",
         });
       }
 
@@ -512,8 +514,14 @@ export default function App() {
   }, [activeDatasetId]);
 
   const sortedImages = useMemo(() => {
+    let filteredImages = images;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      filteredImages = images.filter(img => img.name.toLowerCase().includes(q));
+    }
+
     if (sortField === "random") {
-      const shuffled = [...images];
+      const shuffled = [...filteredImages];
       for (let i = shuffled.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
@@ -521,7 +529,7 @@ export default function App() {
       return shuffled;
     }
 
-    return [...images].sort((a, b) => {
+    return [...filteredImages].sort((a, b) => {
       let comparison = 0;
       switch (sortField) {
         case "name":
@@ -534,16 +542,16 @@ export default function App() {
           comparison = a.type.localeCompare(b.type);
           break;
         case "date":
-          comparison = a.lastModified - b.lastModified;
+          comparison = (a.addedAt || a.lastModified) - (b.addedAt || b.lastModified);
           break;
         case "custom":
-          comparison = (b.orderIndex ?? 0) - (a.orderIndex ?? 0);
-          if (comparison === 0) comparison = a.lastModified - b.lastModified;
+          comparison = (a.orderIndex ?? 0) - (b.orderIndex ?? 0);
+          if (comparison === 0) comparison = (a.addedAt || a.lastModified) - (b.addedAt || b.lastModified);
           break;
       }
       return sortOrders[sortField] === "asc" ? comparison : -comparison;
     });
-  }, [images, sortField, sortOrders, randomSeed]);
+  }, [images, sortField, sortOrders, randomSeed, searchQuery]);
 
   const masonryColumns = useMemo(() => {
     if (viewMode !== "grid-ma") return [];
@@ -675,6 +683,7 @@ export default function App() {
               type: f.type,
               size: f.size,
               lastModified: f.lastModified,
+              addedAt: Date.now(),
               data: f,
               autoBg,
             };
@@ -1695,7 +1704,31 @@ export default function App() {
           </div>
 
           <Panel
-            title={t("04 DATA BANKS", "04 データバンク")}
+            title={
+              <>
+                <span>{t("04 DATA BANKS", "04 データバンク")}</span>
+                <div className="flex items-center gap-2 border border-panel-border bg-panel-bg px-2 py-1 rounded">
+                  <Search size={12} className="text-text-muted" />
+                  <input
+                    type="text"
+                    placeholder={t("SEARCH ALL...", "すべての画像を検索...")}
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      if (e.target.value && activeDatasetId !== "all") {
+                        setActiveDatasetId("all");
+                      }
+                    }}
+                    className="bg-transparent border-none outline-none text-text-primary w-40 text-[10px] placeholder:text-text-muted focus:ring-0"
+                  />
+                  {searchQuery && (
+                    <button onClick={() => setSearchQuery("")} className="text-text-muted hover:text-text-primary ml-1">
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+              </>
+            }
             contentClassName="p-0 transition-colors duration-300 relative"
             headerRight={
               isSelectionMode ? (
@@ -1855,7 +1888,7 @@ export default function App() {
                       setList: () => {},
                       onEnd: handleSortEnd,
                       animation: 150,
-                      disabled: sortOrders[sortField] !== "desc",
+                      disabled: sortOrders[sortField] !== "asc",
                       delay: 150,
                       delayOnTouchOnly: true,
                     } : {};
