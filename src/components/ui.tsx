@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 
 interface PanelProps extends React.HTMLAttributes<HTMLDivElement> {
-  title?: string;
+  title?: React.ReactNode;
   headerRight?: React.ReactNode;
   contentClassName?: string;
 }
@@ -18,7 +18,7 @@ export const Panel = React.forwardRef<HTMLDivElement, PanelProps>(
       >
         {(title || headerRight) && (
           <div className="flex items-center px-4 py-2 border-b border-panel-border bg-panel-header w-full">
-            {title && <h3 className="font-mono text-xs uppercase text-text-secondary tracking-widest">{title}</h3>}
+            {title && <h3 className="font-mono text-xs uppercase text-text-secondary tracking-widest flex items-center gap-4">{title}</h3>}
             {headerRight && <div className="text-xs text-text-muted ml-auto">{headerRight}</div>}
           </div>
         )}

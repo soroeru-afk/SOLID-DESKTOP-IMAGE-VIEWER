@@ -13,6 +13,7 @@ export interface ImageRecord {
   type: string;
   size: number;
   lastModified: number;
+  addedAt?: number;
   data: Blob;
   orderIndex?: number;
   autoBg?: "black" | "white" | "checkerboard";
