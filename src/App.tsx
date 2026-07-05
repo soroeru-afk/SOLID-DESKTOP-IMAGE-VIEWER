@@ -371,6 +371,51 @@ export default function App() {
     setImgDims({ w: 0, h: 0 });
   }, [selectedImage]);
 
+  // Flip horizontal state for fullscreen image
+  const [fullscreenFlipX, setFullscreenFlipX] = useState(false);
+
+  // Zoom button interval refs and functions
+  const zoomIntervalRef = React.useRef<number | null>(null);
+
+  const stopZooming = () => {
+    if (zoomIntervalRef.current !== null) {
+      clearInterval(zoomIntervalRef.current);
+      zoomIntervalRef.current = null;
+    }
+  };
+
+  const startZoomIn = () => {
+    stopZooming();
+    zoomIntervalRef.current = window.setInterval(() => {
+      setFullscreenScale((s) => {
+        const newScale = Math.min(s * 1.05, 10);
+        imgControls.start({ scale: newScale });
+        return newScale;
+      });
+    }, 30) as any;
+  };
+
+  const startZoomOut = () => {
+    stopZooming();
+    zoomIntervalRef.current = window.setInterval(() => {
+      setFullscreenScale((s) => {
+        const newScale = Math.max(1, s / 1.05);
+        if (newScale === 1) {
+          imgControls.start({ x: 0, y: 0, scale: 1 });
+        } else {
+          imgControls.start({ scale: newScale });
+        }
+        return newScale;
+      });
+    }, 30) as any;
+  };
+
+  // Cleanup zoom interval on unmount
+  useEffect(() => {
+    return () => stopZooming();
+  }, []);
+
+
   // Preserve scale and rotation across image switch, and clamp x/y position to the new image bounds once loaded
   useEffect(() => {
     if (isFullscreen && imgDims.w > 0 && imgDims.h > 0) {
