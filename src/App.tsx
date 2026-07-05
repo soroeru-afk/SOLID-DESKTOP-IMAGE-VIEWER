@@ -2318,25 +2318,26 @@ export default function App() {
                     handleRenameFileClick(e, selectedImage.id, selectedImage.name);
                   }}
                   className={cn(
-                    "font-mono text-[8px] md:text-[9px] font-bold mb-0.5 truncate drop-shadow-md pointer-events-auto cursor-pointer flex items-center gap-1 group/fsname",
-                    isFullscreenDarkText ? "text-black" : "text-white",
+                    "font-mono text-[10px] md:text-[11px] mb-0.5 truncate pointer-events-auto cursor-pointer flex items-center gap-1 group/fsname",
+                    isFullscreenDarkText 
+                      ? "text-black/60 drop-shadow-[0_1px_1px_rgba(255,255,255,0.85)] drop-shadow-[0_-1px_1px_rgba(255,255,255,0.85)] drop-shadow-[1px_0_1px_rgba(255,255,255,0.85)] drop-shadow-[-1px_0_1px_rgba(255,255,255,0.85)]" 
+                      : "text-white/80 drop-shadow-[0_1px_1px_rgba(0,0,0,0.85)] drop-shadow-[0_-1px_1px_rgba(0,0,0,0.85)] drop-shadow-[1px_0_1px_rgba(0,0,0,0.85)] drop-shadow-[-1px_0_1px_rgba(0,0,0,0.85)]",
                   )}
                   title="RENAME FILE"
                 >
                   <span className="truncate">{selectedImage.name}</span>
-                  <Edit2 size={10} className="opacity-0 group-hover/fsname:opacity-100 transition-opacity flex-shrink-0" />
+                  <Edit2 size={12} className="opacity-0 group-hover/fsname:opacity-100 transition-opacity flex-shrink-0" />
                 </h2>
                 <div
                   className={cn(
-                    "font-mono text-[8px] flex gap-3 drop-shadow-md",
-                    isFullscreenDarkText ? "text-black/70" : "text-white/70",
+                    "font-mono text-[9px] flex gap-3 items-center pointer-events-auto",
+                    isFullscreenDarkText 
+                      ? "text-black/60 drop-shadow-[0_1px_1px_rgba(255,255,255,0.85)] drop-shadow-[0_-1px_1px_rgba(255,255,255,0.85)] drop-shadow-[1px_0_1px_rgba(255,255,255,0.85)] drop-shadow-[-1px_0_1px_rgba(255,255,255,0.85)]" 
+                      : "text-white/70 drop-shadow-[0_1px_1px_rgba(0,0,0,0.85)] drop-shadow-[0_-1px_1px_rgba(0,0,0,0.85)] drop-shadow-[1px_0_1px_rgba(0,0,0,0.85)] drop-shadow-[-1px_0_1px_rgba(0,0,0,0.85)]",
                   )}
                 >
                   <span>{formatBytes(selectedImage.size)}</span>
                   <span>{selectedImage.type}</span>
-                  <span className="text-accent">
-                    {Math.round(fullscreenScale * 100)}%
-                  </span>
                 </div>
               </div>
 
@@ -2377,7 +2378,7 @@ export default function App() {
               {/* BG Toggle Button Group */}
               <div
                 className={cn(
-                  "absolute bottom-6 right-16 flex items-center gap-1.5 font-mono text-[9px] border px-2 py-1.5 rounded bg-black/15 backdrop-blur-sm transition-colors pointer-events-auto",
+                  "absolute bottom-6 right-6 flex items-center gap-1.5 font-mono text-[9px] tracking-wider border px-2 py-1.5 rounded bg-black/15 backdrop-blur-sm transition-colors pointer-events-auto",
                   isFullscreenDarkText
                     ? "border-black/15 text-black"
                     : "border-white/15 text-white",
@@ -2390,9 +2391,9 @@ export default function App() {
                     setCanvasBg("theme");
                   }}
                   className={cn(
-                    "px-1.5 py-0.5 rounded transition-all",
+                    "px-1.5 py-0.5 rounded transition-all font-normal",
                     canvasBg === "theme"
-                      ? (isFullscreenDarkText ? "bg-black text-white font-bold" : "bg-white text-black font-bold")
+                      ? (isFullscreenDarkText ? "bg-black text-white" : "bg-white text-black")
                       : "opacity-60 hover:opacity-100"
                   )}
                 >
@@ -2404,9 +2405,9 @@ export default function App() {
                     setCanvasBg("white");
                   }}
                   className={cn(
-                    "px-1.5 py-0.5 rounded transition-all",
+                    "px-1.5 py-0.5 rounded transition-all font-normal",
                     canvasBg === "white"
-                      ? (isFullscreenDarkText ? "bg-black text-white font-bold" : "bg-white text-black font-bold")
+                      ? (isFullscreenDarkText ? "bg-black text-white" : "bg-white text-black")
                       : "opacity-60 hover:opacity-100"
                   )}
                 >
@@ -2418,9 +2419,9 @@ export default function App() {
                     setCanvasBg("black");
                   }}
                   className={cn(
-                    "px-1.5 py-0.5 rounded transition-all",
+                    "px-1.5 py-0.5 rounded transition-all font-normal",
                     canvasBg === "black"
-                      ? (isFullscreenDarkText ? "bg-black text-white font-bold" : "bg-white text-black font-bold")
+                      ? (isFullscreenDarkText ? "bg-black text-white" : "bg-white text-black")
                       : "opacity-60 hover:opacity-100"
                   )}
                 >
@@ -2432,9 +2433,9 @@ export default function App() {
                     setCanvasBg("checker");
                   }}
                   className={cn(
-                    "px-1.5 py-0.5 rounded transition-all",
+                    "px-1.5 py-0.5 rounded transition-all font-normal",
                     canvasBg === "checker"
-                      ? (isFullscreenDarkText ? "bg-black text-white font-bold" : "bg-white text-black font-bold")
+                      ? (isFullscreenDarkText ? "bg-black text-white" : "bg-white text-black")
                       : "opacity-60 hover:opacity-100"
                   )}
                 >
@@ -2442,26 +2443,99 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Rotate Button */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setFullscreenRotation(r => {
-                    const next = r + 90;
-                    imgControls.start({ rotate: next, transition: { duration: 0.2 } });
-                    return next;
-                  });
-                }}
+              {/* Image Controls Panel */}
+              <div
                 className={cn(
-                  "absolute bottom-6 right-6 p-2 transition-colors drop-shadow-md hover:scale-110 outline-none focus:outline-none",
+                  "absolute bottom-[64px] right-6 flex flex-col items-center gap-1 py-1 rounded transition-colors pointer-events-auto border backdrop-blur-sm w-11",
                   isFullscreenDarkText
-                    ? "text-black/50 hover:text-black"
-                    : "text-white/50 hover:text-white",
+                    ? "bg-black/15 border-black/15 text-black"
+                    : "bg-white/10 border-white/15 text-white"
                 )}
-                title="ROTATE IMAGE"
+                onClick={(e) => e.stopPropagation()}
               >
-                <RotateCw size={24} />
-              </button>
+                <div className="font-mono text-[9px] font-light tracking-tight py-0.5 mt-0.5 w-[85%] flex items-center justify-center rounded bg-black/40 text-white/90 shadow-inner pointer-events-none">
+                  {Math.round(fullscreenScale * 100)}%
+                </div>
+                <button
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    startZoomIn();
+                  }}
+                  onPointerUp={stopZooming}
+                  onPointerLeave={stopZooming}
+                  className="p-1 hover:bg-white/20 rounded transition-colors touch-none"
+                  title="Zoom In"
+                >
+                  <ChevronUp size={20} />
+                </button>
+                <div className="h-[150px] w-8 relative flex items-center justify-center">
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.001"
+                    value={Math.log10(fullscreenScale)}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      const newScale = Math.pow(10, val);
+                      setFullscreenScale(newScale);
+                      if (newScale === 1) {
+                        imgControls.start({ x: 0, y: 0, scale: 1 });
+                      } else {
+                        imgControls.start({ scale: newScale });
+                      }
+                    }}
+                    className={cn(
+                      "h-1.5 accent-accent rounded-lg appearance-none cursor-pointer shrink-0",
+                      isFullscreenDarkText ? "bg-black/30" : "bg-white/30"
+                    )}
+                    style={{ width: "150px", transform: "rotate(-90deg)" }}
+                  />
+                </div>
+                <button
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    startZoomOut();
+                  }}
+                  onPointerUp={stopZooming}
+                  onPointerLeave={stopZooming}
+                  className="p-1 hover:bg-white/20 rounded transition-colors touch-none"
+                  title="Zoom Out"
+                >
+                  <ChevronDown size={20} />
+                </button>
+                
+                <div className={cn("w-full h-px my-1", isFullscreenDarkText ? "bg-black/15" : "bg-white/15")}></div>
+                
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setFullscreenFlipX(f => {
+                      const next = !f;
+                      imgControls.start({ rotateY: next ? 180 : 0, transition: { duration: 0.2 } });
+                      return next;
+                    });
+                  }}
+                  className="p-1.5 hover:bg-white/20 rounded transition-colors touch-none"
+                  title="Flip Horizontal"
+                >
+                  <FlipHorizontal size={18} />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setFullscreenRotation(r => {
+                      const next = r + 90;
+                      imgControls.start({ rotate: next, transition: { duration: 0.2 } });
+                      return next;
+                    });
+                  }}
+                  className="p-1.5 hover:bg-white/20 rounded transition-colors touch-none"
+                  title="Rotate 90°"
+                >
+                  <RotateCw size={18} />
+                </button>
+              </div>
 
               {/* Close Button */}
               <button
