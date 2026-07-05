@@ -996,28 +996,28 @@ export default function App() {
         if (fullscreenScale > 1) {
           e.preventDefault();
           const { mX } = getDragBounds();
-          const newX = Math.max(imgX.get() - 13, -mX);
+          const newX = Math.max(imgX.get() - 15, -mX);
           imgControls.start({ x: newX, transition: { duration: 0.05, ease: "linear" } });
         }
       } else if (e.code === "Numpad4" || e.key === "4") {
         if (fullscreenScale > 1) {
           e.preventDefault();
           const { mX } = getDragBounds();
-          const newX = Math.min(imgX.get() + 13, mX);
+          const newX = Math.min(imgX.get() + 15, mX);
           imgControls.start({ x: newX, transition: { duration: 0.05, ease: "linear" } });
         }
       } else if (e.key === "ArrowUp" || e.code === "Numpad8" || e.key === "8") {
         e.preventDefault();
         if (fullscreenScale > 1) {
           const { mY } = getDragBounds();
-          const newY = Math.min(imgY.get() + 13, mY);
+          const newY = Math.min(imgY.get() + 15, mY);
           imgControls.start({ y: newY, transition: { duration: 0.05, ease: "linear" } });
         }
       } else if (e.key === "ArrowDown" || e.code === "Numpad2" || e.key === "2") {
         e.preventDefault();
         if (fullscreenScale > 1) {
           const { mY } = getDragBounds();
-          const newY = Math.max(imgY.get() - 13, -mY);
+          const newY = Math.max(imgY.get() - 15, -mY);
           imgControls.start({ y: newY, transition: { duration: 0.05, ease: "linear" } });
         }
       } else if (e.key === "+" || e.code === "NumpadAdd") {
