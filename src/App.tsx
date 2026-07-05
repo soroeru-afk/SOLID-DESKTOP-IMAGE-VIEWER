@@ -32,6 +32,7 @@ import {
   RefreshCw,
   Edit2,
   Search,
+  FlipHorizontal,
 } from "lucide-react";
 import {
   ImageRecord,
@@ -356,15 +357,15 @@ export default function App() {
   const startZoomIn = () => {
     if (zoomIntervalRef.current || zoomTimeoutRef.current) return;
     setFullscreenScale((s) => {
-      const newScale = Math.min(s + 0.01, 10);
-      imgControls.start({ scale: newScale, transition: { duration: 0 } });
+      const newScale = Math.min(s + 0.03, 10);
+      imgControls.start({ scale: newScale, transition: { duration: 0.05, ease: "linear" } });
       return newScale;
     });
     zoomTimeoutRef.current = setTimeout(() => {
       zoomIntervalRef.current = setInterval(() => {
         setFullscreenScale((s) => {
-          const newScale = Math.min(s + 0.01, 10);
-          imgControls.start({ scale: newScale, transition: { duration: 0 } });
+          const newScale = Math.min(s + 0.03, 10);
+          imgControls.start({ scale: newScale, transition: { duration: 0.05, ease: "linear" } });
           return newScale;
         });
       }, 20);
@@ -374,17 +375,17 @@ export default function App() {
   const startZoomOut = () => {
     if (zoomIntervalRef.current || zoomTimeoutRef.current) return;
     setFullscreenScale((s) => {
-      const newScale = Math.max(1, s - 0.01);
-      if (newScale === 1) imgControls.start({ x: 0, y: 0, scale: 1, transition: { duration: 0 } });
-      else imgControls.start({ scale: newScale, transition: { duration: 0 } });
+      const newScale = Math.max(1, s - 0.03);
+      if (newScale === 1) imgControls.start({ x: 0, y: 0, scale: 1, transition: { duration: 0.05, ease: "linear" } });
+      else imgControls.start({ scale: newScale, transition: { duration: 0.05, ease: "linear" } });
       return newScale;
     });
     zoomTimeoutRef.current = setTimeout(() => {
       zoomIntervalRef.current = setInterval(() => {
         setFullscreenScale((s) => {
-          const newScale = Math.max(1, s - 0.01);
-          if (newScale === 1) imgControls.start({ x: 0, y: 0, scale: 1, transition: { duration: 0 } });
-          else imgControls.start({ scale: newScale, transition: { duration: 0 } });
+          const newScale = Math.max(1, s - 0.03);
+          if (newScale === 1) imgControls.start({ x: 0, y: 0, scale: 1, transition: { duration: 0.05, ease: "linear" } });
+          else imgControls.start({ scale: newScale, transition: { duration: 0.05, ease: "linear" } });
           return newScale;
         });
       }, 20);
@@ -995,45 +996,45 @@ export default function App() {
         if (fullscreenScale > 1) {
           e.preventDefault();
           const { mX } = getDragBounds();
-          const newX = Math.max(imgX.get() - 3, -mX);
-          imgControls.start({ x: newX, transition: { duration: 0 } });
+          const newX = Math.max(imgX.get() - 13, -mX);
+          imgControls.start({ x: newX, transition: { duration: 0.05, ease: "linear" } });
         }
       } else if (e.code === "Numpad4" || e.key === "4") {
         if (fullscreenScale > 1) {
           e.preventDefault();
           const { mX } = getDragBounds();
-          const newX = Math.min(imgX.get() + 3, mX);
-          imgControls.start({ x: newX, transition: { duration: 0 } });
+          const newX = Math.min(imgX.get() + 13, mX);
+          imgControls.start({ x: newX, transition: { duration: 0.05, ease: "linear" } });
         }
       } else if (e.key === "ArrowUp" || e.code === "Numpad8" || e.key === "8") {
         e.preventDefault();
         if (fullscreenScale > 1) {
           const { mY } = getDragBounds();
-          const newY = Math.min(imgY.get() + 3, mY);
-          imgControls.start({ y: newY, transition: { duration: 0 } });
+          const newY = Math.min(imgY.get() + 13, mY);
+          imgControls.start({ y: newY, transition: { duration: 0.05, ease: "linear" } });
         }
       } else if (e.key === "ArrowDown" || e.code === "Numpad2" || e.key === "2") {
         e.preventDefault();
         if (fullscreenScale > 1) {
           const { mY } = getDragBounds();
-          const newY = Math.max(imgY.get() - 3, -mY);
-          imgControls.start({ y: newY, transition: { duration: 0 } });
+          const newY = Math.max(imgY.get() - 13, -mY);
+          imgControls.start({ y: newY, transition: { duration: 0.05, ease: "linear" } });
         }
       } else if (e.key === "+" || e.code === "NumpadAdd") {
         e.preventDefault();
         setFullscreenScale((s) => {
-          const newScale = Math.min(s + 0.01, 10);
-          imgControls.start({ scale: newScale, transition: { duration: 0 } });
+          const newScale = Math.min(s + 0.03, 10);
+          imgControls.start({ scale: newScale, transition: { duration: 0.05, ease: "linear" } });
           return newScale;
         });
       } else if (e.key === "-" || e.code === "NumpadSubtract") {
         e.preventDefault();
         setFullscreenScale((s) => {
-          const newScale = Math.max(1, s - 0.01);
+          const newScale = Math.max(1, s - 0.03);
           if (newScale === 1) {
-            imgControls.start({ x: 0, y: 0, scale: 1, transition: { duration: 0 } });
+            imgControls.start({ x: 0, y: 0, scale: 1, transition: { duration: 0.05, ease: "linear" } });
           } else {
-            imgControls.start({ scale: newScale, transition: { duration: 0 } });
+            imgControls.start({ scale: newScale, transition: { duration: 0.05, ease: "linear" } });
           }
           return newScale;
         });
@@ -2569,7 +2570,7 @@ export default function App() {
                   className="p-1.5 hover:bg-white/20 rounded transition-colors touch-none"
                   title="Flip Horizontal"
                 >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-flip-horizontal"><path d="M8 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3"/><path d="M16 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3"/><path d="M12 2v20"/></svg>
+                  <FlipHorizontal size={18} />
                 </button>
                 <button
                   onClick={(e) => {
