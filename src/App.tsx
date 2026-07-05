@@ -368,7 +368,7 @@ export default function App() {
           imgControls.start({ scale: newScale, transition: { duration: 0.05, ease: "linear" } });
           return newScale;
         });
-      }, 20);
+      }, 50);
     }, 300);
   };
 
@@ -388,7 +388,7 @@ export default function App() {
           else imgControls.start({ scale: newScale, transition: { duration: 0.05, ease: "linear" } });
           return newScale;
         });
-      }, 20);
+      }, 50);
     }, 300);
   };
 
