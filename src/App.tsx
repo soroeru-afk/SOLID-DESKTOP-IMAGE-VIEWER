@@ -357,14 +357,14 @@ export default function App() {
   const startZoomIn = () => {
     if (zoomIntervalRef.current || zoomTimeoutRef.current) return;
     setFullscreenScale((s) => {
-      const newScale = Math.min(s + 0.01, 10);
+      const newScale = Math.min(s + 0.02, 10);
       imgControls.start({ scale: newScale, transition: { duration: 0.05, ease: "linear" } });
       return newScale;
     });
     zoomTimeoutRef.current = setTimeout(() => {
       zoomIntervalRef.current = setInterval(() => {
         setFullscreenScale((s) => {
-          const newScale = Math.min(s + 0.01, 10);
+          const newScale = Math.min(s + 0.02, 10);
           imgControls.start({ scale: newScale, transition: { duration: 0.05, ease: "linear" } });
           return newScale;
         });
@@ -375,7 +375,7 @@ export default function App() {
   const startZoomOut = () => {
     if (zoomIntervalRef.current || zoomTimeoutRef.current) return;
     setFullscreenScale((s) => {
-      const newScale = Math.max(1, s - 0.01);
+      const newScale = Math.max(1, s - 0.02);
       if (newScale === 1) imgControls.start({ x: 0, y: 0, scale: 1, transition: { duration: 0.05, ease: "linear" } });
       else imgControls.start({ scale: newScale, transition: { duration: 0.05, ease: "linear" } });
       return newScale;
@@ -383,7 +383,7 @@ export default function App() {
     zoomTimeoutRef.current = setTimeout(() => {
       zoomIntervalRef.current = setInterval(() => {
         setFullscreenScale((s) => {
-          const newScale = Math.max(1, s - 0.01);
+          const newScale = Math.max(1, s - 0.02);
           if (newScale === 1) imgControls.start({ x: 0, y: 0, scale: 1, transition: { duration: 0.05, ease: "linear" } });
           else imgControls.start({ scale: newScale, transition: { duration: 0.05, ease: "linear" } });
           return newScale;
@@ -1023,14 +1023,14 @@ export default function App() {
       } else if (e.key === "+" || e.code === "NumpadAdd") {
         e.preventDefault();
         setFullscreenScale((s) => {
-          const newScale = Math.min(s + 0.01, 10);
+          const newScale = Math.min(s + 0.02, 10);
           imgControls.start({ scale: newScale, transition: { duration: 0.05, ease: "linear" } });
           return newScale;
         });
       } else if (e.key === "-" || e.code === "NumpadSubtract") {
         e.preventDefault();
         setFullscreenScale((s) => {
-          const newScale = Math.max(1, s - 0.01);
+          const newScale = Math.max(1, s - 0.02);
           if (newScale === 1) {
             imgControls.start({ x: 0, y: 0, scale: 1, transition: { duration: 0.05, ease: "linear" } });
           } else {
