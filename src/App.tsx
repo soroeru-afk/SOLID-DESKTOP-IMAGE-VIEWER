@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   motion,
   AnimatePresence,
@@ -210,11 +210,7 @@ export default function App() {
     if (activeDatasetId) {
       const savedScales = localStorage.getItem(`app_scales_${activeDatasetId}`);
       if (savedScales) {
-        try {
-          setScales(JSON.parse(savedScales));
-        } catch (e) {
-          console.error("Failed to parse saved scales:", e);
-        }
+        setScales(JSON.parse(savedScales));
       } else {
         setScales({
           "grid-sq": 140,
@@ -226,11 +222,7 @@ export default function App() {
 
       const savedGaps = localStorage.getItem(`app_gaps_${activeDatasetId}`);
       if (savedGaps) {
-        try {
-          setGaps(JSON.parse(savedGaps));
-        } catch (e) {
-          console.error("Failed to parse saved gaps:", e);
-        }
+        setGaps(JSON.parse(savedGaps));
       } else {
         setGaps({
           "grid-sq": 24,
@@ -352,17 +344,71 @@ export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenScale, setFullscreenScale] = useState(1);
   const [fullscreenRotation, setFullscreenRotation] = useState(0);
+  const [fullscreenFlipX, setFullscreenFlipX] = useState(false);
   const imgControls = useAnimation();
   const imgX = useMotionValue(0);
   const imgY = useMotionValue(0);
   const [imgDims, setImgDims] = useState({ w: 0, h: 0 });
 
+  const zoomIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const zoomTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const startZoomIn = () => {
+    if (zoomIntervalRef.current || zoomTimeoutRef.current) return;
+    setFullscreenScale((s) => {
+      const newScale = Math.min(s + 0.01, 10);
+      imgControls.start({ scale: newScale, transition: { duration: 0 } });
+      return newScale;
+    });
+    zoomTimeoutRef.current = setTimeout(() => {
+      zoomIntervalRef.current = setInterval(() => {
+        setFullscreenScale((s) => {
+          const newScale = Math.min(s + 0.01, 10);
+          imgControls.start({ scale: newScale, transition: { duration: 0 } });
+          return newScale;
+        });
+      }, 20);
+    }, 300);
+  };
+
+  const startZoomOut = () => {
+    if (zoomIntervalRef.current || zoomTimeoutRef.current) return;
+    setFullscreenScale((s) => {
+      const newScale = Math.max(1, s - 0.01);
+      if (newScale === 1) imgControls.start({ x: 0, y: 0, scale: 1, transition: { duration: 0 } });
+      else imgControls.start({ scale: newScale, transition: { duration: 0 } });
+      return newScale;
+    });
+    zoomTimeoutRef.current = setTimeout(() => {
+      zoomIntervalRef.current = setInterval(() => {
+        setFullscreenScale((s) => {
+          const newScale = Math.max(1, s - 0.01);
+          if (newScale === 1) imgControls.start({ x: 0, y: 0, scale: 1, transition: { duration: 0 } });
+          else imgControls.start({ scale: newScale, transition: { duration: 0 } });
+          return newScale;
+        });
+      }, 20);
+    }, 300);
+  };
+
+  const stopZooming = () => {
+    if (zoomTimeoutRef.current) {
+      clearTimeout(zoomTimeoutRef.current);
+      zoomTimeoutRef.current = null;
+    }
+    if (zoomIntervalRef.current) {
+      clearInterval(zoomIntervalRef.current);
+      zoomIntervalRef.current = null;
+    }
+  };
+
   useEffect(() => {
     setFullscreenScale(1);
     setFullscreenRotation(0);
+    setFullscreenFlipX(false);
     imgX.set(0);
     imgY.set(0);
-    imgControls.start({ x: 0, y: 0, scale: 1, rotate: 0 });
+    imgControls.start({ x: 0, y: 0, scale: 1, rotate: 0, rotateY: 0 });
     setImgDims({ w: 0, h: 0 });
   }, [isFullscreen, imgControls, imgX, imgY]);
 
@@ -370,51 +416,6 @@ export default function App() {
   useEffect(() => {
     setImgDims({ w: 0, h: 0 });
   }, [selectedImage]);
-
-  // Flip horizontal state for fullscreen image
-  const [fullscreenFlipX, setFullscreenFlipX] = useState(false);
-
-  // Zoom button interval refs and functions
-  const zoomIntervalRef = React.useRef<number | null>(null);
-
-  const stopZooming = () => {
-    if (zoomIntervalRef.current !== null) {
-      clearInterval(zoomIntervalRef.current);
-      zoomIntervalRef.current = null;
-    }
-  };
-
-  const startZoomIn = () => {
-    stopZooming();
-    zoomIntervalRef.current = window.setInterval(() => {
-      setFullscreenScale((s) => {
-        const newScale = Math.min(s * 1.05, 10);
-        imgControls.start({ scale: newScale });
-        return newScale;
-      });
-    }, 30) as any;
-  };
-
-  const startZoomOut = () => {
-    stopZooming();
-    zoomIntervalRef.current = window.setInterval(() => {
-      setFullscreenScale((s) => {
-        const newScale = Math.max(1, s / 1.05);
-        if (newScale === 1) {
-          imgControls.start({ x: 0, y: 0, scale: 1 });
-        } else {
-          imgControls.start({ scale: newScale });
-        }
-        return newScale;
-      });
-    }, 30) as any;
-  };
-
-  // Cleanup zoom interval on unmount
-  useEffect(() => {
-    return () => stopZooming();
-  }, []);
-
 
   // Preserve scale and rotation across image switch, and clamp x/y position to the new image bounds once loaded
   useEffect(() => {
@@ -987,53 +988,59 @@ export default function App() {
       };
 
       if (e.key === "ArrowRight") {
-        if (e.ctrlKey || e.metaKey) {
-          e.preventDefault();
-          const { mX } = getDragBounds();
-          const newX = Math.max(imgX.get() - 100, -mX);
-          imgControls.start({ x: newX });
-        } else {
-          goToNextImage();
-        }
+        goToNextImage();
       } else if (e.key === "ArrowLeft") {
-        if (e.ctrlKey || e.metaKey) {
+        goToPrevImage();
+      } else if (e.code === "Numpad6" || e.key === "6") {
+        if (fullscreenScale > 1) {
           e.preventDefault();
           const { mX } = getDragBounds();
-          const newX = Math.min(imgX.get() + 100, mX);
-          imgControls.start({ x: newX });
-        } else {
-          goToPrevImage();
+          const newX = Math.max(imgX.get() - 2, -mX);
+          imgControls.start({ x: newX, transition: { duration: 0 } });
         }
-      } else if (e.key === "ArrowUp") {
+      } else if (e.code === "Numpad4" || e.key === "4") {
+        if (fullscreenScale > 1) {
+          e.preventDefault();
+          const { mX } = getDragBounds();
+          const newX = Math.min(imgX.get() + 2, mX);
+          imgControls.start({ x: newX, transition: { duration: 0 } });
+        }
+      } else if (e.key === "ArrowUp" || e.code === "Numpad8" || e.key === "8") {
         e.preventDefault();
-        if (e.ctrlKey || e.metaKey) {
+        if (fullscreenScale > 1) {
           const { mY } = getDragBounds();
-          const newY = Math.min(imgY.get() + 100, mY);
-          imgControls.start({ y: newY, transition: { duration: 0.1 } });
-        } else {
-          setFullscreenScale((s) => {
-            const newScale = Math.min(s + 0.5, 10);
-            imgControls.start({ scale: newScale });
-            return newScale;
-          });
+          const newY = Math.min(imgY.get() + 2, mY);
+          imgControls.start({ y: newY, transition: { duration: 0 } });
         }
-      } else if (e.key === "ArrowDown") {
+      } else if (e.key === "ArrowDown" || e.code === "Numpad2" || e.key === "2") {
         e.preventDefault();
-        if (e.ctrlKey || e.metaKey) {
+        if (fullscreenScale > 1) {
           const { mY } = getDragBounds();
-          const newY = Math.max(imgY.get() - 100, -mY);
-          imgControls.start({ y: newY, transition: { duration: 0.1 } });
-        } else {
-          setFullscreenScale((s) => {
-            const newScale = Math.max(1, s - 0.5);
-            if (newScale === 1) {
-              imgControls.start({ x: 0, y: 0, scale: 1 });
-            } else {
-              imgControls.start({ scale: newScale });
-            }
-            return newScale;
-          });
+          const newY = Math.max(imgY.get() - 2, -mY);
+          imgControls.start({ y: newY, transition: { duration: 0 } });
         }
+      } else if (e.key === "+" || e.code === "NumpadAdd") {
+        e.preventDefault();
+        setFullscreenScale((s) => {
+          const newScale = Math.min(s + 0.01, 10);
+          imgControls.start({ scale: newScale, transition: { duration: 0 } });
+          return newScale;
+        });
+      } else if (e.key === "-" || e.code === "NumpadSubtract") {
+        e.preventDefault();
+        setFullscreenScale((s) => {
+          const newScale = Math.max(1, s - 0.01);
+          if (newScale === 1) {
+            imgControls.start({ x: 0, y: 0, scale: 1, transition: { duration: 0 } });
+          } else {
+            imgControls.start({ scale: newScale, transition: { duration: 0 } });
+          }
+          return newScale;
+        });
+      } else if (e.key === "0" || e.code === "Numpad0") {
+        e.preventDefault();
+        setFullscreenScale(1);
+        imgControls.start({ x: 0, y: 0, scale: 1, transition: { duration: 0 } });
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -1620,7 +1627,7 @@ export default function App() {
                             if (ds) handleRenameDatasetClick(e, ds.id, ds.name);
                           }}
                           title="RENAME DATASET"
-                          className="hover:text-amber-500 font-mono text-xs font-bold"
+                          className="hover:text-amber-500 font-mono text-xs "
                         >
                           [E]
                         </button>
@@ -2282,7 +2289,7 @@ export default function App() {
                     const MathMin = Math.min;
                     const newScale = MathMax(
                       1,
-                      MathMin(s - e.deltaY * 0.005, 10),
+                      MathMin(s - e.deltaY * 0.001, 10),
                     ); // 1未満には縮小しないようにし、迷子を完全に防ぐ
                     const scaleRatio = newScale / s;
 
@@ -2325,7 +2332,7 @@ export default function App() {
                   key={selectedImage.id}
                   src={selectedImage.url}
                   style={{ x: imgX, y: imgY }}
-                  initial={{ scale: fullscreenScale, rotate: fullscreenRotation }}
+                  initial={{ scale: fullscreenScale, rotate: fullscreenRotation, rotateY: fullscreenFlipX ? 180 : 0 }}
                   className={cn(
                     "max-w-full max-h-full object-contain block",
                     fullscreenScale > 1.0 ? "cursor-move" : "cursor-default",
@@ -2351,7 +2358,8 @@ export default function App() {
                     e.stopPropagation();
                     setFullscreenScale(1);
                     setFullscreenRotation(0);
-                    imgControls.start({ x: 0, y: 0, scale: 1, rotate: 0 });
+                    setFullscreenFlipX(false);
+                    imgControls.start({ x: 0, y: 0, scale: 1, rotate: 0, rotateY: 0 });
                   }}
                   title="Drag to Move / Scroll to Zoom / Double-click to Reset"
                 />
@@ -2364,10 +2372,8 @@ export default function App() {
                     handleRenameFileClick(e, selectedImage.id, selectedImage.name);
                   }}
                   className={cn(
-                    "font-mono text-[10px] md:text-[11px] mb-0.5 truncate pointer-events-auto cursor-pointer flex items-center gap-1 group/fsname",
-                    isFullscreenDarkText 
-                      ? "text-black/60 drop-shadow-[0_1px_1px_rgba(255,255,255,0.85)] drop-shadow-[0_-1px_1px_rgba(255,255,255,0.85)] drop-shadow-[1px_0_1px_rgba(255,255,255,0.85)] drop-shadow-[-1px_0_1px_rgba(255,255,255,0.85)]" 
-                      : "text-white/80 drop-shadow-[0_1px_1px_rgba(0,0,0,0.85)] drop-shadow-[0_-1px_1px_rgba(0,0,0,0.85)] drop-shadow-[1px_0_1px_rgba(0,0,0,0.85)] drop-shadow-[-1px_0_1px_rgba(0,0,0,0.85)]",
+                    "font-mono text-[10px] md:text-[11px] font-bold mb-0.5 truncate pointer-events-auto cursor-pointer flex items-center gap-1 group/fsname",
+                    isFullscreenDarkText ? "text-black/60 drop-shadow-[0_1px_1px_rgba(255,255,255,0.8)]" : "text-white/80 drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]",
                   )}
                   title="RENAME FILE"
                 >
@@ -2377,9 +2383,7 @@ export default function App() {
                 <div
                   className={cn(
                     "font-mono text-[9px] flex gap-3 items-center pointer-events-auto",
-                    isFullscreenDarkText 
-                      ? "text-black/60 drop-shadow-[0_1px_1px_rgba(255,255,255,0.85)] drop-shadow-[0_-1px_1px_rgba(255,255,255,0.85)] drop-shadow-[1px_0_1px_rgba(255,255,255,0.85)] drop-shadow-[-1px_0_1px_rgba(255,255,255,0.85)]" 
-                      : "text-white/70 drop-shadow-[0_1px_1px_rgba(0,0,0,0.85)] drop-shadow-[0_-1px_1px_rgba(0,0,0,0.85)] drop-shadow-[1px_0_1px_rgba(0,0,0,0.85)] drop-shadow-[-1px_0_1px_rgba(0,0,0,0.85)]",
+                    isFullscreenDarkText ? "text-black/60 drop-shadow-[0_1px_1px_rgba(255,255,255,0.8)]" : "text-white/70 drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]",
                   )}
                 >
                   <span>{formatBytes(selectedImage.size)}</span>
@@ -2437,9 +2441,9 @@ export default function App() {
                     setCanvasBg("theme");
                   }}
                   className={cn(
-                    "px-1.5 py-0.5 rounded transition-all font-normal",
+                    "px-1.5 py-0.5 rounded transition-all",
                     canvasBg === "theme"
-                      ? (isFullscreenDarkText ? "bg-black text-white" : "bg-white text-black")
+                      ? (isFullscreenDarkText ? "bg-black text-white " : "bg-white text-black ")
                       : "opacity-60 hover:opacity-100"
                   )}
                 >
@@ -2451,9 +2455,9 @@ export default function App() {
                     setCanvasBg("white");
                   }}
                   className={cn(
-                    "px-1.5 py-0.5 rounded transition-all font-normal",
+                    "px-1.5 py-0.5 rounded transition-all",
                     canvasBg === "white"
-                      ? (isFullscreenDarkText ? "bg-black text-white" : "bg-white text-black")
+                      ? (isFullscreenDarkText ? "bg-black text-white " : "bg-white text-black ")
                       : "opacity-60 hover:opacity-100"
                   )}
                 >
@@ -2465,9 +2469,9 @@ export default function App() {
                     setCanvasBg("black");
                   }}
                   className={cn(
-                    "px-1.5 py-0.5 rounded transition-all font-normal",
+                    "px-1.5 py-0.5 rounded transition-all",
                     canvasBg === "black"
-                      ? (isFullscreenDarkText ? "bg-black text-white" : "bg-white text-black")
+                      ? (isFullscreenDarkText ? "bg-black text-white " : "bg-white text-black ")
                       : "opacity-60 hover:opacity-100"
                   )}
                 >
@@ -2479,9 +2483,9 @@ export default function App() {
                     setCanvasBg("checker");
                   }}
                   className={cn(
-                    "px-1.5 py-0.5 rounded transition-all font-normal",
+                    "px-1.5 py-0.5 rounded transition-all",
                     canvasBg === "checker"
-                      ? (isFullscreenDarkText ? "bg-black text-white" : "bg-white text-black")
+                      ? (isFullscreenDarkText ? "bg-black text-white " : "bg-white text-black ")
                       : "opacity-60 hover:opacity-100"
                   )}
                 >
@@ -2499,7 +2503,7 @@ export default function App() {
                 )}
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="font-mono text-[9px] font-light tracking-tight py-0.5 mt-0.5 w-[85%] flex items-center justify-center rounded bg-black/40 text-white/90 shadow-inner pointer-events-none">
+                <div className="font-mono text-[9px] py-0.5 mt-0.5 w-[85%] flex items-center justify-center rounded bg-black/40 text-white/90 shadow-inner pointer-events-none">
                   {Math.round(fullscreenScale * 100)}%
                 </div>
                 <button
@@ -2582,7 +2586,6 @@ export default function App() {
                   <RotateCw size={18} />
                 </button>
               </div>
-
               {/* Close Button */}
               <button
                 onClick={() => setIsFullscreen(false)}
@@ -2709,7 +2712,7 @@ export default function App() {
                 </SolidButton>
                 <button
                   onClick={confirmClearAll}
-                  className="px-4 py-2 border border-red-500 text-red-500 hover:bg-red-500/10 font-bold uppercase transition-colors outline-none"
+                  className="px-4 py-2 border border-red-500 text-red-500 hover:bg-red-500/10  uppercase transition-colors outline-none"
                 >
                   CONFIRM CLEAR
                 </button>
@@ -2765,7 +2768,7 @@ export default function App() {
                 </SolidButton>
                 <button
                   onClick={handleDeleteSelected}
-                  className="px-4 py-2 border border-red-500 text-red-500 hover:bg-red-500/10 font-bold uppercase transition-colors outline-none"
+                  className="px-4 py-2 border border-red-500 text-red-500 hover:bg-red-500/10  uppercase transition-colors outline-none"
                 >
                   CONFIRM
                 </button>
