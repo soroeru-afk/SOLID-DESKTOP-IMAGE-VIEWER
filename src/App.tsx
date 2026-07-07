@@ -174,7 +174,7 @@ export default function App() {
     const saved = localStorage.getItem("app_openAction");
     return (saved as "click" | "dblclick") || "dblclick";
   });
-  const [theme, setTheme] = useState<"NAVY" | "BLACK" | "LIGHT" | "PAPER">(
+  const [theme, setTheme] = useState<"NAVY" | "BLACK" | "RED" | "LIGHT" | "PAPER">(
     () => {
       const saved = localStorage.getItem("app_theme");
       return (saved as "NAVY" | "BLACK" | "LIGHT" | "PAPER") || "BLACK";
@@ -1269,6 +1269,13 @@ export default function App() {
                 className="px-3 py-0 text-[10px]"
               >
                 BLACK
+              </SolidButton>
+              <SolidButton
+                active={theme === "RED"}
+                onClick={() => setTheme("RED")}
+                className="px-3 py-0 text-[10px]"
+              >
+                RED
               </SolidButton>
               <SolidButton
                 active={theme === "LIGHT"}
