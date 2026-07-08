@@ -650,6 +650,9 @@ export default function App() {
       }
     } catch (e) {
       console.error(e);
+      alert(
+        `データベースの読み込みに失敗しました。\nエラー内容: ${e instanceof Error ? e.message : String(e)}\n\n以前の古いデータベース情報が競合している可能性があります。\n解決しない場合は、ブラウザを再読み込みするか、F12の開発者ツール等で古いデータを消去してください（※ただし画像データは消失します）。`
+      );
     } finally {
       setIsLoading(false);
     }

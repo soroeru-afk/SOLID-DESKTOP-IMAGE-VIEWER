@@ -32,7 +32,7 @@ interface ImageViewerDB extends DBSchema {
 }
 
 const DB_NAME = 'solid-image-viewer-db';
-const DB_VERSION = 3; // upgrade to version 3
+const DB_VERSION = 10; // upgrade to version 10 to resolve VersionErrors
 const STORE_NAME_IMAGES = 'images';
 const STORE_NAME_DATASETS = 'datasets';
 
