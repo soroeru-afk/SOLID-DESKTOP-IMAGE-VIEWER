@@ -113,6 +113,34 @@
     --btn-active-border-r: #a3a3a3;
     --btn-active-text: #000000;
   }
+
+  :root[data-theme="RED"] {
+    --bg-app: #0d0404;
+    --bg-panel: #170707;
+    --bg-panel-header: #1f0a0a;
+    --border-panel: #3b1515;
+    --border-inner: #290e0e;
+    --text-main: #ffffff;
+    --text-sub: #c4a7a7;
+    --text-dim: #856363;
+    --accent: #d33c3c;
+    --accent-glow: rgba(211, 60, 60, 0.3);
+
+    --btn-bg: #1a0808;
+    --btn-border: #3b1515;
+    --btn-border-b: #0d0404;
+    --btn-border-r: #170707;
+    --btn-text: #a38585;
+    --btn-hover-bg: #290e0e;
+    --btn-hover-text: #ffffff;
+    --btn-hover-border-t: #4d1c1c;
+
+    --btn-active-bg: #7a1f1f;
+    --btn-active-border: #a83232;
+    --btn-active-border-b: #3d0e0e;
+    --btn-active-border-r: #5c1414;
+    --btn-active-text: #ffffff;
+  }
 }
 
 @theme {
@@ -243,33 +271,3 @@ input[type=range]:focus::-webkit-slider-thumb {
   background: var(--color-btn-active-bg);
 }
 
-
-
-
-  :root[data-theme="RED"] {
-    --bg-app: #0d0404;
-    --bg-panel: #170707;
-    --bg-panel-header: #1f0a0a;
-    --border-panel: #3b1515;
-    --border-inner: #290e0e;
-    --text-main: #ffffff;
-    --text-sub: #c4a7a7;
-    --text-dim: #856363;
-    --accent: #d33c3c;
-    --accent-glow: rgba(211, 60, 60, 0.3);
-
-    --btn-bg: #1a0808;
-    --btn-border: #3b1515;
-    --btn-border-b: #0d0404;
-    --btn-border-r: #170707;
-    --btn-text: #a38585;
-    --btn-hover-bg: #290e0e;
-    --btn-hover-text: #ffffff;
-    --btn-hover-border-t: #4d1c1c;
-
-    --btn-active-bg: #7a1f1f;
-    --btn-active-border: #a83232;
-    --btn-active-border-b: #3d0e0e;
-    --btn-active-border-r: #5c1414;
-    --btn-active-text: #ffffff;
-  }

@@ -345,6 +345,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isReadingDirectory, setIsReadingDirectory] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isBorderless, setIsBorderless] = useState(false);
   const [fullscreenScale, setFullscreenScale] = useState(1);
   const [fullscreenRotation, setFullscreenRotation] = useState(0);
   const [fullscreenFlipX, setFullscreenFlipX] = useState(false);
@@ -652,9 +653,6 @@ export default function App() {
       }
     } catch (e) {
       console.error(e);
-      alert(
-        `データベースの読み込みに失敗しました。\nエラー内容: ${e instanceof Error ? e.message : String(e)}\n\n以前の古いデータベース情報が競合している可能性があります。\n解決しない場合は、ブラウザを再読み込みするか、F12の開発者ツール等で古いデータを消去してください（※ただし画像データは消失します）。`
-      );
     } finally {
       setIsLoading(false);
     }
@@ -1041,8 +1039,8 @@ export default function App() {
       const getDragBounds = () => {
         let mX = 0;
         let mY = 0;
-        const cw = window.innerWidth * 0.95;
-        const ch = window.innerHeight * 0.95;
+        const cw = window.innerWidth * (isBorderless ? 1 : 0.95);
+        const ch = window.innerHeight * (isBorderless ? 1 : 0.95);
         if (imgDims.w > 0 && imgDims.h > 0) {
           const aspectImg = imgDims.w / imgDims.h;
           const aspectScreen = cw / ch;
@@ -1124,6 +1122,7 @@ export default function App() {
     imgDims,
     imgX,
     imgY,
+    isBorderless,
   ]);
 
   const handleClear = () => {
@@ -1193,8 +1192,8 @@ export default function App() {
     };
   }, [activeDatasetId]);
 
-  const cW = typeof window !== "undefined" ? window.innerWidth * 0.95 : 1000;
-  const cH = typeof window !== "undefined" ? window.innerHeight * 0.95 : 1000;
+  const cW = typeof window !== "undefined" ? window.innerWidth * (isBorderless ? 1 : 0.95) : 1000;
+  const cH = typeof window !== "undefined" ? window.innerHeight * (isBorderless ? 1 : 0.95) : 1000;
   let maxDragX = 0;
   let maxDragY = 0;
 
@@ -2386,7 +2385,10 @@ export default function App() {
             initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
             animate={{ opacity: 1, backdropFilter: "blur(10px)", transition: { duration: 0.1 } }}
             exit={{ opacity: 0, backdropFilter: "blur(0px)", transition: { duration: 0 } }}
-            className="fixed inset-0 z-50 bg-root-bg/80 flex items-center justify-center p-8"
+            className={cn(
+              "fixed inset-0 z-[100] bg-root-bg/90 flex items-center justify-center transition-all duration-300",
+              isBorderless ? "p-0" : "p-8"
+            )}
             onPointerDown={(e) => {
               if (e.target === e.currentTarget) {
                 setIsFullscreen(false);
@@ -2394,7 +2396,12 @@ export default function App() {
             }}
           >
             <motion.div
-              className="relative w-full h-full max-w-[95vw] max-h-[95vh] rounded-none overflow-hidden border border-panel-border shadow-[0_0_50px_rgba(0,0,0,0.8)] flex items-center justify-center bg-panel-bg"
+              className={cn(
+                "relative w-full h-full rounded-none overflow-hidden flex items-center justify-center bg-panel-bg transition-all duration-300",
+                isBorderless
+                  ? "max-w-[100vw] max-h-[100vh] border-0 shadow-none"
+                  : "max-w-[95vw] max-h-[95vh] border border-panel-border shadow-[0_0_50px_rgba(0,0,0,0.8)]"
+              )}
               onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
             >
@@ -2708,6 +2715,20 @@ export default function App() {
                   <RotateCw size={18} />
                 </button>
               </div>
+              {/* Borderless Toggle Button */}
+              <button
+                onClick={(e) => { e.stopPropagation(); setIsBorderless(b => !b); }}
+                className={cn(
+                  "absolute top-6 right-20 p-2 transition-colors drop-shadow-md hover:scale-110 outline-none focus:outline-none",
+                  isFullscreenDarkText
+                    ? "text-black/50 hover:text-black"
+                    : "text-white/50 hover:text-white",
+                )}
+                title="TOGGLE BORDERLESS"
+              >
+                {isBorderless ? <Minimize size={28} /> : <Maximize size={28} />}
+              </button>
+
               {/* Close Button */}
               <button
                 onClick={() => setIsFullscreen(false)}
