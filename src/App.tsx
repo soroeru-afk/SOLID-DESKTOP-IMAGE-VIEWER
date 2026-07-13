@@ -21,6 +21,8 @@ import {
   ArrowDown,
   ChevronDown,
   ChevronUp,
+  ChevronsUp,
+  ChevronsDown,
   Check,
   PanelLeft,
   PanelRight,
@@ -177,7 +179,7 @@ export default function App() {
   const [theme, setTheme] = useState<"NAVY" | "BLACK" | "RED" | "LIGHT" | "PAPER">(
     () => {
       const saved = localStorage.getItem("app_theme");
-      return (saved as "NAVY" | "BLACK" | "LIGHT" | "PAPER") || "BLACK";
+      return (saved as "NAVY" | "BLACK" | "RED" | "LIGHT" | "PAPER") || "BLACK";
     }
   );
   const [canvasBg, setCanvasBg] = useState<
@@ -934,6 +936,69 @@ export default function App() {
     if (activeDatasetId) {
       await loadImages(activeDatasetId);
       await loadDatasets();
+    }
+    setIsLoading(false);
+  };
+
+  const handleCustomMove = async (direction: "top" | "bottom" | "up" | "down") => {
+    if (selectedImageIds.size === 0) return;
+    setIsLoading(true);
+
+    if (sortField !== "custom") {
+      setSortField("custom");
+      setSortOrders(prev => ({ ...prev, custom: "asc" }));
+    }
+
+    const currentImages = [...sortedImages];
+
+    const selectedIdsArray = Array.from(selectedImageIds);
+    const selectedIndexes = selectedIdsArray
+      .map(id => currentImages.findIndex(img => img.id === id))
+      .filter(idx => idx !== -1)
+      .sort((a, b) => a - b);
+
+    if (selectedIndexes.length === 0) {
+      setIsLoading(false);
+      return;
+    }
+
+    let newImages = [...currentImages];
+
+    if (direction === "top") {
+      const selected = selectedIndexes.map(idx => currentImages[idx]);
+      const unselected = currentImages.filter((_, idx) => !selectedIndexes.includes(idx));
+      newImages = [...selected, ...unselected];
+    } else if (direction === "bottom") {
+      const selected = selectedIndexes.map(idx => currentImages[idx]);
+      const unselected = currentImages.filter((_, idx) => !selectedIndexes.includes(idx));
+      newImages = [...unselected, ...selected];
+    } else if (direction === "up") {
+      for (let i = 0; i < selectedIndexes.length; i++) {
+        const idx = selectedIndexes[i];
+        if (idx > 0 && !selectedImageIds.has(newImages[idx - 1].id)) {
+          const temp = newImages[idx - 1];
+          newImages[idx - 1] = newImages[idx];
+          newImages[idx] = temp;
+          selectedIndexes[i] = idx - 1;
+        }
+      }
+    } else if (direction === "down") {
+      for (let i = selectedIndexes.length - 1; i >= 0; i--) {
+        const idx = selectedIndexes[i];
+        if (idx < newImages.length - 1 && !selectedImageIds.has(newImages[idx + 1].id)) {
+          const temp = newImages[idx + 1];
+          newImages[idx + 1] = newImages[idx];
+          newImages[idx] = temp;
+          selectedIndexes[i] = idx + 1;
+        }
+      }
+    }
+
+    const updates = newImages.map((img, i) => ({ id: img.id, orderIndex: i }));
+    await updateImagesOrder(updates);
+
+    if (activeDatasetId) {
+      await loadImages(activeDatasetId);
     }
     setIsLoading(false);
   };
@@ -1807,6 +1872,52 @@ export default function App() {
                   >
                     {selectedImageIds.size === images.length && images.length > 0 ? "DESELECT ALL" : "SELECT ALL"}
                   </button>
+                  <div className="flex items-center gap-1 border-l border-r border-panel-border px-2 mx-1">
+                    <button
+                      onClick={() => handleCustomMove("top")}
+                      disabled={selectedImageIds.size === 0}
+                      title="MOVE TO TOP"
+                      className={cn(
+                        "p-1 rounded transition-colors",
+                        selectedImageIds.size > 0 ? "text-text-secondary hover:text-accent hover:bg-panel-border/50" : "text-text-muted cursor-not-allowed"
+                      )}
+                    >
+                      <ChevronsUp size={14} />
+                    </button>
+                    <button
+                      onClick={() => handleCustomMove("up")}
+                      disabled={selectedImageIds.size === 0}
+                      title="MOVE UP"
+                      className={cn(
+                        "p-1 rounded transition-colors",
+                        selectedImageIds.size > 0 ? "text-text-secondary hover:text-accent hover:bg-panel-border/50" : "text-text-muted cursor-not-allowed"
+                      )}
+                    >
+                      <ChevronUp size={14} />
+                    </button>
+                    <button
+                      onClick={() => handleCustomMove("down")}
+                      disabled={selectedImageIds.size === 0}
+                      title="MOVE DOWN"
+                      className={cn(
+                        "p-1 rounded transition-colors",
+                        selectedImageIds.size > 0 ? "text-text-secondary hover:text-accent hover:bg-panel-border/50" : "text-text-muted cursor-not-allowed"
+                      )}
+                    >
+                      <ChevronDown size={14} />
+                    </button>
+                    <button
+                      onClick={() => handleCustomMove("bottom")}
+                      disabled={selectedImageIds.size === 0}
+                      title="MOVE TO BOTTOM"
+                      className={cn(
+                        "p-1 rounded transition-colors",
+                        selectedImageIds.size > 0 ? "text-text-secondary hover:text-accent hover:bg-panel-border/50" : "text-text-muted cursor-not-allowed"
+                      )}
+                    >
+                      <ChevronsDown size={14} />
+                    </button>
+                  </div>
                   <div className="flex items-center gap-1">
                     <select
                       value={moveTargetId}
