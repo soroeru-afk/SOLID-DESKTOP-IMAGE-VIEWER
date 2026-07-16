@@ -353,6 +353,50 @@ export default function App() {
   const imgY = useMotionValue(0);
   const [imgDims, setImgDims] = useState({ w: 0, h: 0 });
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const startSteppedScroll = (dir: "up" | "down") => {
+    if (scrollIntervalRef.current || scrollTimeoutRef.current) return;
+    const scrollStep = dir === "down" ? window.innerHeight * 0.5 : -window.innerHeight * 0.5;
+    const stepScroll = () => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollBy({ top: scrollStep, behavior: "smooth" });
+      }
+    };
+    stepScroll();
+    scrollTimeoutRef.current = setTimeout(() => {
+      stepScroll();
+      scrollIntervalRef.current = setInterval(stepScroll, 600);
+    }, 600);
+  };
+
+  const startScroll = (dir: "up" | "down") => {
+    if (scrollIntervalRef.current || scrollTimeoutRef.current) return;
+    const scrollStep = dir === "down" ? 25 : -25;
+    const stepScroll = () => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollBy({ top: scrollStep, behavior: "auto" });
+      }
+    };
+    stepScroll();
+    scrollTimeoutRef.current = setTimeout(() => {
+      scrollIntervalRef.current = setInterval(stepScroll, 16);
+    }, 150);
+  };
+
+  const stopScroll = () => {
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+      scrollTimeoutRef.current = null;
+    }
+    if (scrollIntervalRef.current) {
+      clearInterval(scrollIntervalRef.current);
+      scrollIntervalRef.current = null;
+    }
+  };
+
   const zoomIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const zoomTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -515,6 +559,7 @@ export default function App() {
   const [moveTargetId, setMoveTargetId] = useState<string>("");
   const [lastSelectedIdx, setLastSelectedIdx] = useState<number | null>(null);
   const [showDeleteSelectedModal, setShowDeleteSelectedModal] = useState(false);
+  const [showDeleteFullscreenModal, setShowDeleteFullscreenModal] = useState(false);
 
   // Custom Prompts/Modals because alert/prompt/confirm are unreliable in iframe
   const [showNewDatasetModal, setShowNewDatasetModal] = useState(false);
@@ -917,6 +962,24 @@ export default function App() {
     setLastSelectedIdx(null);
     setIsSelectionMode(false);
     setShowDeleteSelectedModal(false);
+    if (activeDatasetId) {
+      await loadImages(activeDatasetId);
+      await loadDatasets();
+    }
+    setIsLoading(false);
+  };
+
+  const executeDeleteFullscreenImage = async () => {
+    if (!selectedImage) return;
+    setIsLoading(true);
+    await deleteImage(selectedImage.id);
+    setSelectedImageIds(prev => {
+      const next = new Set(prev);
+      next.delete(selectedImage.id);
+      return next;
+    });
+    setIsFullscreen(false);
+    setShowDeleteFullscreenModal(false);
     if (activeDatasetId) {
       await loadImages(activeDatasetId);
       await loadDatasets();
@@ -2040,6 +2103,7 @@ export default function App() {
             >
               <AnimatePresence mode="wait">
                 <motion.div
+                  ref={scrollContainerRef}
                   key={viewMode}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -2372,6 +2436,46 @@ export default function App() {
                   )}
                 </motion.div>
               </AnimatePresence>
+              {viewMode !== "free" && sortedImages.length > 0 && (
+                <div className="absolute bottom-4 right-8 z-40 flex flex-col gap-1.5">
+                  <button
+                    onPointerDown={(e) => { e.preventDefault(); startScroll("up"); }}
+                    onPointerUp={(e) => { e.preventDefault(); stopScroll(); }}
+                    onPointerLeave={(e) => { e.preventDefault(); stopScroll(); }}
+                    className="p-1.5 bg-white/60 backdrop-blur-sm border border-gray-300/50 text-gray-600 hover:text-black hover:border-gray-400 hover:bg-white shadow-sm rounded-none transition-all touch-none focus:outline-none"
+                    title="FAST SCROLL UP"
+                  >
+                    <ChevronsUp size={16} />
+                  </button>
+                  <button
+                    onPointerDown={(e) => { e.preventDefault(); startSteppedScroll("up"); }}
+                    onPointerUp={(e) => { e.preventDefault(); stopScroll(); }}
+                    onPointerLeave={(e) => { e.preventDefault(); stopScroll(); }}
+                    className="p-1 bg-white/60 backdrop-blur-sm border border-gray-300/50 text-gray-600 hover:text-black hover:border-gray-400 hover:bg-white shadow-sm rounded-none transition-all touch-none focus:outline-none"
+                    title="SCROLL UP"
+                  >
+                    <ChevronUp size={16} />
+                  </button>
+                  <button
+                    onPointerDown={(e) => { e.preventDefault(); startSteppedScroll("down"); }}
+                    onPointerUp={(e) => { e.preventDefault(); stopScroll(); }}
+                    onPointerLeave={(e) => { e.preventDefault(); stopScroll(); }}
+                    className="p-1 bg-white/60 backdrop-blur-sm border border-gray-300/50 text-gray-600 hover:text-black hover:border-gray-400 hover:bg-white shadow-sm rounded-none transition-all touch-none focus:outline-none"
+                    title="SCROLL DOWN"
+                  >
+                    <ChevronDown size={16} />
+                  </button>
+                  <button
+                    onPointerDown={(e) => { e.preventDefault(); startScroll("down"); }}
+                    onPointerUp={(e) => { e.preventDefault(); stopScroll(); }}
+                    onPointerLeave={(e) => { e.preventDefault(); stopScroll(); }}
+                    className="p-1.5 bg-white/60 backdrop-blur-sm border border-gray-300/50 text-gray-600 hover:text-black hover:border-gray-400 hover:bg-white shadow-sm rounded-none transition-all touch-none focus:outline-none"
+                    title="FAST SCROLL DOWN"
+                  >
+                    <ChevronsDown size={16} />
+                  </button>
+                </div>
+              )}
             </div>
           </Panel>
         </div>
@@ -2553,15 +2657,30 @@ export default function App() {
                 </>
               )}
 
-              {/* BG Toggle Button Group */}
-              <div
-                className={cn(
-                  "absolute bottom-6 right-6 flex items-center gap-1.5 font-mono text-[9px] tracking-wider border px-2 py-1.5 rounded bg-black/15 backdrop-blur-sm transition-colors pointer-events-auto",
-                  isFullscreenDarkText
-                    ? "border-black/15 text-black"
-                    : "border-white/15 text-white",
-                )}
-              >
+              <div className="absolute bottom-6 right-6 flex items-center gap-2 pointer-events-auto">
+                {/* Delete Button */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowDeleteFullscreenModal(true); }}
+                  className={cn(
+                    "p-1.5 flex items-center justify-center border rounded bg-black/15 backdrop-blur-sm transition-colors outline-none focus:outline-none",
+                    isFullscreenDarkText
+                      ? "border-black/15 text-black/60 hover:text-red-600 hover:border-red-600/50 hover:bg-red-500/10"
+                      : "border-white/15 text-white/60 hover:text-red-400 hover:border-red-400/50 hover:bg-red-500/10",
+                  )}
+                  title={t("Delete Image", "画像を削除")}
+                >
+                  <Trash2 size={16} />
+                </button>
+
+                {/* BG Toggle Button Group */}
+                <div
+                  className={cn(
+                    "flex items-center gap-1.5 font-mono text-[9px] tracking-wider border px-2 py-1.5 rounded bg-black/15 backdrop-blur-sm transition-colors",
+                    isFullscreenDarkText
+                      ? "border-black/15 text-black"
+                      : "border-white/15 text-white",
+                  )}
+                >
                 <span className={isFullscreenDarkText ? "text-black/60" : "text-white/60"}>BG:</span>
                 <button
                   onClick={(e) => {
@@ -2619,6 +2738,7 @@ export default function App() {
                 >
                   CHK
                 </button>
+              </div>
               </div>
 
               {/* Image Controls Panel */}
@@ -2857,6 +2977,60 @@ export default function App() {
                   className="px-4 py-2 border border-red-500 text-red-500 hover:bg-red-500/10  uppercase transition-colors outline-none"
                 >
                   CONFIRM CLEAR
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Fullscreen Image Modal */}
+      <AnimatePresence>
+        {showDeleteFullscreenModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+          >
+            <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(239,68,68,0.2)]">
+              <h2 className="text-red-500 mb-4 flex items-center gap-2">
+                <Trash2 size={20} />{" "}
+                {t("DELETE IMAGE", "画像を削除")}
+              </h2>
+              <p className="text-text-secondary text-sm mb-6 uppercase leading-relaxed">
+                {language === "JP" ? (
+                  <>
+                    警告: 現在表示中の画像を選択したデータベースから削除します。
+                    <br />
+                    <br />
+                    <span className="text-accent">
+                      (※実際のデバイス上のファイルは削除されません)
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    Warning: This will delete the currently viewed image from the database.
+                    <br />
+                    <br />
+                    <span className="text-accent">
+                      (※ Actual files on your device will NOT be deleted)
+                    </span>
+                  </>
+                )}
+              </p>
+              <div className="flex justify-end gap-3">
+                <SolidButton
+                  onClick={() => setShowDeleteFullscreenModal(false)}
+                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
+                >
+                  CANCEL
+                </SolidButton>
+                <button
+                  onClick={executeDeleteFullscreenImage}
+                  className="px-4 py-2 border border-red-500 text-red-500 hover:bg-red-500/10 uppercase transition-colors outline-none"
+                >
+                  CONFIRM
                 </button>
               </div>
             </div>
