@@ -2442,7 +2442,7 @@ export default function App() {
                     onPointerDown={(e) => { e.preventDefault(); startScroll("up"); }}
                     onPointerUp={(e) => { e.preventDefault(); stopScroll(); }}
                     onPointerLeave={(e) => { e.preventDefault(); stopScroll(); }}
-                    className="p-1.5 bg-white/60 backdrop-blur-sm border border-gray-300/50 text-gray-600 hover:text-black hover:border-gray-400 hover:bg-white shadow-sm rounded-none transition-all touch-none focus:outline-none"
+                    className="p-1.5 bg-btn-bg/85 backdrop-blur-sm border border-btn-border text-btn-text hover:text-btn-hover-text hover:border-btn-hover-border-t hover:bg-btn-hover-bg shadow-sm rounded-none transition-all touch-none focus:outline-none"
                     title="FAST SCROLL UP"
                   >
                     <ChevronsUp size={16} />
@@ -2451,7 +2451,7 @@ export default function App() {
                     onPointerDown={(e) => { e.preventDefault(); startSteppedScroll("up"); }}
                     onPointerUp={(e) => { e.preventDefault(); stopScroll(); }}
                     onPointerLeave={(e) => { e.preventDefault(); stopScroll(); }}
-                    className="p-1 bg-white/60 backdrop-blur-sm border border-gray-300/50 text-gray-600 hover:text-black hover:border-gray-400 hover:bg-white shadow-sm rounded-none transition-all touch-none focus:outline-none"
+                    className="p-1 bg-btn-bg/85 backdrop-blur-sm border border-btn-border text-btn-text hover:text-btn-hover-text hover:border-btn-hover-border-t hover:bg-btn-hover-bg shadow-sm rounded-none transition-all touch-none focus:outline-none"
                     title="SCROLL UP"
                   >
                     <ChevronUp size={16} />
@@ -2460,7 +2460,7 @@ export default function App() {
                     onPointerDown={(e) => { e.preventDefault(); startSteppedScroll("down"); }}
                     onPointerUp={(e) => { e.preventDefault(); stopScroll(); }}
                     onPointerLeave={(e) => { e.preventDefault(); stopScroll(); }}
-                    className="p-1 bg-white/60 backdrop-blur-sm border border-gray-300/50 text-gray-600 hover:text-black hover:border-gray-400 hover:bg-white shadow-sm rounded-none transition-all touch-none focus:outline-none"
+                    className="p-1 bg-btn-bg/85 backdrop-blur-sm border border-btn-border text-btn-text hover:text-btn-hover-text hover:border-btn-hover-border-t hover:bg-btn-hover-bg shadow-sm rounded-none transition-all touch-none focus:outline-none"
                     title="SCROLL DOWN"
                   >
                     <ChevronDown size={16} />
@@ -2469,7 +2469,7 @@ export default function App() {
                     onPointerDown={(e) => { e.preventDefault(); startScroll("down"); }}
                     onPointerUp={(e) => { e.preventDefault(); stopScroll(); }}
                     onPointerLeave={(e) => { e.preventDefault(); stopScroll(); }}
-                    className="p-1.5 bg-white/60 backdrop-blur-sm border border-gray-300/50 text-gray-600 hover:text-black hover:border-gray-400 hover:bg-white shadow-sm rounded-none transition-all touch-none focus:outline-none"
+                    className="p-1.5 bg-btn-bg/85 backdrop-blur-sm border border-btn-border text-btn-text hover:text-btn-hover-text hover:border-btn-hover-border-t hover:bg-btn-hover-bg shadow-sm rounded-none transition-all touch-none focus:outline-none"
                     title="FAST SCROLL DOWN"
                   >
                     <ChevronsDown size={16} />

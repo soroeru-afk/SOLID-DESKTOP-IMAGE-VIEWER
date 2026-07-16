@@ -212,7 +212,7 @@ body {
   background: var(--color-root-bg);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-panel-border);
+  background: var(--color-text-muted);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
