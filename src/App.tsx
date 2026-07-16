@@ -2437,7 +2437,7 @@ export default function App() {
                 </motion.div>
               </AnimatePresence>
               {viewMode !== "free" && sortedImages.length > 0 && (
-                <div className="absolute bottom-4 right-8 z-40 flex flex-col gap-1.5">
+                <div className="absolute bottom-4 right-8 z-[60] flex flex-col gap-1.5">
                   <button
                     onPointerDown={(e) => { e.preventDefault(); startScroll("up"); }}
                     onPointerUp={(e) => { e.preventDefault(); stopScroll(); }}
