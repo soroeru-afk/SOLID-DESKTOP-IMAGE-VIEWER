@@ -3059,7 +3059,7 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
           >
             <div className="bg-panel-bg border border-panel-border p-6 font-mono w-[400px]">
               <h2 className="text-text-primary mb-4 uppercase">
@@ -3100,7 +3100,7 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
           >
             <div className="bg-panel-bg border border-panel-border p-6 font-mono w-[400px]">
               <h2 className="text-text-primary mb-4 uppercase">
@@ -3141,7 +3141,7 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
           >
             <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(239,68,68,0.2)]">
               <h2 className="text-red-500 mb-4 flex items-center gap-2">
@@ -3232,7 +3232,7 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
           >
             <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(239,68,68,0.2)]">
               <h2 className="text-red-500 mb-4 flex items-center gap-2">
