@@ -167,6 +167,7 @@ export default function App() {
   );
   const [images, setImages] = useState<LoadedImage[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const [totalImagesCount, setTotalImagesCount] = useState<number>(0);
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     const saved = localStorage.getItem("app_viewMode");
@@ -176,6 +177,16 @@ export default function App() {
     const saved = localStorage.getItem("app_openAction");
     return (saved as "click" | "dblclick") || "dblclick";
   });
+  const [appFont, setAppFont] = useState<"GOTHIC" | "MARU" | "MEIRYO" | "MONO">(() => {
+    const saved = localStorage.getItem("app_font");
+    return (saved as "GOTHIC" | "MARU" | "MEIRYO" | "MONO") || "GOTHIC";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("app_font", appFont);
+    document.documentElement.setAttribute("data-font", appFont);
+  }, [appFont]);
+
   const [theme, setTheme] = useState<"NAVY" | "BLACK" | "RED" | "LIGHT" | "PAPER">(
     () => {
       const saved = localStorage.getItem("app_theme");
@@ -1326,6 +1337,242 @@ export default function App() {
     return canvasBg === "white" || canvasBg === "checker" || (canvasBg === "theme" && (theme.toUpperCase() === "LIGHT" || theme.toUpperCase() === "PAPER"));
   })();
 
+  const renderImageCard = (
+    img: LoadedImage,
+    i: number,
+    isSelected: boolean,
+    isMultiSelected: boolean,
+  ) => (
+    <motion.div
+      key={img.id}
+      layout={
+        viewMode === "grid-sq" || viewMode === "grid-ma"
+      }
+      drag={viewMode === "free"}
+      dragConstraints={
+        viewMode === "free" ? false : scatterContainerRef
+      }
+      dragElastic={0.1}
+      dragMomentum={true}
+      whileDrag={{
+        scale: 1.05,
+        zIndex: 100,
+        boxShadow: "0 20px 40px rgba(0,0,0,0.6)",
+      }}
+      whileHover={{
+        scale: viewMode !== "free" ? 1.01 : 1.02,
+      }}
+      initial={
+        viewMode === "free"
+          ? {
+              opacity: 0,
+              scale: 0.8,
+              x: (img.randomX * containerWidth) / 100,
+              y: (img.randomY * containerHeight) / 100,
+              rotate: img.randomRotation,
+            }
+          : { opacity: 0, scale: 0.8 }
+      }
+      animate={
+        viewMode === "free"
+          ? {
+              opacity:
+                isSelectionMode && !isMultiSelected
+                  ? 0.5
+                  : 1,
+              scale: 1,
+              rotate: img.randomRotation,
+            }
+          : {
+              opacity:
+                isSelectionMode && !isMultiSelected
+                  ? 0.5
+                  : 1,
+              scale: 1,
+              x: 0,
+              y: 0,
+              rotate: 0,
+            }
+      }
+      transition={{
+        layout: {
+          type: "tween",
+          ease: "circOut",
+          duration: 0.3,
+        },
+        opacity: {
+          duration: 0.1,
+          delay: isSelectionMode
+            ? 0
+            : Math.min(i * 0.015, 1.0),
+        },
+        scale: {
+          type: "tween",
+          ease: "circOut",
+          duration: 0.2,
+          delay: isSelectionMode
+            ? 0
+            : Math.min(i * 0.015, 1.0),
+        },
+      }}
+      onClick={(e) => {
+        if (isSelectionMode) {
+          const next = new Set(selectedImageIds);
+          
+          if (e.shiftKey && lastSelectedIdx !== null) {
+            const start = Math.min(lastSelectedIdx, i);
+            const end = Math.max(lastSelectedIdx, i);
+            for (let idx = start; idx <= end; idx++) {
+              next.add(sortedImages[idx].id);
+            }
+          } else {
+            if (next.has(img.id)) next.delete(img.id);
+            else next.add(img.id);
+          }
+          
+          setSelectedImageIds(next);
+          if (!e.shiftKey || lastSelectedIdx === null) {
+            setLastSelectedIdx(i);
+          }
+        } else {
+          setSelectedImage(img);
+          if (openAction === "click" && viewMode !== "free") {
+            setIsFullscreen(true);
+          }
+        }
+      }}
+      onDoubleClick={() => {
+        if (isSelectionMode) return;
+        setSelectedImage(img);
+        if (openAction === "dblclick" || viewMode === "free") {
+          setIsFullscreen(true);
+        }
+      }}
+      className={cn(
+        "cursor-pointer overflow-hidden border min-w-0 min-h-0 relative transition-colors rounded-none bg-panel-bg",
+        isSelected || isMultiSelected
+          ? "border-accent shadow-[0_0_15px_var(--color-accent-glow)] z-10"
+          : "border-panel-border hover:border-text-secondary z-0",
+        viewMode === "grid-ma" && "w-full",
+        viewMode === "grid-sq" &&
+          "w-full aspect-square flex items-center justify-center",
+        viewMode === "free" && "absolute shadow-xl",
+        viewMode === "list" &&
+          "w-full flex items-center px-4 shrink-0 gap-4 group/listitem",
+      )}
+      style={
+        viewMode === "free"
+          ? {
+              width: itemScale,
+              height: itemScale,
+              left: `50%`,
+              top: `50%`,
+              marginLeft: `-${itemScale / 2}px`,
+              marginTop: `-${itemScale / 2}px`,
+              zIndex: isSelected ? 50 : 1,
+            }
+          : viewMode === "list"
+            ? {
+                height: Math.max(48, itemScale * 0.8),
+                width: "100%",
+                zIndex: isSelected ? 50 : 1,
+              }
+            : viewMode === "grid-ma"
+              ? {
+                  width: "100%",
+                  height: "auto",
+                  zIndex: isSelected ? 50 : 1,
+                }
+              : {
+                  width: "100%",
+                  height: "auto",
+                  zIndex: isSelected ? 50 : 1,
+                }
+      }
+    >
+      {viewMode === "list" ? (
+        <>
+          <div
+            className="shrink-0 border border-panel-border overflow-hidden flex items-center justify-center bg-panel-bg"
+            style={{
+              width: Math.max(32, itemScale * 0.65),
+              height: Math.max(32, itemScale * 0.65),
+            }}
+          >
+            <div
+              className={cn(
+                "relative flex items-center justify-center max-w-full max-h-full",
+                getCanvasBgClass(img.autoBg),
+              )}
+            >
+              <img
+                src={img.url}
+                draggable={false}
+                className="max-w-full max-h-full block"
+              />
+            </div>
+          </div>
+          <div className="flex-1 min-w-0 px-2 flex flex-col justify-center group/name transition-colors rounded hover:bg-panel-border/30 h-full">
+            <div className="flex items-center justify-between w-full">
+              <span className="font-mono text-sm text-text-primary truncate block pr-2">{img.name}</span>
+              <button
+                onClick={(e) => handleRenameFileClick(e, img.id, img.name)}
+                onDoubleClick={(e) => e.stopPropagation()}
+                className="text-text-muted hover:text-accent transition-colors flex-shrink-0 opacity-0 group-hover/name:opacity-100 px-2 flex items-center justify-center"
+                title="RENAME FILE"
+              >
+                <Edit2 size={14} />
+              </button>
+            </div>
+          </div>
+          <div className="font-mono text-sm text-text-muted w-24 text-right shrink-0">
+            {formatBytes(img.size)}
+          </div>
+        </>
+      ) : (
+        <div
+          className={cn(
+            "w-full relative flex items-center justify-center group overflow-hidden bg-panel-bg",
+            viewMode === "grid-sq" && "h-full",
+          )}
+        >
+          <div
+            className={cn(
+              "relative flex items-center justify-center w-full h-full transition-transform duration-500 will-change-transform group-hover:scale-105",
+              getCanvasBgClass(img.autoBg),
+            )}
+          >
+            <img
+              src={img.url}
+              draggable={false}
+              className={cn(
+                "block",
+                viewMode === "grid-sq" ||
+                  viewMode === "free"
+                  ? "max-w-full max-h-full object-contain"
+                  : "w-full h-auto",
+              )}
+            />
+          </div>
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+        </div>
+      )}
+      
+      {isSelectionMode && (
+        <div className="absolute top-2 left-2 z-20 pointer-events-none">
+          <div className={cn(
+            "w-5 h-5 flex items-center justify-center transition-colors shadow-sm rounded-sm outline outline-1",
+            isMultiSelected 
+              ? "bg-accent outline-accent text-root-bg" 
+              : "bg-black/40 outline-white/50"
+          )}>
+            {isMultiSelected && <Check size={14} />}
+          </div>
+        </div>
+      )}
+    </motion.div>
+  );
+
   return (
     <div className="h-screen w-screen flex flex-col p-4 gap-4 box-border overflow-hidden select-none">
       {/* Drag & Drop Overlay */}
@@ -1385,28 +1632,28 @@ export default function App() {
               <SolidButton
                 active={canvasBg === "theme"}
                 onClick={() => setCanvasBg("theme")}
-                className="px-3 py-0 text-[10px]"
+                className="w-[42px] px-0 py-0 text-[10px]"
               >
                 AUTO
               </SolidButton>
               <SolidButton
                 active={canvasBg === "black"}
                 onClick={() => setCanvasBg("black")}
-                className="px-3 py-0 text-[10px]"
+                className="w-[42px] px-0 py-0 text-[10px]"
               >
                 BLK
               </SolidButton>
               <SolidButton
                 active={canvasBg === "white"}
                 onClick={() => setCanvasBg("white")}
-                className="px-3 py-0 text-[10px]"
+                className="w-[42px] px-0 py-0 text-[10px]"
               >
                 WHT
               </SolidButton>
               <SolidButton
                 active={canvasBg === "checker"}
                 onClick={() => setCanvasBg("checker")}
-                className="px-3 py-0 text-[10px]"
+                className="w-[42px] px-0 py-0 text-[10px]"
               >
                 CHK
               </SolidButton>
@@ -1421,39 +1668,53 @@ export default function App() {
               <SolidButton
                 active={theme === "NAVY"}
                 onClick={() => setTheme("NAVY")}
-                className="px-3 py-0 text-[10px]"
+                className="w-[42px] px-0 py-0 text-[10px]"
               >
                 NAVY
               </SolidButton>
               <SolidButton
                 active={theme === "BLACK"}
                 onClick={() => setTheme("BLACK")}
-                className="px-3 py-0 text-[10px]"
+                className="w-[42px] px-0 py-0 text-[10px]"
               >
                 BLACK
               </SolidButton>
               <SolidButton
                 active={theme === "RED"}
                 onClick={() => setTheme("RED")}
-                className="px-3 py-0 text-[10px]"
+                className="w-[42px] px-0 py-0 text-[10px]"
               >
                 RED
               </SolidButton>
               <SolidButton
                 active={theme === "LIGHT"}
                 onClick={() => setTheme("LIGHT")}
-                className="px-3 py-0 text-[10px]"
+                className="w-[42px] px-0 py-0 text-[10px]"
               >
                 LIGHT
               </SolidButton>
               <SolidButton
                 active={theme === "PAPER"}
                 onClick={() => setTheme("PAPER")}
-                className="px-3 py-0 text-[10px]"
+                className="w-[42px] px-0 py-0 text-[10px]"
               >
                 PAPER
               </SolidButton>
             </div>
+            <div className="w-px h-6 bg-panel-border mx-2" />
+            <span className="text-[10px] uppercase font-mono tracking-widest text-text-muted">
+              FONT:
+            </span>
+            <select
+              value={appFont}
+              onChange={(e) => setAppFont(e.target.value as any)}
+              className="bg-transparent outline-none text-[10px] uppercase font-mono tracking-wider text-text-primary cursor-pointer border py-0.5 px-1 border-panel-border rounded"
+            >
+              <option value="GOTHIC" className="bg-root-bg text-text-primary">GOTHIC</option>
+              <option value="MARU" className="bg-root-bg text-text-primary">MARU</option>
+              <option value="MEIRYO" className="bg-root-bg text-text-primary">MEIRYO</option>
+              <option value="MONO" className="bg-root-bg text-text-primary">MONO</option>
+            </select>
           </div>
 
           <div className="flex bg-root-bg rounded border border-panel-border overflow-hidden text-[10px] font-mono leading-none h-6 hidden sm:flex">
@@ -1537,7 +1798,7 @@ export default function App() {
                   <Panel
                     key="formation"
                     title={t("01 FORMATION ENGINE", "01 フォーム設定")}
-                    className={cn("shrink-0", !isFormationExpanded && "h-[37px]")}
+                    className="shrink-0"
                     isCollapsible
                     isExpanded={isFormationExpanded}
                     onToggle={() => setIsFormationExpanded(!isFormationExpanded)}
@@ -1642,7 +1903,7 @@ export default function App() {
                   <Panel
                     key="datasets"
                     title={t("02 DATA SETS", "02 データセット")}
-                    className={cn("shrink-0 flex flex-col", isDataSetsExpanded ? "flex-1 min-h-[200px]" : "h-[37px]")}
+                    className={cn("shrink-0 flex flex-col", isDataSetsExpanded && "flex-1 min-h-[200px]")}
                     contentClassName="flex flex-col p-4 overflow-hidden gap-3 h-full"
                     isCollapsible
                     isExpanded={isDataSetsExpanded}
@@ -1710,11 +1971,15 @@ export default function App() {
               </div>
             </div>
 
-            <div className="pt-3 border-t border-panel-border overflow-y-auto flex flex-col gap-1 min-h-[80px] flex-1 scrollbar-dark pr-1">
+            <div className="pt-3 border-t border-panel-border overflow-y-scroll flex flex-col gap-1 min-h-[80px] flex-1 scrollbar-dark pr-1">
               {datasetViewMode === "list" ? (
                 <>
                   <div
-                    onClick={() => setActiveDatasetId("all")}
+                    onClick={() => {
+                      setActiveDatasetId("all");
+                      setSearchQuery("");
+                      setSearchInput("");
+                    }}
                     className={cn(
                       "flex items-center justify-between px-3 py-2 text-xs font-mono cursor-pointer border transition-colors group min-h-[32px] overflow-hidden shrink-0",
                       activeDatasetId === "all"
@@ -1734,7 +1999,11 @@ export default function App() {
                       <Reorder.Item
                         key={ds.id}
                         value={ds}
-                        onClick={() => setActiveDatasetId(ds.id)}
+                        onClick={() => {
+                          setActiveDatasetId(ds.id);
+                          setSearchQuery("");
+                          setSearchInput("");
+                        }}
                         className={cn(
                           "flex items-center px-3 py-2 text-xs font-mono cursor-grab active:cursor-grabbing border transition-colors group min-h-[32px] overflow-hidden shrink-0",
                           activeDatasetId === ds.id
@@ -1778,7 +2047,11 @@ export default function App() {
                   <select
                     className="w-full bg-root-bg border border-panel-border text-text-primary px-3 py-2 outline-none text-xs font-mono"
                     value={activeDatasetId || ""}
-                    onChange={(e) => setActiveDatasetId(e.target.value)}
+                    onChange={(e) => {
+                      setActiveDatasetId(e.target.value);
+                      setSearchQuery("");
+                      setSearchInput("");
+                    }}
                   >
                     <option value="all" className="bg-white text-black">{t("ALL IMAGES", "すべての画像")}</option>
                     {datasets.map((ds) => (
@@ -1847,7 +2120,7 @@ export default function App() {
                     title={t("03 TRACK INFO", "03 トラック情報")}
                     className={cn(
                       "shrink-0 flex flex-col items-center min-w-0 w-full transition-all duration-300",
-                      isTrackInfoCollapsed ? "h-[37px]" : "h-[260px]",
+                      isTrackInfoCollapsed ? "h-[34px]" : "h-[260px]",
                     )}
                     contentClassName={cn(
                       "flex flex-col w-full min-w-0 transition-opacity duration-300",
@@ -1956,20 +2229,36 @@ export default function App() {
                   <input
                     type="text"
                     placeholder={t("SEARCH ALL...", "すべての画像を検索...")}
-                    value={searchQuery}
+                    value={searchInput}
                     onChange={(e) => {
-                      setSearchQuery(e.target.value);
-                      if (e.target.value && activeDatasetId !== "all") {
-                        setActiveDatasetId("all");
+                      setSearchInput(e.target.value);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        setSearchQuery(searchInput);
+                        if (searchInput && activeDatasetId !== "all") {
+                          setActiveDatasetId("all");
+                        }
                       }
                     }}
-                    className="bg-transparent border-none outline-none text-text-primary w-40 text-[10px] placeholder:text-text-muted focus:ring-0"
+                    className="bg-transparent border-none outline-none text-text-primary w-64 text-[10px] placeholder:text-text-muted focus:ring-0"
                   />
-                  {searchQuery && (
-                    <button onClick={() => setSearchQuery("")} className="text-text-muted hover:text-text-primary ml-1">
+                  {searchInput && (
+                    <button onClick={() => { setSearchInput(""); setSearchQuery(""); }} className="text-text-muted hover:text-text-primary ml-1 shrink-0">
                       <X size={12} />
                     </button>
                   )}
+                  <SolidButton
+                    onClick={() => {
+                      setSearchQuery(searchInput);
+                      if (searchInput && activeDatasetId !== "all") {
+                        setActiveDatasetId("all");
+                      }
+                    }}
+                    className="px-2 py-1 h-auto text-[10px] shrink-0 border-none bg-transparent hover:bg-white/10"
+                  >
+                    {t("SEARCH", "検索")}
+                  </SolidButton>
                 </div>
               </>
             }
@@ -2208,239 +2497,83 @@ export default function App() {
                         }}
                       >
                     {(() => {
-                      const renderImageCard = (
-                        img: LoadedImage,
-                        i: number,
-                        isSelected: boolean,
-                        isMultiSelected: boolean,
-                      ) => (
-                        <motion.div
-                          key={img.id}
-                          layout={
-                            viewMode === "grid-sq" || viewMode === "grid-ma"
-                          }
-                          drag={viewMode === "free"}
-                          dragConstraints={
-                            viewMode === "free" ? false : scatterContainerRef
-                          }
-                          dragElastic={0.1}
-                          dragMomentum={true}
-                          whileDrag={{
-                            scale: 1.05,
-                            zIndex: 100,
-                            boxShadow: "0 20px 40px rgba(0,0,0,0.6)",
-                          }}
-                          whileHover={{
-                            scale: viewMode !== "free" ? 1.01 : 1.02,
-                          }}
-                          initial={
-                            viewMode === "free"
-                              ? {
-                                  opacity: 0,
-                                  scale: 0.8,
-                                  x: (img.randomX * containerWidth) / 100,
-                                  y: (img.randomY * containerHeight) / 100,
-                                  rotate: img.randomRotation,
-                                }
-                              : { opacity: 0, scale: 0.8 }
-                          }
-                          animate={
-                            viewMode === "free"
-                              ? {
-                                  opacity:
-                                    isSelectionMode && !isMultiSelected
-                                      ? 0.5
-                                      : 1,
-                                  scale: 1,
-                                  rotate: img.randomRotation,
-                                }
-                              : {
-                                  opacity:
-                                    isSelectionMode && !isMultiSelected
-                                      ? 0.5
-                                      : 1,
-                                  scale: 1,
-                                  x: 0,
-                                  y: 0,
-                                  rotate: 0,
-                                }
-                          }
-                          transition={{
-                            layout: {
-                              type: "tween",
-                              ease: "circOut",
-                              duration: 0.3,
-                            },
-                            opacity: {
-                              duration: 0.1,
-                              delay: isSelectionMode
-                                ? 0
-                                : Math.min(i * 0.015, 1.0),
-                            },
-                            scale: {
-                              type: "tween",
-                              ease: "circOut",
-                              duration: 0.2,
-                              delay: isSelectionMode
-                                ? 0
-                                : Math.min(i * 0.015, 1.0),
-                            },
-                          }}
-                          onClick={(e) => {
-                            if (isSelectionMode) {
-                              const next = new Set(selectedImageIds);
-                              
-                              if (e.shiftKey && lastSelectedIdx !== null) {
-                                const start = Math.min(lastSelectedIdx, i);
-                                const end = Math.max(lastSelectedIdx, i);
-                                for (let idx = start; idx <= end; idx++) {
-                                  next.add(sortedImages[idx].id);
-                                }
-                              } else {
-                                if (next.has(img.id)) next.delete(img.id);
-                                else next.add(img.id);
-                              }
-                              
-                              setSelectedImageIds(next);
-                              if (!e.shiftKey || lastSelectedIdx === null) {
-                                setLastSelectedIdx(i);
-                              }
-                            } else {
-                              setSelectedImage(img);
-                              if (openAction === "click" && viewMode !== "free") {
-                                setIsFullscreen(true);
-                              }
-                            }
-                          }}
-                          onDoubleClick={() => {
-                            if (isSelectionMode) return;
-                            setSelectedImage(img);
-                            if (openAction === "dblclick" || viewMode === "free") {
-                              setIsFullscreen(true);
-                            }
-                          }}
-                          className={cn(
-                            "cursor-pointer overflow-hidden border min-w-0 min-h-0 relative transition-colors rounded-none bg-panel-bg",
-                            isSelected || isMultiSelected
-                              ? "border-accent shadow-[0_0_15px_var(--color-accent-glow)] z-10"
-                              : "border-panel-border hover:border-text-secondary z-0",
-                            viewMode === "grid-ma" && "w-full",
-                            viewMode === "grid-sq" &&
-                              "w-full aspect-square flex items-center justify-center",
-                            viewMode === "free" && "absolute shadow-xl",
-                            viewMode === "list" &&
-                              "w-full flex items-center px-4 shrink-0 gap-4 group/listitem",
-                          )}
-                          style={
-                            viewMode === "free"
-                              ? {
-                                  width: itemScale,
-                                  height: itemScale,
-                                  left: `50%`,
-                                  top: `50%`,
-                                  marginLeft: `-${itemScale / 2}px`,
-                                  marginTop: `-${itemScale / 2}px`,
-                                  zIndex: isSelected ? 50 : 1,
-                                }
-                              : viewMode === "list"
-                                ? {
-                                    height: Math.max(48, itemScale * 0.8),
-                                    width: "100%",
-                                    zIndex: isSelected ? 50 : 1,
-                                  }
-                                : viewMode === "grid-ma"
-                                  ? {
-                                      width: "100%",
-                                      height: "auto",
-                                      zIndex: isSelected ? 50 : 1,
-                                    }
-                                  : {
-                                      width: "100%",
-                                      height: "auto",
-                                      zIndex: isSelected ? 50 : 1,
-                                    }
-                          }
-                        >
-                          {viewMode === "list" ? (
-                            <>
-                              <div
-                                className="shrink-0 border border-panel-border overflow-hidden flex items-center justify-center bg-panel-bg"
-                                style={{
-                                  width: Math.max(32, itemScale * 0.65),
-                                  height: Math.max(32, itemScale * 0.65),
-                                }}
-                              >
-                                <div
-                                  className={cn(
-                                    "relative flex items-center justify-center max-w-full max-h-full",
-                                    getCanvasBgClass(img.autoBg),
-                                  )}
-                                >
-                                  <img
-                                    src={img.url}
-                                    draggable={false}
-                                    className="max-w-full max-h-full block"
-                                  />
-                                </div>
-                              </div>
-                              <div className="font-mono text-sm flex-1 min-w-0 text-text-primary px-2 flex items-center justify-between group/name transition-colors rounded hover:bg-panel-border/30">
-                                <span className="truncate block pr-2">{img.name}</span>
-                                <button
-                                  onClick={(e) => handleRenameFileClick(e, img.id, img.name)}
-                                  onDoubleClick={(e) => e.stopPropagation()}
-                                  className="text-text-muted hover:text-accent transition-colors flex-shrink-0 opacity-0 group-hover/name:opacity-100 px-2 flex items-center justify-center"
-                                  title="RENAME FILE"
-                                >
-                                  <Edit2 size={14} />
-                                </button>
-                              </div>
-                              <div className="font-mono text-sm text-text-muted w-24 text-right shrink-0">
-                                {formatBytes(img.size)}
-                              </div>
-                            </>
-                          ) : (
-                            <div
-                              className={cn(
-                                "w-full relative flex items-center justify-center group overflow-hidden bg-panel-bg",
-                                viewMode === "grid-sq" && "h-full",
-                              )}
-                            >
-                              <div
-                                className={cn(
-                                  "relative flex items-center justify-center w-full h-full transition-transform duration-500 will-change-transform group-hover:scale-105",
-                                  getCanvasBgClass(img.autoBg),
-                                )}
-                              >
-                                <img
-                                  src={img.url}
-                                  draggable={false}
-                                  className={cn(
-                                    "block",
-                                    viewMode === "grid-sq" ||
-                                      viewMode === "free"
-                                      ? "max-w-full max-h-full object-contain"
-                                      : "w-full h-auto",
-                                  )}
-                                />
-                              </div>
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+
+                    if (searchQuery.trim()) {
+                      const groupedImages: Record<string, typeof sortedImages> = {};
+                      sortedImages.forEach(img => {
+                         if (!groupedImages[img.datasetId]) {
+                            groupedImages[img.datasetId] = [];
+                         }
+                         groupedImages[img.datasetId].push(img);
+                      });
+                      
+                      return (
+                        <div className="flex flex-col w-full h-auto">
+                          <div className="sticky top-4 z-50 flex items-center justify-center pointer-events-none mb-6">
+                            <div className="bg-panel-bg/70 backdrop-blur-md border border-panel-border/50 shadow-lg rounded-full px-6 py-2.5 flex items-center gap-3">
+                              <span className="font-mono text-accent uppercase tracking-widest text-xs font-bold drop-shadow-md">
+                                SEARCH RESULTS: "{searchQuery}"
+                              </span>
+                              <div className="w-px h-4 bg-panel-border" />
+                              <span className="font-mono text-text-muted text-[10px] uppercase tracking-widest drop-shadow-md">
+                                {sortedImages.length} {sortedImages.length === 1 ? 'MATCH' : 'MATCHES'}
+                              </span>
                             </div>
-                          )}
-                          
-                          {isSelectionMode && (
-                            <div className="absolute top-2 left-2 z-20 pointer-events-none">
-                              <div className={cn(
-                                "w-5 h-5 flex items-center justify-center transition-colors shadow-sm rounded-sm outline outline-1",
-                                isMultiSelected 
-                                  ? "bg-accent outline-accent text-root-bg" 
-                                  : "bg-black/40 outline-white/50"
-                              )}>
-                                {isMultiSelected && <Check size={14} />}
-                              </div>
-                            </div>
-                          )}
-                        </motion.div>
+                          </div>
+                          <div className="flex flex-col gap-8 w-full h-auto px-4 pb-8">
+                          {Object.entries(groupedImages).map(([datasetId, imgs]) => {
+                             const dataset = datasets.find(d => d.id === datasetId);
+                             const datasetName = dataset ? dataset.name : "UNKNOWN";
+                             
+                             return (
+                               <div key={datasetId} className="flex flex-col gap-2">
+                                 <div className="bg-panel-bg border border-panel-border px-4 py-2 font-mono text-accent text-sm tracking-widest font-bold border-l-2 border-l-accent uppercase flex items-center justify-between">
+                                   <span>{datasetName}</span>
+                                   <span className="text-xs text-text-muted">{imgs.length} IMAGES</span>
+                                 </div>
+                                 <div
+                                   className={cn(
+                                     "w-full h-auto",
+                                     viewMode === "grid-sq" && "grid content-start justify-center",
+                                     viewMode === "grid-ma" && "flex items-start",
+                                     viewMode === "list" && "flex flex-col",
+                                   )}
+                                   style={{
+                                      ...(viewMode === "grid-sq" ? { gridTemplateColumns: `repeat(auto-fill, minmax(${itemScale}px, 1fr))`, gap: `${gridGap}px` } : {}),
+                                      ...(viewMode === "grid-ma" ? { gap: `${gridGap}px` } : {}),
+                                      ...(viewMode === "list" ? { gap: `${gridGap}px` } : {}),
+                                   }}
+                                 >
+                                    {viewMode === "grid-ma" ? (
+                                        (() => {
+                                          const colsCount = Math.max(1, Math.floor((containerWidth - 32 - 16 + gridGap) / (itemScale + gridGap)));
+                                          const columns = Array.from({ length: colsCount }, () => [] as typeof sortedImages);
+                                          imgs.forEach((img, index) => {
+                                            columns[index % colsCount].push(img);
+                                          });
+                                          return columns.map((col, colIndex) => (
+                                            <div key={colIndex} className="flex flex-col flex-1 min-w-0" style={{ gap: `${gridGap}px` }}>
+                                              {col.map(img => {
+                                                const globalIdx = sortedImages.findIndex(sim => sim.id === img.id);
+                                                return renderImageCard(img, globalIdx, selectedImage?.id === img.id, isSelectionMode && selectedImageIds.has(img.id));
+                                              })}
+                                            </div>
+                                          ));
+                                        })()
+                                    ) : (
+                                        imgs.map(img => {
+                                           const globalIdx = sortedImages.findIndex(sim => sim.id === img.id);
+                                           return renderImageCard(img, globalIdx, selectedImage?.id === img.id, isSelectionMode && selectedImageIds.has(img.id));
+                                        })
+                                    )}
+                                 </div>
+                               </div>
+                             );
+                          })}
+                          </div>
+                        </div>
                       );
+                    }
 
                       if (viewMode === "grid-ma") {
                         return masonryColumns.map((col, colIdx) => (

@@ -18,10 +18,7 @@ export const Panel = React.forwardRef<HTMLDivElement, PanelProps>(
     return (
       <div 
         ref={ref}
-        className={cn(
-          "bg-panel-bg border border-panel-border rounded-none flex flex-col overflow-hidden transition-all duration-300", 
-          className
-        )}
+        className={cn("bg-panel-bg border border-panel-border rounded-none flex flex-col overflow-hidden transition-all duration-300", className)}
         {...props}
       >
         {(title || headerRight || dragHandle) && (
@@ -33,7 +30,6 @@ export const Panel = React.forwardRef<HTMLDivElement, PanelProps>(
             )}
             onClick={(e) => {
               if (isCollapsible) {
-                // Ignore clicks from buttons, icons or interactive elements if they manage their own click
                 onToggle?.();
               }
             }}

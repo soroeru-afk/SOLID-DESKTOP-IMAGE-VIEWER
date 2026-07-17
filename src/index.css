@@ -1,7 +1,22 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;500;600&family=Share+Tech+Mono&family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap');
 @import "tailwindcss";
 
 @layer base {
+  :root {
+    --font-primary: "Inter", "Outfit", ui-sans-serif, system-ui, sans-serif;
+  }
+  :root[data-font="GOTHIC"] {
+    --font-primary: "Inter", "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", sans-serif;
+  }
+  :root[data-font="MARU"] {
+    --font-primary: "M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", sans-serif;
+  }
+  :root[data-font="MEIRYO"] {
+    --font-primary: Meiryo, "メイリオ", sans-serif;
+  }
+  :root[data-font="MONO"] {
+    --font-primary: "Share Tech Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  }
   :root {
     --bg-app: #06090e;
     --bg-panel: #0b111a;
@@ -144,8 +159,8 @@
 }
 
 @theme {
-  --font-sans: "Inter", "Outfit", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-sans: var(--font-primary), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-primary), ui-monospace, SFMono-Regular, monospace;
 
   --color-root-bg: var(--bg-app);
   --color-panel-bg: var(--bg-panel);
@@ -201,6 +216,7 @@ body {
   color: var(--color-text-primary);
   font-family: var(--font-sans);
   overflow-x: hidden;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Custom Scrollbar */
