@@ -516,8 +516,7 @@ export default function App() {
     "left",
   );
   const [sidebarVisible, setSidebarVisible] = useState(true);
-  const [isTrackInfoCollapsed, setIsTrackInfoCollapsed] = useState(true);
-  const [language, setLanguage] = useState<"EN" | "JP">("EN");
+    const [language, setLanguage] = useState<"EN" | "JP">("EN");
   const [isDragging, setIsDragging] = useState(false);
 
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -576,6 +575,40 @@ export default function App() {
 
   const [containerWidth, setContainerWidth] = useState(1000);
   const [containerHeight, setContainerHeight] = useState(800);
+  
+  const [sidebarOrder, setSidebarOrder] = useState(() => {
+    try {
+      const saved = localStorage.getItem("sidebarOrder");
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return [{ id: "formation" }, { id: "datasets" }, { id: "trackInfo" }];
+  });
+  const [isFormationExpanded, setIsFormationExpanded] = useState(() => {
+    const saved = localStorage.getItem("isFormationExpanded");
+    return saved ? saved === "true" : true;
+  });
+  const [isDataSetsExpanded, setIsDataSetsExpanded] = useState(() => {
+    const saved = localStorage.getItem("isDataSetsExpanded");
+    return saved ? saved === "true" : true;
+  });
+  const [isTrackInfoCollapsed, setIsTrackInfoCollapsed] = useState(() => {
+    const saved = localStorage.getItem("isTrackInfoCollapsed");
+    return saved ? saved === "true" : true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem("sidebarOrder", JSON.stringify(sidebarOrder));
+  }, [sidebarOrder]);
+  useEffect(() => {
+    localStorage.setItem("isFormationExpanded", String(isFormationExpanded));
+  }, [isFormationExpanded]);
+  useEffect(() => {
+    localStorage.setItem("isDataSetsExpanded", String(isDataSetsExpanded));
+  }, [isDataSetsExpanded]);
+  useEffect(() => {
+    localStorage.setItem("isTrackInfoCollapsed", String(isTrackInfoCollapsed));
+  }, [isTrackInfoCollapsed]);
+
   useEffect(() => {
     if (!scatterContainerRef.current) return;
     const observer = new ResizeObserver((entries) => {
@@ -1491,11 +1524,26 @@ export default function App() {
             sidebarVisible ? "w-[300px]" : "w-0 overflow-hidden opacity-0",
           )}
         >
-          <Panel
-            title={t("01 FORMATION ENGINE", "01 フォーム設定")}
-            className="shrink-0"
+          <ReactSortable
+            list={sidebarOrder}
+            setList={setSidebarOrder}
+            animation={200}
+            handle=".sidebar-drag-handle"
+            className="flex flex-col gap-4 h-full"
           >
-            <div className="grid grid-cols-2 gap-2">
+            {sidebarOrder.map((section) => {
+              if (section.id === "formation") {
+                return (
+                  <Panel
+                    key="formation"
+                    title={t("01 FORMATION ENGINE", "01 フォーム設定")}
+                    className={cn("shrink-0", !isFormationExpanded && "h-[37px]")}
+                    isCollapsible
+                    isExpanded={isFormationExpanded}
+                    onToggle={() => setIsFormationExpanded(!isFormationExpanded)}
+                    dragHandle
+                  >
+                    <div className="grid grid-cols-2 gap-2">
               <SolidButton
                 active={viewMode === "grid-sq"}
                 onClick={() => setViewMode("grid-sq")}
@@ -1587,14 +1635,21 @@ export default function App() {
                 </SolidButton>
               </div>
             </div>
-          </Panel>
-
-          <Panel
-            title={t("02 DATA SETS", "02 データセット")}
-            className="shrink-0 flex flex-col flex-1 min-h-[200px]"
-            contentClassName="flex flex-col p-4 overflow-hidden gap-3 h-full"
-          >
-            <div className="flex gap-2 shrink-0">
+                  </Panel>
+                );
+              } else if (section.id === "datasets") {
+                return (
+                  <Panel
+                    key="datasets"
+                    title={t("02 DATA SETS", "02 データセット")}
+                    className={cn("shrink-0 flex flex-col", isDataSetsExpanded ? "flex-1 min-h-[200px]" : "h-[37px]")}
+                    contentClassName="flex flex-col p-4 overflow-hidden gap-3 h-full"
+                    isCollapsible
+                    isExpanded={isDataSetsExpanded}
+                    onToggle={() => setIsDataSetsExpanded(!isDataSetsExpanded)}
+                    dragHandle
+                  >
+                    <div className="flex gap-2 shrink-0">
               <SolidButton
                 onClick={handleAddDatasetClick}
                 className="flex-1 justify-center text-accent"
@@ -1783,35 +1838,29 @@ export default function App() {
                 </div>
               )}
             </div>
-          </Panel>
-
-          <Panel
-            title={t("03 TRACK INFO", "03 トラック情報")}
-            className={cn(
-              "shrink-0 flex flex-col items-center min-w-0 w-full transition-all duration-300",
-              isTrackInfoCollapsed ? "h-[37px]" : "h-[260px]",
-            )}
-            contentClassName={cn(
-              "flex flex-col w-full min-w-0 transition-opacity duration-300",
-              isTrackInfoCollapsed
-                ? "opacity-0 p-0 pointer-events-none"
-                : "opacity-100 p-4",
-            )}
-            headerRight={
-              <button
-                onClick={() => setIsTrackInfoCollapsed(!isTrackInfoCollapsed)}
-                className="text-text-muted hover:text-text-primary transition-colors flex items-center justify-center -mr-2 p-1 px-2"
-                title={isTrackInfoCollapsed ? "EXPAND" : "COLLAPSE"}
-              >
-                {isTrackInfoCollapsed ? (
-                  <Plus size={14} />
-                ) : (
-                  <Minus size={14} />
-                )}
-              </button>
-            }
-          >
-            {selectedImage && !isTrackInfoCollapsed ? (
+                  </Panel>
+                );
+              } else if (section.id === "trackInfo") {
+                return (
+                  <Panel
+                    key="trackInfo"
+                    title={t("03 TRACK INFO", "03 トラック情報")}
+                    className={cn(
+                      "shrink-0 flex flex-col items-center min-w-0 w-full transition-all duration-300",
+                      isTrackInfoCollapsed ? "h-[37px]" : "h-[260px]",
+                    )}
+                    contentClassName={cn(
+                      "flex flex-col w-full min-w-0 transition-opacity duration-300",
+                      isTrackInfoCollapsed
+                        ? "opacity-0 p-0 pointer-events-none hidden"
+                        : "opacity-100 p-4",
+                    )}
+                    isCollapsible
+                    isExpanded={!isTrackInfoCollapsed}
+                    onToggle={() => setIsTrackInfoCollapsed(!isTrackInfoCollapsed)}
+                    dragHandle
+                  >
+                    {selectedImage && !isTrackInfoCollapsed ? (
               <div className="flex flex-col gap-3 h-full w-full min-w-0 overflow-hidden">
                 <div
                   className="flex-1 min-h-0 border border-panel-border rounded-sm overflow-hidden relative flex items-center justify-center cursor-pointer group bg-panel-bg w-full"
@@ -1866,7 +1915,12 @@ export default function App() {
                 {t("SELECT DATA UNIT", "データユニットを選択してください")}
               </div>
             ) : null}
-          </Panel>
+                  </Panel>
+                );
+              }
+              return null;
+            })}
+          </ReactSortable>
         </aside>
 
         {/* Main Display */}
@@ -2442,7 +2496,7 @@ export default function App() {
                     onPointerDown={(e) => { e.preventDefault(); startScroll("up"); }}
                     onPointerUp={(e) => { e.preventDefault(); stopScroll(); }}
                     onPointerLeave={(e) => { e.preventDefault(); stopScroll(); }}
-                    className="p-1.5 bg-btn-bg/85 backdrop-blur-sm border border-btn-border text-btn-text hover:text-btn-hover-text hover:border-btn-hover-border-t hover:bg-btn-hover-bg shadow-sm rounded-none transition-all touch-none focus:outline-none"
+                    className="p-1.5 bg-white/60 backdrop-blur-sm border border-gray-300/50 text-gray-600 hover:text-black hover:border-gray-400 hover:bg-white shadow-sm rounded-none transition-all touch-none focus:outline-none"
                     title="FAST SCROLL UP"
                   >
                     <ChevronsUp size={16} />
@@ -2451,7 +2505,7 @@ export default function App() {
                     onPointerDown={(e) => { e.preventDefault(); startSteppedScroll("up"); }}
                     onPointerUp={(e) => { e.preventDefault(); stopScroll(); }}
                     onPointerLeave={(e) => { e.preventDefault(); stopScroll(); }}
-                    className="p-1 bg-btn-bg/85 backdrop-blur-sm border border-btn-border text-btn-text hover:text-btn-hover-text hover:border-btn-hover-border-t hover:bg-btn-hover-bg shadow-sm rounded-none transition-all touch-none focus:outline-none"
+                    className="p-1 bg-white/60 backdrop-blur-sm border border-gray-300/50 text-gray-600 hover:text-black hover:border-gray-400 hover:bg-white shadow-sm rounded-none transition-all touch-none focus:outline-none"
                     title="SCROLL UP"
                   >
                     <ChevronUp size={16} />
@@ -2460,7 +2514,7 @@ export default function App() {
                     onPointerDown={(e) => { e.preventDefault(); startSteppedScroll("down"); }}
                     onPointerUp={(e) => { e.preventDefault(); stopScroll(); }}
                     onPointerLeave={(e) => { e.preventDefault(); stopScroll(); }}
-                    className="p-1 bg-btn-bg/85 backdrop-blur-sm border border-btn-border text-btn-text hover:text-btn-hover-text hover:border-btn-hover-border-t hover:bg-btn-hover-bg shadow-sm rounded-none transition-all touch-none focus:outline-none"
+                    className="p-1 bg-white/60 backdrop-blur-sm border border-gray-300/50 text-gray-600 hover:text-black hover:border-gray-400 hover:bg-white shadow-sm rounded-none transition-all touch-none focus:outline-none"
                     title="SCROLL DOWN"
                   >
                     <ChevronDown size={16} />
@@ -2469,7 +2523,7 @@ export default function App() {
                     onPointerDown={(e) => { e.preventDefault(); startScroll("down"); }}
                     onPointerUp={(e) => { e.preventDefault(); stopScroll(); }}
                     onPointerLeave={(e) => { e.preventDefault(); stopScroll(); }}
-                    className="p-1.5 bg-btn-bg/85 backdrop-blur-sm border border-btn-border text-btn-text hover:text-btn-hover-text hover:border-btn-hover-border-t hover:bg-btn-hover-bg shadow-sm rounded-none transition-all touch-none focus:outline-none"
+                    className="p-1.5 bg-white/60 backdrop-blur-sm border border-gray-300/50 text-gray-600 hover:text-black hover:border-gray-400 hover:bg-white shadow-sm rounded-none transition-all touch-none focus:outline-none"
                     title="FAST SCROLL DOWN"
                   >
                     <ChevronsDown size={16} />
