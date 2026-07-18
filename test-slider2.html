@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  .flex-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 200px;
+    background: #ccc;
+    position: relative;
+  }
+  .slider {
+    width: 200px;
+    height: 6px;
+    transform: rotate(-90deg);
+    flex-shrink: 0;
+    margin: 0;
+  }
+</style>
+</head>
+<body>
+  <div class="flex-container">
+    <input type="range" class="slider" />
+  </div>
+</body>
+</html>

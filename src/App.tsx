@@ -1359,9 +1359,9 @@ export default function App() {
         zIndex: 100,
         boxShadow: "0 20px 40px rgba(0,0,0,0.6)",
       }}
-      whileHover={{
-        scale: viewMode !== "free" ? 1.01 : 1.02,
-      }}
+      whileHover={
+        viewMode === "free" ? { scale: 1.02 } : {}
+      }
       initial={
         viewMode === "free"
           ? {
