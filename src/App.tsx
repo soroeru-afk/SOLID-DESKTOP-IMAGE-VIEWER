@@ -1760,7 +1760,7 @@ export default function App() {
             <SolidButton
               active={true}
               onClick={cycleTheme}
-              className="h-6 w-[110px] px-3 py-0 text-[10px] flex items-center gap-2 justify-center"
+              className="h-6 w-[120px] px-3 py-0 text-[10px] flex items-center gap-2 justify-center whitespace-nowrap"
             >
               <Palette size={12} /> THEME: {theme}
             </SolidButton>
