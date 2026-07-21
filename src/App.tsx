@@ -8,6 +8,7 @@ import {
 } from "motion/react";
 import {
   FolderOpen,
+  FolderPlus,
   LayoutGrid,
   List,
   ScatterChart,
@@ -35,6 +36,7 @@ import {
   Edit2,
   Search,
   FlipHorizontal,
+  Palette,
 } from "lucide-react";
 import {
   ImageRecord,
@@ -146,6 +148,44 @@ const formatBytes = (bytes: number) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 };
 
+const getFilesFromDataTransferItems = async (items: DataTransferItemList) => {
+  const files: File[] = [];
+  const queue: any[] = [];
+  const folderNames = new Set<string>();
+  
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (item.kind === 'file') {
+      const entry = item.webkitGetAsEntry?.();
+      if (entry) {
+        queue.push(entry);
+        if (entry.isDirectory) {
+          folderNames.add(entry.name);
+        }
+      } else {
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+    }
+  }
+  
+  while (queue.length > 0) {
+    const entry = queue.shift();
+    if (entry.isFile) {
+      const file = await new Promise<File>((resolve) => entry.file(resolve));
+      files.push(file);
+    } else if (entry.isDirectory) {
+      const dirReader = entry.createReader();
+      const entries = await new Promise<any[]>((resolve) => {
+        dirReader.readEntries(resolve);
+      });
+      queue.push(...entries);
+    }
+  }
+  
+  return { files, folderNames: Array.from(folderNames) };
+};
+
 export default function App() {
   const [datasets, setDatasets] = useState<DatasetRecord[]>([]);
   const [datasetCounts, setDatasetCounts] = useState<Record<string, number>>(
@@ -193,6 +233,12 @@ export default function App() {
       return (saved as "NAVY" | "BLACK" | "RED" | "LIGHT" | "PAPER") || "BLACK";
     }
   );
+
+  const cycleTheme = () => {
+    const themes = ["NAVY", "BLACK", "RED", "LIGHT", "PAPER"] as const;
+    const idx = themes.indexOf(theme);
+    setTheme(themes[(idx + 1) % themes.length]);
+  };
   const [canvasBg, setCanvasBg] = useState<
     "theme" | "black" | "white" | "checker"
   >("white");
@@ -529,6 +575,7 @@ export default function App() {
   const [sidebarVisible, setSidebarVisible] = useState(true);
     const [language, setLanguage] = useState<"EN" | "JP">("EN");
   const [isDragging, setIsDragging] = useState(false);
+  const [dragTarget, setDragTarget] = useState<"add" | "new" | null>(null);
 
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(
@@ -782,6 +829,7 @@ export default function App() {
   const processFiles = async (
     fileList: FileList | File[],
     datasetId: string,
+    forceLoad: boolean = false
   ) => {
     const files: File[] = [];
     for (let i = 0; i < fileList.length; i++) {
@@ -831,7 +879,7 @@ export default function App() {
 
         await storeImages(records);
         await loadDatasets();
-        if (datasetId === activeDatasetId) {
+        if (datasetId === activeDatasetId || forceLoad) {
           await loadImages(datasetId);
         }
       }
@@ -1243,17 +1291,54 @@ export default function App() {
     setShowClearAllModal(false);
   };
 
+  const handleFilesDrop = async (e: React.DragEvent | DragEvent, forceNewDataset: boolean) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    setDragTarget(null);
+    
+    if (e.dataTransfer && e.dataTransfer.items) {
+      setIsReadingDirectory(true);
+      const { files, folderNames } = await getFilesFromDataTransferItems(e.dataTransfer.items as any);
+      setIsReadingDirectory(false);
+      
+      if (files.length === 0) return;
+      
+      let targetDatasetId = activeDatasetId;
+      
+      if (forceNewDataset || !targetDatasetId || targetDatasetId === "all") {
+        const dsName = folderNames.length > 0 ? folderNames[0] : "NEW DATASET";
+        const ds = await createDataset(dsName.toUpperCase());
+        const newId = ds.id;
+        targetDatasetId = newId;
+        setActiveDatasetId(newId);
+        await loadDatasets();
+      }
+      
+      if (targetDatasetId && targetDatasetId !== "all") {
+        await processFiles(files, targetDatasetId, forceNewDataset || !activeDatasetId || activeDatasetId === "all");
+      }
+    } else if (e.dataTransfer && e.dataTransfer.files) {
+      if (forceNewDataset || !activeDatasetId || activeDatasetId === "all") {
+         const ds = await createDataset("NEW DATASET");
+         setActiveDatasetId(ds.id);
+         await loadDatasets();
+         await processFiles(e.dataTransfer.files, ds.id, true);
+      } else {
+         await processFiles(e.dataTransfer.files, activeDatasetId);
+      }
+    }
+  };
+
   // Setup Global Drag & Drop on the window
   useEffect(() => {
-    if (!activeDatasetId || activeDatasetId === "all") return;
-
     let dragCounter = 0;
 
     const onDragEnter = (e: DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
       dragCounter++;
-      if (e.dataTransfer?.types.includes("Files")) {
+      if (dragCounter > 0) {
         setIsDragging(true);
       }
     };
@@ -1276,13 +1361,8 @@ export default function App() {
     };
 
     const onDrop = async (e: DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
       dragCounter = 0;
-      setIsDragging(false);
-      if (e.dataTransfer && e.dataTransfer.files) {
-        await processFiles(e.dataTransfer.files, activeDatasetId);
-      }
+      await handleFilesDrop(e, false);
     };
 
     window.addEventListener("dragenter", onDragEnter);
@@ -1577,18 +1657,26 @@ export default function App() {
     <div className="h-screen w-screen flex flex-col p-4 gap-4 box-border overflow-hidden select-none">
       {/* Drag & Drop Overlay */}
       <AnimatePresence>
-        {isDragging && activeDatasetId && (
+        {isDragging && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-root-bg/80 backdrop-blur-sm border-2 border-dashed border-accent m-4 flex flex-col items-center justify-center font-mono pointer-events-none"
+            className="fixed inset-0 z-[100] bg-panel-bg/80 backdrop-blur-sm border-[4px] border-dashed border-accent flex flex-col items-center justify-center pointer-events-none"
           >
-            <FolderOpen size={64} className="text-accent mb-4" />
-            <h2 className="text-2xl text-text-primary tracking-widest mb-2">
-              DROP FILES HERE
-            </h2>
-            <p className="text-text-secondary">ADDING TO ACTIVE DATASET</p>
+            <div className="bg-panel-bg p-8 rounded-2xl shadow-2xl flex flex-col items-center gap-6 animate-pulse">
+              <div className="w-24 h-24 rounded-full bg-accent/20 flex items-center justify-center">
+                <ImageIcon size={48} className="text-accent" />
+              </div>
+              <div className="text-center">
+                <h2 className="text-2xl font-mono text-accent font-bold mb-2 tracking-widest">
+                  DROP FILES HERE
+                </h2>
+                <p className="text-text-secondary">
+                  {!activeDatasetId || activeDatasetId === "all" ? "CREATING NEW DATASET" : "ADDING TO ACTIVE DATASET"}
+                </p>
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1623,99 +1711,62 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4 h-full">
-          <div className="flex items-center gap-2 h-full mr-2">
+        <div className="flex items-center gap-4 h-full mr-4">
+          <div className="flex items-center gap-2 h-full">
+            <span className="text-[10px] uppercase font-mono tracking-widest text-text-muted">SIZE:</span>
+            <div className="w-24 flex items-center">
+              <input type="range" min="60" max="600" value={itemScale} onChange={(e) => setItemScale(Number(e.target.value))} className="w-full" />
+            </div>
+            <span className="text-[10px] font-mono text-text-primary w-8 text-right">{itemScale}</span>
+          </div>
+
+          <div className="flex items-center gap-2 h-full">
+            <span className="text-[10px] uppercase font-mono tracking-widest text-text-muted">GAP:</span>
+            <div className="w-24 flex items-center">
+              <input type="range" min="0" max="120" value={gridGap} onChange={(e) => setGridGap(Number(e.target.value))} className="w-full" />
+            </div>
+            <span className="text-[10px] font-mono text-text-primary w-6 text-right">{gridGap}</span>
+          </div>
+
+          <div className="flex items-center gap-2 h-full">
             <span className="text-[10px] uppercase font-mono tracking-widest text-text-muted">
               CANVAS:
             </span>
-            <div className="flex gap-1 h-full py-1">
-              <SolidButton
-                active={canvasBg === "theme"}
-                onClick={() => setCanvasBg("theme")}
-                className="w-[42px] px-0 py-0 text-[10px]"
-              >
-                AUTO
-              </SolidButton>
-              <SolidButton
-                active={canvasBg === "black"}
-                onClick={() => setCanvasBg("black")}
-                className="w-[42px] px-0 py-0 text-[10px]"
-              >
-                BLK
-              </SolidButton>
-              <SolidButton
-                active={canvasBg === "white"}
-                onClick={() => setCanvasBg("white")}
-                className="w-[42px] px-0 py-0 text-[10px]"
-              >
-                WHT
-              </SolidButton>
-              <SolidButton
-                active={canvasBg === "checker"}
-                onClick={() => setCanvasBg("checker")}
-                className="w-[42px] px-0 py-0 text-[10px]"
-              >
-                CHK
-              </SolidButton>
+            <div className="flex gap-1 h-full py-2 items-center">
+              <SolidButton active={canvasBg === "theme"} onClick={() => setCanvasBg("theme")} className="w-10 h-6 px-0 py-0 text-[10px]">AUTO</SolidButton>
+              <SolidButton active={canvasBg === "black"} onClick={() => setCanvasBg("black")} className="w-10 h-6 px-0 py-0 text-[10px]">BLK</SolidButton>
+              <SolidButton active={canvasBg === "white"} onClick={() => setCanvasBg("white")} className="w-10 h-6 px-0 py-0 text-[10px]">WHT</SolidButton>
+              <SolidButton active={canvasBg === "checker"} onClick={() => setCanvasBg("checker")} className="w-10 h-6 px-0 py-0 text-[10px]">CHK</SolidButton>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 h-full mr-2">
-            <span className="text-[10px] uppercase font-mono tracking-widest text-text-muted">
-              THEME:
-            </span>
-            <div className="flex gap-1 h-full py-1">
-              <SolidButton
-                active={theme === "NAVY"}
-                onClick={() => setTheme("NAVY")}
-                className="w-[42px] px-0 py-0 text-[10px]"
-              >
-                NAVY
-              </SolidButton>
-              <SolidButton
-                active={theme === "BLACK"}
-                onClick={() => setTheme("BLACK")}
-                className="w-[42px] px-0 py-0 text-[10px]"
-              >
-                BLACK
-              </SolidButton>
-              <SolidButton
-                active={theme === "RED"}
-                onClick={() => setTheme("RED")}
-                className="w-[42px] px-0 py-0 text-[10px]"
-              >
-                RED
-              </SolidButton>
-              <SolidButton
-                active={theme === "LIGHT"}
-                onClick={() => setTheme("LIGHT")}
-                className="w-[42px] px-0 py-0 text-[10px]"
-              >
-                LIGHT
-              </SolidButton>
-              <SolidButton
-                active={theme === "PAPER"}
-                onClick={() => setTheme("PAPER")}
-                className="w-[42px] px-0 py-0 text-[10px]"
-              >
-                PAPER
-              </SolidButton>
-            </div>
-            <div className="w-px h-6 bg-panel-border mx-2" />
+          <div className="flex items-center gap-2 h-full">
             <span className="text-[10px] uppercase font-mono tracking-widest text-text-muted">
               FONT:
             </span>
             <select
               value={appFont}
               onChange={(e) => setAppFont(e.target.value as any)}
-              className="bg-transparent outline-none text-[10px] uppercase font-mono tracking-wider text-text-primary cursor-pointer border py-0.5 px-1 border-panel-border rounded"
+              className="bg-panel-bg outline-none text-[10px] uppercase font-mono tracking-wider text-text-primary cursor-pointer border h-6 px-2 border-panel-border rounded"
             >
-              <option value="GOTHIC" className="bg-root-bg text-text-primary">GOTHIC</option>
-              <option value="MARU" className="bg-root-bg text-text-primary">MARU</option>
-              <option value="MEIRYO" className="bg-root-bg text-text-primary">MEIRYO</option>
-              <option value="MONO" className="bg-root-bg text-text-primary">MONO</option>
+              <option value="GOTHIC">GOTHIC</option>
+              <option value="MARU">MARU</option>
+              <option value="MEIRYO">MEIRYO</option>
+              <option value="MONO">MONO</option>
             </select>
           </div>
+
+          <div className="flex items-center h-full">
+            <SolidButton
+              active={true}
+              onClick={cycleTheme}
+              className="h-6 w-[110px] px-3 py-0 text-[10px] flex items-center gap-2 justify-center"
+            >
+              <Palette size={12} /> THEME: {theme}
+            </SolidButton>
+          </div>
+
+          <div className="w-px h-6 bg-panel-border mx-1" />
 
           <div className="flex bg-root-bg rounded border border-panel-border overflow-hidden text-[10px] font-mono leading-none h-6 hidden sm:flex">
             <button
@@ -2111,6 +2162,50 @@ export default function App() {
                 </div>
               )}
             </div>
+            {/* DROP ZONES */}
+            <div className="shrink-0 flex gap-2 pt-2 border-t border-panel-border mt-auto">
+              {/* ADD TO ACTIVE DATASET AREA */}
+              <div
+                className={cn(
+                  "flex-1 border border-dashed flex flex-col items-center justify-center transition-all duration-300 py-3 rounded cursor-pointer",
+                  dragTarget === "add" ? "border-accent bg-accent/10" : "border-text-muted/50 bg-panel-bg text-text-muted hover:border-text-muted"
+                )}
+                onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDragTarget("add"); }}
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragTarget("add"); e.dataTransfer.dropEffect = "copy"; }}
+                onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragTarget(null); }}
+                onDrop={(e) => {
+                   e.preventDefault(); e.stopPropagation();
+                   handleFilesDrop(e, false);
+                   setDragTarget(null);
+                }}
+              >
+                <FolderPlus size={16} className={dragTarget === "add" ? "text-accent mb-1" : "mb-1"} />
+                <span className={cn("text-[9px] tracking-widest text-center leading-tight font-mono", dragTarget === "add" ? "text-text-primary" : "")}>
+                  ADD TO<br/>ACTIVE
+                </span>
+              </div>
+              
+              {/* CREATE NEW DATASET AREA */}
+              <div
+                className={cn(
+                  "flex-1 border border-dashed flex flex-col items-center justify-center transition-all duration-300 py-3 rounded cursor-pointer",
+                  dragTarget === "new" ? "border-accent bg-accent/10" : "border-text-muted/50 bg-panel-bg text-text-muted hover:border-text-muted"
+                )}
+                onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDragTarget("new"); }}
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragTarget("new"); e.dataTransfer.dropEffect = "copy"; }}
+                onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragTarget(null); }}
+                onDrop={(e) => {
+                   e.preventDefault(); e.stopPropagation();
+                   handleFilesDrop(e, true);
+                   setDragTarget(null);
+                }}
+              >
+                <FolderOpen size={16} className={dragTarget === "new" ? "text-accent mb-1" : "mb-1"} />
+                <span className={cn("text-[9px] tracking-widest text-center leading-tight font-mono", dragTarget === "new" ? "text-text-primary" : "")}>
+                  CREATE<br/>NEW
+                </span>
+              </div>
+            </div>
                   </Panel>
                 );
               } else if (section.id === "trackInfo") {
@@ -2474,42 +2569,9 @@ export default function App() {
                     } : {};
 
                     return (
-                      <Container
-                        {...containerProps}
-                        className={cn(
-                          "w-full h-auto",
-                          viewMode === "grid-sq" &&
-                            "grid content-start justify-center",
-                          viewMode === "grid-ma" && "flex items-start",
-                          viewMode === "list" && "flex flex-col",
-                        )}
-                        style={{
-                          ...(viewMode === "grid-sq"
-                            ? {
-                                gridTemplateColumns: `repeat(auto-fill, minmax(${itemScale}px, 1fr))`,
-                                gap: `${gridGap}px`,
-                              }
-                            : {}),
-                          ...(viewMode === "grid-ma"
-                            ? { gap: `${gridGap}px` }
-                            : {}),
-                          ...(viewMode === "list" ? { gap: `${gridGap}px` } : {}),
-                        }}
-                      >
-                    {(() => {
-
-                    if (searchQuery.trim()) {
-                      const groupedImages: Record<string, typeof sortedImages> = {};
-                      sortedImages.forEach(img => {
-                         if (!groupedImages[img.datasetId]) {
-                            groupedImages[img.datasetId] = [];
-                         }
-                         groupedImages[img.datasetId].push(img);
-                      });
-                      
-                      return (
-                        <div className="flex flex-col w-full h-auto">
-                          <div className="sticky top-4 z-50 flex items-center justify-center pointer-events-none mb-6">
+                      <>
+                        {searchQuery.trim() && (
+                          <div className="absolute top-4 left-0 w-full z-50 flex items-center justify-center pointer-events-none mb-6">
                             <div className="bg-panel-bg/70 backdrop-blur-md border border-panel-border/50 shadow-lg rounded-full px-6 py-2.5 flex items-center gap-3">
                               <span className="font-mono text-accent uppercase tracking-widest text-xs font-bold drop-shadow-md">
                                 SEARCH RESULTS: "{searchQuery}"
@@ -2520,7 +2582,42 @@ export default function App() {
                               </span>
                             </div>
                           </div>
-                          <div className="flex flex-col gap-8 w-full h-auto px-4 pb-8">
+                        )}
+                      <Container
+                        {...containerProps}
+                        className={cn(
+                          "w-full h-auto min-h-0",
+                          !searchQuery.trim() && viewMode === "grid-sq" && "grid content-start justify-center",
+                          !searchQuery.trim() && viewMode === "grid-ma" && "flex items-start",
+                          !searchQuery.trim() && viewMode === "list" && "flex flex-col",
+                        )}
+                        style={{
+                          ...(!searchQuery.trim() && viewMode === "grid-sq"
+                            ? {
+                                gridTemplateColumns: `repeat(auto-fill, minmax(${itemScale}px, 1fr))`,
+                                gap: `${gridGap}px`,
+                              }
+                            : {}),
+                          ...(!searchQuery.trim() && viewMode === "grid-ma"
+                            ? { gap: `${gridGap}px` }
+                            : {}),
+                          ...(!searchQuery.trim() && viewMode === "list" ? { gap: `${gridGap}px` } : {}),
+                        }}
+                      >
+                    {(() => {
+
+                    if (searchQuery.trim() && viewMode !== "free") {
+                      const groupedImages: Record<string, typeof sortedImages> = {};
+                      sortedImages.forEach(img => {
+                         if (!groupedImages[img.datasetId]) {
+                            groupedImages[img.datasetId] = [];
+                         }
+                         groupedImages[img.datasetId].push(img);
+                      });
+                      
+                      return (
+                        <div className="flex flex-col w-full h-auto">
+                          <div className="flex flex-col gap-8 w-full h-auto px-4 pb-8 mt-16">
                           {Object.entries(groupedImages).map(([datasetId, imgs]) => {
                              const dataset = datasets.find(d => d.id === datasetId);
                              const datasetName = dataset ? dataset.name : "UNKNOWN";
@@ -2613,6 +2710,7 @@ export default function App() {
                       });
                     })()}
                   </Container>
+                  </>
                     );
                   })()}
                   {sortedImages.length === 0 && !isLoading && (
