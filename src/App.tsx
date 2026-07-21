@@ -1891,42 +1891,6 @@ export default function App() {
             </div>
 
             <div className="mt-4 pt-4 border-t border-panel-border flex flex-col gap-2">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-[10px] font-mono text-text-muted uppercase tracking-widest">
-                  IMAGE SCALE
-                </span>
-                <span className="text-[10px] font-mono text-accent">
-                  {itemScale} PX
-                </span>
-              </div>
-              <input
-                type="range"
-                min="60"
-                max="600"
-                value={itemScale}
-                onChange={(e) => setItemScale(Number(e.target.value))}
-              />
-            </div>
-
-            <div className="mt-2 flex flex-col gap-2">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-[10px] font-mono text-text-muted uppercase tracking-widest">
-                  GRID GAP
-                </span>
-                <span className="text-[10px] font-mono text-accent">
-                  {gridGap} PX
-                </span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="120"
-                value={gridGap}
-                onChange={(e) => setGridGap(Number(e.target.value))}
-              />
-            </div>
-
-            <div className="mt-4 pt-4 border-t border-panel-border flex flex-col gap-2">
               <span className="text-[10px] font-mono text-text-muted uppercase tracking-widest mb-1">
                 OPEN IMAGE ACTION
               </span>
