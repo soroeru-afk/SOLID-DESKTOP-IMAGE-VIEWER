@@ -176,9 +176,17 @@ const getFilesFromDataTransferItems = async (items: DataTransferItemList) => {
       files.push(file);
     } else if (entry.isDirectory) {
       const dirReader = entry.createReader();
-      const entries = await new Promise<any[]>((resolve) => {
-        dirReader.readEntries(resolve);
-      });
+      let entries: any[] = [];
+      let readEntries = async () => {
+        return new Promise<any[]>((resolve) => {
+          dirReader.readEntries(resolve);
+        });
+      };
+      while (true) {
+        const result = await readEntries();
+        if (result.length === 0) break;
+        entries.push(...result);
+      }
       queue.push(...entries);
     }
   }
@@ -682,6 +690,18 @@ export default function App() {
   // Apply Theme
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
+    setTimeout(() => {
+      const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--bg-app').trim();
+      if (bgColor) {
+        let metaThemeColor = document.querySelector('meta[name="theme-color"]');
+        if (!metaThemeColor) {
+          metaThemeColor = document.createElement('meta');
+          metaThemeColor.setAttribute('name', 'theme-color');
+          document.head.appendChild(metaThemeColor);
+        }
+        metaThemeColor.setAttribute('content', bgColor);
+      }
+    }, 10);
   }, [theme]);
 
   // Load from DB on mount
