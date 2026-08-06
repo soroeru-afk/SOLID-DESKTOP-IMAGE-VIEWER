@@ -418,6 +418,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isReadingDirectory, setIsReadingDirectory] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showFullscreenUI, setShowFullscreenUI] = useState(true);
   const [fullscreenScale, setFullscreenScale] = useState(1);
   const [fullscreenRotation, setFullscreenRotation] = useState(0);
   const [fullscreenFlipX, setFullscreenFlipX] = useState(false);
@@ -451,9 +452,7 @@ export default function App() {
       }
     };
     stepScroll();
-    scrollTimeoutRef.current = setTimeout(() => {
-      scrollIntervalRef.current = setInterval(stepScroll, 16);
-    }, 150);
+    scrollIntervalRef.current = setInterval(stepScroll, 16);
   };
 
   const stopScroll = () => {
@@ -713,6 +712,21 @@ export default function App() {
   // Apply Theme
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
+    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    let color = "#000000"; // default for BLACK
+    if (theme === "LIGHT") color = "#e2e8f0";
+    else if (theme === "PAPER") color = "#f5f5f0";
+    else if (theme === "RED") color = "#0d0404";
+    else if (theme === "NAVY") color = "#06090e";
+    
+    if (metaThemeColor) {
+      metaThemeColor.setAttribute("content", color);
+    } else {
+      const meta = document.createElement("meta");
+      meta.name = "theme-color";
+      meta.content = color;
+      document.head.appendChild(meta);
+    }
   }, [theme]);
 
   // Load from DB on mount
@@ -1240,7 +1254,43 @@ export default function App() {
   }, [selectedImage, isFullscreen]);
 
   useEffect(() => {
+    const pressedKeys = new Set<string>();
+    let kbdScrollInterval: ReturnType<typeof setInterval> | null = null;
+
+    const startKbdScroll = () => {
+      if (kbdScrollInterval) return;
+      kbdScrollInterval = setInterval(() => {
+        if (!scrollContainerRef.current) return;
+        let dy = 0;
+        let dx = 0;
+        
+        // For list scrolling
+        if (!isFullscreen) {
+          if (pressedKeys.has("ArrowUp")) dy -= 15;
+          if (pressedKeys.has("ArrowDown")) dy += 15;
+        }
+
+        if (dy !== 0 || dx !== 0) {
+          scrollContainerRef.current.scrollBy({ top: dy, left: dx, behavior: "auto" });
+        }
+      }, 16);
+    };
+
+    const stopKbdScroll = () => {
+      if (kbdScrollInterval) {
+        clearInterval(kbdScrollInterval);
+        kbdScrollInterval = null;
+      }
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      
+      pressedKeys.add(e.key);
+      if (!isFullscreen && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        e.preventDefault();
+        startKbdScroll();
+      }
       // 共通ショートカット
       const key = e.key;
       const code = e.code;
@@ -1303,6 +1353,11 @@ export default function App() {
       }
 
       // フルスクリーン時
+      if (key === "u" || key === "U") {
+        e.preventDefault();
+        setShowFullscreenUI(prev => !prev);
+        return;
+      }
       if (key === "Escape" || key === "Backspace") {
         e.preventDefault();
         setIsFullscreen(false);
@@ -1410,9 +1465,22 @@ export default function App() {
         imgControls.start({ x: 0, y: 0, scale: 1, transition: { duration: 0 } });
       }
     };
+    
+    const handleKeyUp = (e: KeyboardEvent) => {
+      pressedKeys.delete(e.key);
+      if (!pressedKeys.has("ArrowUp") && !pressedKeys.has("ArrowDown")) {
+        stopKbdScroll();
+      }
+    };
+    
     window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
 
-  return () => window.removeEventListener("keydown", handleKeyDown);
+  return () => {
+    window.removeEventListener("keydown", handleKeyDown);
+    window.removeEventListener("keyup", handleKeyUp);
+    stopKbdScroll();
+  };
   }, [
     isFullscreen,
     goToNextImage,
@@ -3044,6 +3112,13 @@ export default function App() {
                 />
               </div>
 
+              <AnimatePresence>
+                {showFullscreenUI && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                  >
               {/* Overlay Meta */}
               <div className="absolute top-0 left-0 p-3 pointer-events-none max-w-[80%] flex flex-col gap-1">
                 <h2
@@ -3329,6 +3404,9 @@ export default function App() {
               >
                 <X size={26} />
               </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           </motion.div>
         )}
