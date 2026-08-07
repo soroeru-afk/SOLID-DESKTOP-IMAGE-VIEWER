@@ -713,6 +713,21 @@ export default function App() {
   // Apply Theme
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
+    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    let color = "#000000"; // default for BLACK
+    if (theme === "LIGHT") color = "#e2e8f0";
+    else if (theme === "PAPER") color = "#f5f5f0";
+    else if (theme === "RED") color = "#0d0404";
+    else if (theme === "NAVY") color = "#06090e";
+    
+    if (metaThemeColor) {
+      metaThemeColor.setAttribute("content", color);
+    } else {
+      const meta = document.createElement("meta");
+      meta.name = "theme-color";
+      meta.content = color;
+      document.head.appendChild(meta);
+    }
   }, [theme]);
 
   // Load from DB on mount
