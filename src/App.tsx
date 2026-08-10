@@ -37,6 +37,7 @@ import {
   Search,
   FlipHorizontal,
   Palette,
+  Star,
 } from "lucide-react";
 import {
   ImageRecord,
@@ -51,6 +52,7 @@ import {
   deleteImage,
   renameImage,
   updateImagesDataset,
+  copyImagesToDataset,
   renameDataset,
   getTotalImageCount,
   getImageCountByDataset,
@@ -637,6 +639,16 @@ export default function App() {
   const [showDeleteDatasetModal, setShowDeleteDatasetModal] = useState(false);
   const [datasetToDelete, setDatasetToDelete] = useState<string | null>(null);
   const [overwriteFiles, setOverwriteFiles] = useState<{ files: File[], datasetId: string, forceLoad: boolean, existingMap: Map<string, ImageRecord> } | null>(null);
+  const [favoriteDatasetId, setFavoriteDatasetId] = useState<string | null>(() => localStorage.getItem("favoriteDatasetId"));
+  const [fullscreenFavorited, setFullscreenFavorited] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (favoriteDatasetId) {
+      localStorage.setItem("favoriteDatasetId", favoriteDatasetId);
+    } else {
+      localStorage.removeItem("favoriteDatasetId");
+    }
+  }, [favoriteDatasetId]);
 
   // Custom Prompts/Modals because alert/prompt/confirm are unreliable in iframe
   const [showNewDatasetModal, setShowNewDatasetModal] = useState(false);
@@ -1199,6 +1211,23 @@ export default function App() {
       await loadDatasets();
     }
     setIsLoading(false);
+  };
+
+  const handleCopySelected = async (newDatasetId: string, customIds?: string[]) => {
+    setIsLoading(true);
+    const idsToCopy = customIds || Array.from(selectedImageIds);
+    await copyImagesToDataset(idsToCopy, newDatasetId);
+    if (!customIds) {
+      setSelectedImageIds(new Set());
+      setLastSelectedIdx(null);
+      setIsSelectionMode(false);
+    }
+    if (activeDatasetId) {
+      await loadImages(activeDatasetId);
+      await loadDatasets();
+    }
+    setIsLoading(false);
+    showNotification(language === "JP" ? "コピーしました" : "Copied");
   };
 
   const handleCustomMove = async (direction: "top" | "bottom" | "up" | "down") => {
@@ -2337,26 +2366,41 @@ export default function App() {
                             ({datasetCounts[ds.id] || 0})
                           </span>
                         </span>
-                        {activeDatasetId === ds.id && (
-                          <div className="flex gap-2 shrink-0 bg-transparent items-center">
-                            <button
-                              onClick={(e) =>
-                                handleRenameDatasetClick(e, ds.id, ds.name)
-                              }
-                              className="hover:text-amber-500 opacity-50 hover:opacity-100 transition-opacity"
-                              title="RENAME DATASET"
-                            >
-                              [E]
-                            </button>
-                            <button
-                              onClick={(e) => handleDeleteDataset(e, ds.id)}
-                              className="hover:text-red-500 opacity-50 hover:opacity-100 transition-opacity"
-                              title="DELETE DATASET"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        )}
+                        <div className="flex gap-2 shrink-0 bg-transparent items-center">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setFavoriteDatasetId(prev => prev === ds.id ? null : ds.id);
+                            }}
+                            className={cn(
+                              "transition-opacity",
+                              favoriteDatasetId === ds.id ? "text-yellow-400 opacity-100" : "opacity-0 group-hover:opacity-50 hover:!opacity-100"
+                            )}
+                            title="FAVORITE DATASET"
+                          >
+                            <Star size={14} fill={favoriteDatasetId === ds.id ? "currentColor" : "none"} />
+                          </button>
+                          {activeDatasetId === ds.id && (
+                            <>
+                              <button
+                                onClick={(e) =>
+                                  handleRenameDatasetClick(e, ds.id, ds.name)
+                                }
+                                className="hover:text-amber-500 opacity-50 hover:opacity-100 transition-opacity"
+                                title="RENAME DATASET"
+                              >
+                                [E]
+                              </button>
+                              <button
+                                onClick={(e) => handleDeleteDataset(e, ds.id)}
+                                className="hover:text-red-500 opacity-50 hover:opacity-100 transition-opacity"
+                                title="DELETE DATASET"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </Reorder.Item>
                     ))}
                   </Reorder.Group>
@@ -2687,6 +2731,15 @@ export default function App() {
                     </button>
                   </div>
                   <div className="flex items-center gap-1">
+                    {favoriteDatasetId && favoriteDatasetId !== activeDatasetId && selectedImageIds.size > 0 && (
+                      <button
+                        onClick={() => handleCopySelected(favoriteDatasetId)}
+                        className="text-[10px] uppercase font-mono tracking-wider transition-colors text-yellow-500 hover:text-yellow-400 px-2 py-0.5 bg-yellow-500/10 hover:bg-yellow-500/20 rounded mr-1 flex items-center gap-1"
+                        title={t("COPY TO FAVORITE", "お気に入りにコピー")}
+                      >
+                        <Star size={12} fill="currentColor" /> COPY TO FAV
+                      </button>
+                    )}
                     <select
                       value={moveTargetId}
                       onChange={(e) => setMoveTargetId(e.target.value)}
@@ -2696,21 +2749,32 @@ export default function App() {
                         selectedImageIds.size > 0 ? "text-text-primary cursor-pointer border py-0.5 px-1 border-panel-border rounded" : "text-text-muted cursor-not-allowed border py-0.5 px-1 border-transparent"
                       )}
                     >
-                      <option value="" className="bg-white text-black">MOVE TO...</option>
+                      <option value="" className="bg-white text-black">SEND TO...</option>
                       {datasets.filter(d => d.id !== activeDatasetId).map(ds => (
                         <option key={ds.id} value={ds.id} className="bg-white text-black">{ds.name}</option>
                       ))}
                     </select>
                     {moveTargetId && selectedImageIds.size > 0 && (
-                      <button
-                        onClick={() => {
-                          handleMoveSelected(moveTargetId);
-                          setMoveTargetId("");
-                        }}
-                        className="text-[10px] uppercase font-mono tracking-wider transition-colors text-accent hover:text-accent/80 px-2 py-0.5 bg-accent/10 rounded"
-                      >
-                        MOVE
-                      </button>
+                      <>
+                        <button
+                          onClick={() => {
+                            handleCopySelected(moveTargetId);
+                            setMoveTargetId("");
+                          }}
+                          className="text-[10px] uppercase font-mono tracking-wider transition-colors text-blue-500 hover:text-blue-400 px-2 py-0.5 bg-blue-500/10 rounded mr-1"
+                        >
+                          COPY
+                        </button>
+                        <button
+                          onClick={() => {
+                            handleMoveSelected(moveTargetId);
+                            setMoveTargetId("");
+                          }}
+                          className="text-[10px] uppercase font-mono tracking-wider transition-colors text-accent hover:text-accent/80 px-2 py-0.5 bg-accent/10 rounded"
+                        >
+                          MOVE
+                        </button>
+                      </>
                     )}
                   </div>
                   <button
@@ -3408,6 +3472,35 @@ export default function App() {
                   <RotateCw size={18} />
                 </button>
               </div>
+              {/* Favorite Button in Fullscreen */}
+              {favoriteDatasetId && favoriteDatasetId !== activeDatasetId && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (selectedImage) {
+                      handleCopySelected(favoriteDatasetId, [selectedImage.id]);
+                      setFullscreenFavorited(prev => {
+                        const next = new Set(prev);
+                        next.add(selectedImage.id);
+                        return next;
+                      });
+                    }
+                  }}
+                  className={cn(
+                    "absolute top-6 right-[196px] w-12 h-12 flex items-center justify-center rounded-full transition-all hover:scale-110 outline-none focus:outline-none backdrop-blur-sm border shadow-sm",
+                    isFullscreenDarkText
+                      ? "bg-white/20 border-black/10 text-black/70 hover:text-black hover:bg-white/40"
+                      : "bg-black/20 border-white/10 text-white/70 hover:text-white hover:bg-black/40"
+                  )}
+                  title={t("COPY TO FAVORITE", "お気に入りにコピー")}
+                >
+                  <Star 
+                    size={24} 
+                    className={selectedImage && fullscreenFavorited.has(selectedImage.id) ? "text-yellow-400" : "text-inherit"} 
+                    fill={selectedImage && fullscreenFavorited.has(selectedImage.id) ? "currentColor" : "none"} 
+                  />
+                </button>
+              )}
               {/* Portrait Mode Toggle Button */}
               <button
                 onClick={(e) => {

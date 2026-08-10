@@ -143,6 +143,20 @@ export async function getImageCountByDataset(datasetId: string): Promise<number>
   return db.countFromIndex(STORE_NAME_IMAGES, 'by-dataset', datasetId);
 }
 
+export async function copyImagesToDataset(imageIds: string[], newDatasetId: string) {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME_IMAGES, 'readwrite');
+  
+  for (const id of imageIds) {
+    const img = await tx.store.get(id);
+    if (img) {
+      const newImg = { ...img, datasetId: newDatasetId, id: `${newDatasetId}-${img.name}-${img.lastModified}-${img.size}` };
+      await tx.store.put(newImg);
+    }
+  }
+  await tx.done;
+}
+
 export async function updateImagesDataset(imageIds: string[], newDatasetId: string) {
   const db = await initDB();
   const tx = db.transaction(STORE_NAME_IMAGES, 'readwrite');
