@@ -17,6 +17,8 @@ export interface ImageRecord {
   data: Blob;
   orderIndex?: number;
   autoBg?: "black" | "white" | "checkerboard";
+  width?: number;
+  height?: number;
 }
 
 interface ImageViewerDB extends DBSchema {

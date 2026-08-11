@@ -38,6 +38,8 @@ import {
   FlipHorizontal,
   Palette,
   Star,
+  Smartphone,
+  RectangleHorizontal,
 } from "lucide-react";
 import {
   ImageRecord,
@@ -65,15 +67,26 @@ import { ReactSortable } from "react-sortablejs";
 
 type ViewMode = "grid-sq" | "grid-ma" | "list" | "free";
 
-const analyzeImageBlob = async (blob: Blob): Promise<"black" | "white" | "checkerboard"> => {
+interface ImageMetadata {
+  bg: "black" | "white" | "checkerboard";
+  width: number;
+  height: number;
+}
+
+const analyzeImageBlob = async (blob: Blob): Promise<ImageMetadata> => {
   return new Promise((resolve) => {
     const img = new Image();
     const url = URL.createObjectURL(blob);
     img.onload = () => {
       URL.revokeObjectURL(url);
+      const originalWidth = img.width || 1;
+      const originalHeight = img.height || 1;
+      const fallback = { bg: "checkerboard" as const, width: originalWidth, height: originalHeight };
+      const resolveBg = (bg: "black" | "white" | "checkerboard") => resolve({ bg, width: originalWidth, height: originalHeight });
+
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (!ctx) return resolve("checkerboard");
+      if (!ctx) return resolve(fallback);
 
       const MAX_SIZE = 64;
       let width = img.width;
@@ -83,7 +96,7 @@ const analyzeImageBlob = async (blob: Blob): Promise<"black" | "white" | "checke
         width = Math.floor(width * ratio);
         height = Math.floor(height * ratio);
       }
-      if (width === 0 || height === 0) return resolve("checkerboard");
+      if (width === 0 || height === 0) return resolve(fallback);
       
       canvas.width = width;
       canvas.height = height;
@@ -117,19 +130,19 @@ const analyzeImageBlob = async (blob: Blob): Promise<"black" | "white" | "checke
         if (isMostlyTransparent) {
           // For transparent images (logos/marks), we want contrast against the mark.
           // If mark is bright, use black canvas. If mark is dark, use white canvas.
-          return resolve(avgBrightness > 128 ? "black" : "white");
+          return resolveBg(avgBrightness > 128 ? "black" : "white");
         } else {
           // For opaque images, we want the canvas to blend with the background.
           // The background dominates the average brightness.
-          return resolve(avgBrightness > 128 ? "white" : "black");
+          return resolveBg(avgBrightness > 128 ? "white" : "black");
         }
       } catch (e) {
-        resolve("checkerboard");
+        resolve(fallback);
       }
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
-      resolve("checkerboard");
+      resolve({ bg: "checkerboard", width: 1, height: 1 });
     };
     img.src = url;
   });
@@ -263,6 +276,7 @@ export default function App() {
   const [sortField, setSortField] = useState<"name" | "size" | "type" | "date" | "custom" | "random">(
     "name",
   );
+  const [orientationFilter, setOrientationFilter] = useState<"all" | "portrait" | "landscape">("all");
   const [randomSeed, setRandomSeed] = useState(0);
   const [sortOrders, setSortOrders] = useState<Record<string, "asc" | "desc">>({
     name: "asc",
@@ -271,13 +285,13 @@ export default function App() {
     date: "desc",
     custom: "asc",
   });
-  const [scales, setScales] = useState<Record<ViewMode, number>>({
+  const [scales, setScales] = useState<Record<string, number>>({
     "grid-sq": 140,
     "grid-ma": 140,
     list: 140,
     free: 140,
   });
-  const [gaps, setGaps] = useState<Record<ViewMode, number>>({
+  const [gaps, setGaps] = useState<Record<string, number>>({
     "grid-sq": 24,
     "grid-ma": 24,
     list: 0,
@@ -405,15 +419,16 @@ export default function App() {
     }
   }, [randomSeed, activeDatasetId]);
 
-  const itemScale = scales[viewMode];
-  const gridGap = gaps[viewMode];
+  const scaleKey = orientationFilter === "all" ? viewMode : `${viewMode}-${orientationFilter}`;
+  const itemScale = scales[scaleKey] ?? scales[viewMode] ?? 140;
+  const gridGap = gaps[scaleKey] ?? gaps[viewMode] ?? 24;
 
   const setItemScale = (val: number) => {
-    setScales((prev) => ({ ...prev, [viewMode]: val }));
+    setScales((prev) => ({ ...prev, [scaleKey]: val }));
   };
 
   const setGridGap = (val: number) => {
-    setGaps((prev) => ({ ...prev, [viewMode]: val }));
+    setGaps((prev) => ({ ...prev, [scaleKey]: val }));
   };
 
   const [selectedImage, setSelectedImage] = useState<LoadedImage | null>(null);
@@ -763,6 +778,16 @@ export default function App() {
       const q = searchQuery.toLowerCase();
       filteredImages = images.filter(img => img.name.toLowerCase().includes(q));
     }
+    
+    if (orientationFilter !== "all") {
+      filteredImages = filteredImages.filter(img => {
+        if (orientationFilter === "portrait") {
+          return img.height >= img.width;
+        } else {
+          return img.width > img.height;
+        }
+      });
+    }
 
     if (sortField === "random") {
       const shuffled = [...filteredImages];
@@ -795,7 +820,7 @@ export default function App() {
       }
       return sortOrders[sortField] === "asc" ? comparison : -comparison;
     });
-  }, [images, sortField, sortOrders, randomSeed, searchQuery]);
+  }, [images, sortField, sortOrders, randomSeed, searchQuery, orientationFilter]);
 
   const masonryColumns = useMemo(() => {
     if (viewMode !== "grid-ma") return [];
@@ -860,11 +885,14 @@ export default function App() {
 
       const loaded = await Promise.all(
         dbImages.map(async (img) => {
-          let autoBg = img.autoBg;
-          if (!autoBg) {
-            autoBg = await analyzeImageBlob(img.data);
+          let { autoBg, width, height } = img;
+          if (!autoBg || !width || !height) {
+            const meta = await analyzeImageBlob(img.data);
+            autoBg = autoBg || meta.bg;
+            width = width || meta.width;
+            height = height || meta.height;
             // Update the DB record in the background to cache it
-            storeImages([{ ...img, autoBg }]).catch(console.error);
+            storeImages([{ ...img, autoBg, width, height }]).catch(console.error);
           }
           return {
             ...img,
@@ -873,6 +901,8 @@ export default function App() {
             randomY: Math.random() * 80 - 40,
             randomRotation: Math.random() * 30 - 15,
             autoBg,
+            width,
+            height,
           };
         })
       );
@@ -920,7 +950,7 @@ export default function App() {
         // Compute autoBg asynchronously for each file
         const records = await Promise.all(
           newFiles.map(async (f) => {
-            const autoBg = await analyzeImageBlob(f);
+            const meta = await analyzeImageBlob(f);
             return {
               id: `${datasetId}-${f.name}-${f.lastModified}-${f.size}`,
               datasetId,
@@ -930,7 +960,9 @@ export default function App() {
               lastModified: f.lastModified,
               addedAt: Date.now(),
               data: f,
-              autoBg,
+              autoBg: meta.bg,
+              width: meta.width,
+              height: meta.height,
             };
           })
         );
@@ -1115,7 +1147,7 @@ export default function App() {
           oldIds.push(oldImg.id);
         }
         
-        const autoBg = await analyzeImageBlob(f);
+        const meta = await analyzeImageBlob(f);
         newRecords.push({
           id: `${datasetId}-${f.name}-${f.lastModified}-${f.size}`,
           datasetId,
@@ -1126,7 +1158,9 @@ export default function App() {
           addedAt: oldImg?.addedAt || Date.now(),
           orderIndex: oldImg?.orderIndex,
           data: f,
-          autoBg,
+          autoBg: meta.bg,
+          width: meta.width,
+          height: meta.height,
         });
       }));
 
@@ -2649,7 +2683,7 @@ export default function App() {
                         }
                       }
                     }}
-                    className="bg-transparent border-none outline-none text-text-primary w-64 text-[10px] placeholder:text-text-muted focus:ring-0"
+                    className="bg-transparent border-none outline-none text-text-primary w-40 text-[10px] placeholder:text-text-muted focus:ring-0"
                   />
                   {searchInput && (
                     <button onClick={() => { setSearchInput(""); setSearchQuery(""); }} className="text-text-muted hover:text-text-primary ml-1 shrink-0">
@@ -2802,6 +2836,29 @@ export default function App() {
                 </div>
               ) : (
                 <div className="flex items-center gap-6">
+                  <div className="flex items-center gap-2 mr-2">
+                    <span className="text-[10px] uppercase text-text-muted">
+                      ORIENT:
+                    </span>
+                    <div className="flex items-center border border-panel-border bg-panel-bg rounded-[2px] overflow-hidden">
+                      {(["all", "portrait", "landscape"] as const).map((f) => (
+                        <button
+                          key={f}
+                          onClick={() => setOrientationFilter(f)}
+                          className={cn(
+                            "h-6 min-w-[56px] flex items-center justify-center gap-1 text-[9px] uppercase font-mono tracking-wider transition-colors border-r border-panel-border last:border-r-0 px-2",
+                            orientationFilter === f
+                              ? "text-accent bg-accent/5"
+                              : "text-text-secondary hover:text-text-primary hover:bg-root-bg",
+                          )}
+                        >
+                          {f === "portrait" && <Smartphone size={10} />}
+                          {f === "landscape" && <RectangleHorizontal size={10} />}
+                          {f}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] uppercase text-text-muted">
                       SORT:
