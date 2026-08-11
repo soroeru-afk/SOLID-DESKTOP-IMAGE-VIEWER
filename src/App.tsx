@@ -781,10 +781,13 @@ export default function App() {
     
     if (orientationFilter !== "all") {
       filteredImages = filteredImages.filter(img => {
+        const w = img.width || 1;
+        const h = img.height || 1;
+        // 横幅が縦幅の1.1倍（10%増し）までは「縦・正方形」の範疇に含め、明らかな横長のみLandscapeとする
         if (orientationFilter === "portrait") {
-          return img.height >= img.width;
+          return w <= h * 1.1;
         } else {
-          return img.width > img.height;
+          return w > h * 1.1;
         }
       });
     }
@@ -1328,11 +1331,11 @@ export default function App() {
   };
 
   const handleSelectAll = () => {
-    if (selectedImageIds.size === images.length) {
+    if (selectedImageIds.size === sortedImages.length) {
       setSelectedImageIds(new Set());
       setLastSelectedIdx(null);
     } else {
-      setSelectedImageIds(new Set(images.map((img) => img.id)));
+      setSelectedImageIds(new Set(sortedImages.map((img) => img.id)));
       setLastSelectedIdx(null);
     }
   };
@@ -2716,7 +2719,7 @@ export default function App() {
                     onClick={handleSelectAll}
                     className="text-[10px] uppercase font-mono tracking-wider transition-colors text-text-secondary hover:text-text-primary"
                   >
-                    {selectedImageIds.size === images.length && images.length > 0 ? "DESELECT ALL" : "SELECT ALL"}
+                    {selectedImageIds.size === sortedImages.length && sortedImages.length > 0 ? "DESELECT ALL" : "SELECT ALL"}
                   </button>
                   <div className="flex items-center gap-1 border-l border-r border-panel-border px-2 mx-1">
                     <button
@@ -2844,7 +2847,11 @@ export default function App() {
                       {(["all", "portrait", "landscape"] as const).map((f) => (
                         <button
                           key={f}
-                          onClick={() => setOrientationFilter(f)}
+                          onClick={() => {
+                            React.startTransition(() => {
+                              setOrientationFilter(f);
+                            });
+                          }}
                           className={cn(
                             "h-6 min-w-[56px] flex items-center justify-center gap-1 text-[9px] uppercase font-mono tracking-wider transition-colors border-r border-panel-border last:border-r-0 px-2",
                             orientationFilter === f
