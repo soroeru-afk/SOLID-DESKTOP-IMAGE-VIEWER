@@ -2048,7 +2048,7 @@ export default function App() {
           <div className="flex items-center gap-2 h-full">
             <span className="text-[10px] uppercase font-mono tracking-widest text-text-muted">SIZE:</span>
             <div className="w-40 flex items-center">
-              <input type="range" min="60" max="600" value={itemScale} onChange={(e) => setItemScale(Number(e.target.value))} />
+              <input type="range" min="60" max="750" value={itemScale} onChange={(e) => setItemScale(Number(e.target.value))} />
             </div>
             <span className="text-[10px] font-mono text-text-primary w-10 text-right">{itemScale}px</span>
           </div>
