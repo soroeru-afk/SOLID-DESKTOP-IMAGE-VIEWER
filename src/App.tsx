@@ -7,6 +7,8 @@ import {
   Reorder,
 } from "motion/react";
 import {
+  ZoomIn,
+  ZoomOut,
   FolderOpen, FolderPlus,
   LayoutGrid,
   List,
@@ -487,7 +489,7 @@ export default function App() {
   const zoomIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const zoomTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const startZoomIn = () => {
+  const startZoomIn = React.useCallback(() => {
     if (zoomIntervalRef.current || zoomTimeoutRef.current) return;
     setFullscreenScale((s) => {
       const newScale = Math.min(s + 0.025, 10);
@@ -503,29 +505,29 @@ export default function App() {
         });
       }, 20);
     }, 300);
-  };
+  }, [imgControls]);
 
-  const startZoomOut = () => {
+  const startZoomOut = React.useCallback(() => {
     if (zoomIntervalRef.current || zoomTimeoutRef.current) return;
     setFullscreenScale((s) => {
-      const newScale = Math.max(1, s - 0.025);
-      if (newScale === 1) imgControls.start({ x: 0, y: 0, scale: 1, transition: { duration: 0.05, ease: "linear" } });
+      const newScale = Math.max(0.1, s - 0.025);
+      if (newScale <= 1) imgControls.start({ x: 0, y: 0, scale: newScale, transition: { duration: 0.05, ease: "linear" } });
       else imgControls.start({ scale: newScale, transition: { duration: 0.05, ease: "linear" } });
       return newScale;
     });
     zoomTimeoutRef.current = setTimeout(() => {
       zoomIntervalRef.current = setInterval(() => {
         setFullscreenScale((s) => {
-          const newScale = Math.max(1, s - 0.025);
-          if (newScale === 1) imgControls.start({ x: 0, y: 0, scale: 1, transition: { duration: 0.05, ease: "linear" } });
+          const newScale = Math.max(0.1, s - 0.025);
+          if (newScale <= 1) imgControls.start({ x: 0, y: 0, scale: newScale, transition: { duration: 0.05, ease: "linear" } });
           else imgControls.start({ scale: newScale, transition: { duration: 0.05, ease: "linear" } });
           return newScale;
         });
       }, 20);
     }, 300);
-  };
+  }, [imgControls]);
 
-  const stopZooming = () => {
+  const stopZooming = React.useCallback(() => {
     if (zoomTimeoutRef.current) {
       clearTimeout(zoomTimeoutRef.current);
       zoomTimeoutRef.current = null;
@@ -534,7 +536,8 @@ export default function App() {
       clearInterval(zoomIntervalRef.current);
       zoomIntervalRef.current = null;
     }
-  };
+  }, []);
+
 
   useEffect(() => {
     setFullscreenScale(1);
@@ -567,14 +570,57 @@ export default function App() {
   );
   const [isAppFullscreen, setIsAppFullscreen] = useState(false);
   const [portraitMode, setPortraitMode] = useState<"off" | "left" | "right">("off");
+
+  const handleToggleZoomFill = React.useCallback((e?: React.MouseEvent | KeyboardEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    if (!imgDims.w || !imgDims.h) return;
+    
+    const cW = (portraitMode !== "off" ? window.innerHeight : window.innerWidth);
+    const cH = (portraitMode !== "off" ? window.innerWidth : window.innerHeight);
+    
+    const aspectImg = imgDims.w / imgDims.h;
+    const aspectScreen = cW / cH;
+    let renderedW = cW;
+    let renderedH = cH;
+    if (aspectImg > aspectScreen) {
+      renderedH = cW / aspectImg;
+    } else {
+      renderedW = cH * aspectImg;
+    }
+    
+    let targetScaleX = cW / renderedW;
+    let targetScaleY = cH / renderedH;
+
+    const isRotated = Math.abs(fullscreenRotation % 180) === 90;
+    if (isRotated) {
+      // visually the width is renderedH, and height is renderedW
+      targetScaleX = cW / renderedH;
+      targetScaleY = cH / renderedW;
+    }
+    
+    const targetScale = Math.max(targetScaleX, targetScaleY);
+
+    if (fullscreenScale > 1.01) {
+       // currently zoomed to fill, return to 1 (object-contain)
+       setFullscreenScale(1);
+       imgControls.start({ x: 0, y: 0, scale: 1, transition: { duration: 0.2, ease: "easeOut" } });
+    } else {
+       // zoom to fill
+       setFullscreenScale(targetScale);
+       imgControls.start({ x: 0, y: 0, scale: targetScale, transition: { duration: 0.2, ease: "easeOut" } });
+    }
+  }, [imgDims, portraitMode, isAppFullscreen, fullscreenScale, imgControls, fullscreenRotation]);
   const isPortraitMode = portraitMode !== "off";
   const [notification, setNotification] = useState<string | null>(null);
 
   // Preserve scale and rotation across image switch, and clamp x/y position to the new image bounds once loaded
   useEffect(() => {
     if (isFullscreen && imgDims.w > 0 && imgDims.h > 0) {
-      const currentCW = typeof window !== "undefined" ? (isPortraitMode ? window.innerHeight : window.innerWidth) * (isAppFullscreen ? 1 : 0.95) : 1000;
-      const currentCH = typeof window !== "undefined" ? (isPortraitMode ? window.innerWidth : window.innerHeight) * (isAppFullscreen ? 1 : 0.95) : 1000;
+      const currentCW = typeof window !== "undefined" ? (isPortraitMode ? window.innerHeight : window.innerWidth) : 1000;
+      const currentCH = typeof window !== "undefined" ? (isPortraitMode ? window.innerWidth : window.innerHeight) : 1000;
 
       const aspectImg = imgDims.w / imgDims.h;
       const aspectScreen = currentCW / currentCH;
@@ -616,7 +662,7 @@ export default function App() {
         transition: { duration: 0 }
       });
     }
-  }, [imgDims, isFullscreen, fullscreenScale, fullscreenRotation, imgControls, imgX, imgY, portraitMode, isAppFullscreen]);
+  }, [imgDims, isFullscreen, imgControls, portraitMode, isAppFullscreen]);
 
   const showNotification = (msg: string) => {
     setNotification(msg);
@@ -1459,11 +1505,13 @@ export default function App() {
       }
 
       if (key === "f" || key === "F") {
+        if (e.repeat) return;
         e.preventDefault();
         toggleAppFullscreen();
         return;
       }
       if (key === "p" || key === "P") {
+        if (e.repeat) return;
         e.preventDefault();
         if (portraitMode === "off") setPortraitMode("left");
         else if (portraitMode === "left") setPortraitMode("right");
@@ -1471,6 +1519,7 @@ export default function App() {
         return;
       }
       if (key === "r" || key === "R") {
+        if (e.repeat) return;
         e.preventDefault();
         if (isFullscreen) {
           setFullscreenRotation(r => {
@@ -1482,6 +1531,7 @@ export default function App() {
         return;
       }
       if (key === "h" || key === "H") {
+        if (e.repeat) return;
         e.preventDefault();
         if (isFullscreen) {
           setFullscreenFlipX(flip => {
@@ -1518,11 +1568,18 @@ export default function App() {
 
       // フルスクリーン時
       if (key === "u" || key === "U") {
+        if (e.repeat) return;
         e.preventDefault();
         setShowFullscreenUI(prev => !prev);
         return;
       }
+      if (key === "z" || key === "Z") {
+        if (e.repeat) return;
+        handleToggleZoomFill(e);
+        return;
+      }
       if (key === "Escape" || key === "Backspace") {
+        if (e.repeat) return;
         e.preventDefault();
         setIsFullscreen(false);
         return;
@@ -1531,8 +1588,8 @@ export default function App() {
       const getDragBounds = () => {
         let mX = 0;
         let mY = 0;
-        const cw = (isPortraitMode ? window.innerHeight : window.innerWidth) * (isAppFullscreen ? 1 : 0.95);
-        const ch = (isPortraitMode ? window.innerWidth : window.innerHeight) * (isAppFullscreen ? 1 : 0.95);
+        const cw = (isPortraitMode ? window.innerHeight : window.innerWidth);
+        const ch = (isPortraitMode ? window.innerWidth : window.innerHeight);
         if (imgDims.w > 0 && imgDims.h > 0) {
           const aspectImg = imgDims.w / imgDims.h;
           const aspectScreen = cw / ch;
@@ -1617,22 +1674,10 @@ export default function App() {
         else panY(-20);
       } else if (e.key === "+" || e.code === "NumpadAdd") {
         e.preventDefault();
-        setFullscreenScale((s) => {
-          const newScale = Math.min(s + 0.025, 10);
-          imgControls.start({ scale: newScale, transition: { duration: 0.05, ease: "linear" } });
-          return newScale;
-        });
+        if (!e.repeat) startZoomIn();
       } else if (e.key === "-" || e.code === "NumpadSubtract") {
         e.preventDefault();
-        setFullscreenScale((s) => {
-          const newScale = Math.max(1, s - 0.025);
-          if (newScale === 1) {
-            imgControls.start({ x: 0, y: 0, scale: 1, transition: { duration: 0.05, ease: "linear" } });
-          } else {
-            imgControls.start({ scale: newScale, transition: { duration: 0.05, ease: "linear" } });
-          }
-          return newScale;
-        });
+        if (!e.repeat) startZoomOut();
       } else if (e.key === "0" || e.code === "Numpad0") {
         e.preventDefault();
         setFullscreenScale(1);
@@ -1644,6 +1689,9 @@ export default function App() {
       pressedKeys.delete(e.key);
       if (!pressedKeys.has("ArrowUp") && !pressedKeys.has("ArrowDown")) {
         stopKbdScroll();
+      }
+      if (e.key === "+" || e.code === "NumpadAdd" || e.key === "-" || e.code === "NumpadSubtract") {
+        stopZooming();
       }
     };
     
@@ -1669,6 +1717,10 @@ export default function App() {
     imgY,
     isAppFullscreen,
     portraitMode,
+    handleToggleZoomFill,
+    startZoomIn,
+    startZoomOut,
+    stopZooming,
   ]);
 
   const handleClear = () => {
@@ -1774,8 +1826,8 @@ export default function App() {
     };
   }, [activeDatasetId]);
 
-  const cW = typeof window !== "undefined" ? (isPortraitMode ? window.innerHeight : window.innerWidth) * (isAppFullscreen ? 1 : 0.95) : 1000;
-  const cH = typeof window !== "undefined" ? (isPortraitMode ? window.innerWidth : window.innerHeight) * (isAppFullscreen ? 1 : 0.95) : 1000;
+  const cW = typeof window !== "undefined" ? (isPortraitMode ? window.innerHeight : window.innerWidth) : 1000;
+  const cH = typeof window !== "undefined" ? (isPortraitMode ? window.innerWidth : window.innerHeight) : 1000;
   let maxDragX = 0;
   let maxDragY = 0;
 
@@ -3273,9 +3325,9 @@ export default function App() {
                     const MathMax = Math.max;
                     const MathMin = Math.min;
                     const newScale = MathMax(
-                      1,
+                      0.1,
                       MathMin(s - e.deltaY * 0.001, 10),
-                    ); // 1未満には縮小しないようにし、迷子を完全に防ぐ
+                    );
                     const scaleRatio = newScale / s;
 
                     let targetX = imgX.get() * scaleRatio;
@@ -3319,7 +3371,7 @@ export default function App() {
                   style={{ x: imgX, y: imgY }}
                   initial={{ scale: fullscreenScale, rotate: fullscreenRotation, rotateY: fullscreenFlipX ? 180 : 0 }}
                   className={cn(
-                    "max-w-full max-h-full object-contain block",
+                    "w-full h-full object-contain block",
                     fullscreenScale > 1.0 ? "cursor-move" : "cursor-default",
                   )}
                   drag={fullscreenScale > 1.0}
@@ -3529,7 +3581,7 @@ export default function App() {
                 <div className="h-[150px] w-8 relative flex items-center justify-center">
                   <input
                     type="range"
-                    min="0"
+                    min="-1"
                     max="1"
                     step="0.001"
                     value={Math.log10(fullscreenScale)}
@@ -3537,8 +3589,8 @@ export default function App() {
                       const val = parseFloat(e.target.value);
                       const newScale = Math.pow(10, val);
                       setFullscreenScale(newScale);
-                      if (newScale === 1) {
-                        imgControls.start({ x: 0, y: 0, scale: 1 });
+                      if (newScale <= 1) {
+                        imgControls.start({ x: 0, y: 0, scale: newScale });
                       } else {
                         imgControls.start({ scale: newScale });
                       }
