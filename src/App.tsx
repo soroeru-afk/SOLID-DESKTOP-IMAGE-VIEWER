@@ -445,6 +445,7 @@ export default function App() {
   const [imgDims, setImgDims] = useState({ w: 0, h: 0 });
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const pendingFullscreenNav = useRef<{ direction: "next" | "prev"; datasetId: string } | null>(null);
   const scrollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1340,6 +1341,45 @@ export default function App() {
     }
   };
 
+  const goToNextDataset = React.useCallback(() => {
+    if (!activeDatasetId) return;
+    const currentIndex = datasets.findIndex((d) => d.id === activeDatasetId);
+    if (currentIndex < 0 || datasets.length <= 1) return;
+    const nextIndex = (currentIndex + 1) % datasets.length;
+    
+    pendingFullscreenNav.current = { direction: "next", datasetId: datasets[nextIndex].id };
+    setActiveDatasetId(datasets[nextIndex].id);
+  }, [activeDatasetId, datasets]);
+
+  const goToPrevDataset = React.useCallback(() => {
+    if (!activeDatasetId) return;
+    const currentIndex = datasets.findIndex((d) => d.id === activeDatasetId);
+    if (currentIndex < 0 || datasets.length <= 1) return;
+    const prevIndex = (currentIndex - 1 + datasets.length) % datasets.length;
+    
+    pendingFullscreenNav.current = { direction: "prev", datasetId: datasets[prevIndex].id };
+    setActiveDatasetId(datasets[prevIndex].id);
+  }, [activeDatasetId, datasets]);
+
+  useEffect(() => {
+    if (isFullscreen && pendingFullscreenNav.current) {
+      const { direction, datasetId } = pendingFullscreenNav.current;
+      
+      const isUpdated = images.length === 0 || images.every(img => img.datasetId === datasetId);
+      
+      if (isUpdated) {
+        if (sortedImages.length > 0) {
+          if (direction === "next") {
+            setSelectedImage(sortedImages[0]);
+          } else if (direction === "prev") {
+            setSelectedImage(sortedImages[sortedImages.length - 1]);
+          }
+        }
+        pendingFullscreenNav.current = null;
+      }
+    }
+  }, [sortedImages, images, isFullscreen]);
+
   const goToNextImage = React.useCallback(() => {
     if (!selectedImage || sortedImages.length <= 1) return;
     const currentIndex = sortedImages.findIndex(
@@ -1405,7 +1445,7 @@ export default function App() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       
       pressedKeys.add(e.key);
-      if (!isFullscreen && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      if (!isFullscreen && !e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
         e.preventDefault();
         startKbdScroll();
       }
@@ -1461,6 +1501,12 @@ export default function App() {
         } else if (key === "ArrowLeft") {
           e.preventDefault();
           goToPrevImage();
+        } else if (key === "ArrowDown" && e.shiftKey) {
+          e.preventDefault();
+          goToNextDataset();
+        } else if (key === "ArrowUp" && e.shiftKey) {
+          e.preventDefault();
+          goToPrevDataset();
         } else if (key === "Enter") {
           e.preventDefault();
           if (selectedImage) {
@@ -1533,6 +1579,16 @@ export default function App() {
         isPanDown = code === "Numpad4" || key === "4";
       }
 
+      if (key === "ArrowDown" && e.shiftKey) {
+        e.preventDefault();
+        goToNextDataset();
+        return;
+      } else if (key === "ArrowUp" && e.shiftKey) {
+        e.preventDefault();
+        goToPrevDataset();
+        return;
+      }
+
       if (isNext) {
         e.preventDefault();
         goToNextImage();
@@ -1603,6 +1659,8 @@ export default function App() {
     isFullscreen,
     goToNextImage,
     goToPrevImage,
+    goToNextDataset,
+    goToPrevDataset,
     imgControls,
     fullscreenScale,
     fullscreenRotation,
