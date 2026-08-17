@@ -3705,7 +3705,7 @@ export default function App() {
                     e.stopPropagation();
                     if (selectedImage) handleDownload([selectedImage]);
                   }}
-                  className="p-1.5 hover:bg-white/20 rounded transition-colors touch-none text-blue-400"
+                  className="p-1.5 hover:bg-white/20 rounded transition-colors touch-none"
                   title="Download Image"
                 >
                   <Download size={18} />
