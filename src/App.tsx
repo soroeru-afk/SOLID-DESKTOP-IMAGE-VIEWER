@@ -2978,19 +2978,7 @@ export default function App() {
                   >
                     DOWNLOAD
                   </button>
-                  <button
-                    onClick={() => {
-                      const imgs = sortedImages.filter(img => selectedImageIds.has(img.id));
-                      handleDownload(imgs);
-                    }}
-                    disabled={selectedImageIds.size === 0}
-                    className={cn(
-                      "text-[10px] uppercase font-mono tracking-wider transition-colors px-2 py-0.5 rounded mr-1",
-                      selectedImageIds.size > 0 ? "text-blue-500 hover:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20" : "text-text-muted cursor-not-allowed"
-                    )}
-                  >
-                    DOWNLOAD
-                  </button>
+                  
                   <button
                     onClick={() => setShowDeleteSelectedModal(true)}
                     disabled={selectedImageIds.size === 0}
