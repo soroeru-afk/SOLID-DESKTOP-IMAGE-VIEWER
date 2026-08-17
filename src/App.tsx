@@ -1,4 +1,4 @@
-import JSZip from "jszip";
+﻿import JSZip from "jszip";
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   motion,
@@ -871,7 +871,7 @@ export default function App() {
       filteredImages = filteredImages.filter(img => {
         const w = img.width || 1;
         const h = img.height || 1;
-        // 横幅が縦幅の1.1倍（10%増し）までは「縦・正方形」の範疇に含め、明らかな横長のみLandscapeとする
+        // 讓ｪ蟷・′邵ｦ蟷・・1.1蛟搾ｼ・0%蠅励＠・峨∪縺ｧ縺ｯ縲檎ｸｦ繝ｻ豁｣譁ｹ蠖｢縲阪・遽・枚縺ｫ蜷ｫ繧√∵・繧峨°縺ｪ讓ｪ髟ｷ縺ｮ縺ｿLandscape縺ｨ縺吶ｋ
         if (orientationFilter === "portrait") {
           return w <= h * 1.1;
         } else {
@@ -1267,7 +1267,7 @@ export default function App() {
 
       showNotification(
         language === "JP"
-          ? `${files.length} 件のファイルを更新しました`
+          ? `${files.length} 莉ｶ縺ｮ繝輔ぃ繧､繝ｫ繧呈峩譁ｰ縺励∪縺励◆`
           : `Updated ${files.length} file(s)`
       );
 
@@ -1352,7 +1352,7 @@ export default function App() {
       await loadDatasets();
     }
     setIsLoading(false);
-    showNotification(language === "JP" ? "コピーしました" : "Copied");
+    showNotification(language === "JP" ? "繧ｳ繝斐・縺励∪縺励◆" : "Copied");
   };
 
   const handleCustomMove = async (direction: "top" | "bottom" | "up" | "down") => {
@@ -1489,7 +1489,7 @@ export default function App() {
   }, [selectedImage, sortedImages]);
 
   useEffect(() => {
-    // 選択画像が変わったらスクロール (isFullscreen時も裏側でスクロールされて良い)
+    // 驕ｸ謚樒判蜒上′螟峨ｏ縺｣縺溘ｉ繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ (isFullscreen譎ゅｂ陬丞・縺ｧ繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ縺輔ｌ縺ｦ濶ｯ縺・
     if (selectedImage && !isFullscreen) {
       const el = document.getElementById(`image-card-${selectedImage.id}`);
       if (el) {
@@ -1536,11 +1536,11 @@ export default function App() {
         e.preventDefault();
         startKbdScroll();
       }
-      // 共通ショートカット
+      // 蜈ｱ騾壹す繝ｧ繝ｼ繝医き繝・ヨ
       const key = e.key;
       const code = e.code;
       
-      // input などの入力中は除外
+      // input 縺ｪ縺ｩ縺ｮ蜈･蜉帑ｸｭ縺ｯ髯､螟・
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
@@ -1585,7 +1585,7 @@ export default function App() {
       }
 
       if (!isFullscreen) {
-        // 一覧画面での操作
+        // 荳隕ｧ逕ｻ髱｢縺ｧ縺ｮ謫堺ｽ・
         if (key === "ArrowRight") {
           e.preventDefault();
           goToNextImage();
@@ -1607,7 +1607,7 @@ export default function App() {
         return;
       }
 
-      // フルスクリーン時
+      // 繝輔Ν繧ｹ繧ｯ繝ｪ繝ｼ繝ｳ譎・
       if (key === "u" || key === "U") {
         if (e.repeat) return;
         e.preventDefault();
@@ -2156,10 +2156,10 @@ export default function App() {
           >
             <FolderPlus size={64} className="text-accent mb-4" />
             <h2 className="text-2xl text-text-primary tracking-widest mb-2">
-              {t("DROP TO ADD TO ACTIVE", "ドロップして現在のリストに追加")}
+              {t("DROP TO ADD TO ACTIVE", "繝峨Ο繝・・縺励※迴ｾ蝨ｨ縺ｮ繝ｪ繧ｹ繝医↓霑ｽ蜉")}
             </h2>
             <p className="text-text-secondary">
-              {t("OR DRAG TO 'CREATE BY FOLDER' IN SIDEBAR", "新規リストとして作成する場合はサイドバーへ")}
+              {t("OR DRAG TO 'CREATE BY FOLDER' IN SIDEBAR", "譁ｰ隕上Μ繧ｹ繝医→縺励※菴懈・縺吶ｋ蝣ｴ蜷医・繧ｵ繧､繝峨ヰ繝ｼ縺ｸ")}
             </p>
           </motion.div>
         )}
@@ -2363,7 +2363,7 @@ export default function App() {
   return (
                   <Panel
                     key="formation"
-                    title={t("01 FORMATION ENGINE", "01 フォーム設定")}
+                    title={t("01 FORMATION ENGINE", "01 繝輔か繝ｼ繝險ｭ螳・)}
                     className="shrink-0"
                     isCollapsible
                     isExpanded={isFormationExpanded}
@@ -2436,7 +2436,7 @@ export default function App() {
   return (
                   <Panel
                     key="datasets"
-                    title={t("02 DATA SETS", "02 データセット")}
+                    title={t("02 DATA SETS", "02 繝・・繧ｿ繧ｻ繝・ヨ")}
                     className={cn("shrink-0 flex flex-col", isDataSetsExpanded && "flex-1 min-h-[200px]")}
                     contentClassName="flex flex-col p-4 overflow-hidden gap-3 h-full"
                     isCollapsible
@@ -2449,7 +2449,7 @@ export default function App() {
                 onClick={handleAddDatasetClick}
                 className="flex-1 justify-center text-accent"
               >
-                + {t("NEW SET", "新規セット")}
+                + {t("NEW SET", "譁ｰ隕上そ繝・ヨ")}
               </SolidButton>
               <SolidButton
                 onClick={() =>
@@ -2495,12 +2495,12 @@ export default function App() {
                 </div>
                 <span className="w-full text-center tracking-widest">
                   {isReadingDirectory
-                    ? t("READING...", "読み込み中...")
-                    : t("ADD DIR TO SET", "ディレクトリ追加")}
+                    ? t("READING...", "隱ｭ縺ｿ霎ｼ縺ｿ荳ｭ...")
+                    : t("ADD DIR TO SET", "繝・ぅ繝ｬ繧ｯ繝医Μ霑ｽ蜉")}
                 </span>
               </SolidButton>
               <div className="flex justify-between text-[10px] font-mono text-text-muted px-1">
-                <span>{t("TOTAL DB IMAGES:", "総データ数:")}</span>
+                <span>{t("TOTAL DB IMAGES:", "邱上ョ繝ｼ繧ｿ謨ｰ:")}</span>
                 <span className="text-text-primary">{totalImagesCount}</span>
               </div>
             </div>
@@ -2522,7 +2522,7 @@ export default function App() {
                     )}
                   >
                     <span className="truncate flex-1 min-w-0 pr-2">
-                      {t("ALL IMAGES", "すべての画像")}
+                      {t("ALL IMAGES", "縺吶∋縺ｦ縺ｮ逕ｻ蜒・)}
                     </span>
                     <span className="text-text-muted text-[10px] shrink-0">
                       ({totalImagesCount})
@@ -2604,7 +2604,7 @@ export default function App() {
                       setSearchInput("");
                     }}
                   >
-                    <option value="all" className="bg-white text-black">{t("ALL IMAGES", "すべての画像")}</option>
+                    <option value="all" className="bg-white text-black">{t("ALL IMAGES", "縺吶∋縺ｦ縺ｮ逕ｻ蜒・)}</option>
                     {datasets.map((ds) => (
                       <option key={ds.id} value={ds.id} className="bg-white text-black">
                         {ds.name} ({datasetCounts[ds.id] || 0})
@@ -2681,7 +2681,7 @@ export default function App() {
               >
                 <FolderPlus size={16} className={dragTarget === "add" ? "text-accent mb-1" : "mb-1"} />
                 <span className={cn("text-[9px] tracking-widest text-center leading-tight font-mono", dragTarget === "add" ? "text-text-primary" : "")}>
-                  {t("ADD TO", "現在のリストに")}<br/>{t("ACTIVE", "追加")}
+                  {t("ADD TO", "迴ｾ蝨ｨ縺ｮ繝ｪ繧ｹ繝医↓")}<br/>{t("ACTIVE", "霑ｽ蜉")}
                 </span>
               </div>
               
@@ -2702,7 +2702,7 @@ export default function App() {
               >
                 <FolderOpen size={16} className={dragTarget === "new" ? "text-accent mb-1" : "mb-1"} />
                 <span className={cn("text-[9px] tracking-widest text-center leading-tight font-mono", dragTarget === "new" ? "text-text-primary" : "")}>
-                  {t("CREATE BY", "フォルダー名で")}<br/>{t("FOLDER", "リストを作成")}
+                  {t("CREATE BY", "繝輔か繝ｫ繝繝ｼ蜷阪〒")}<br/>{t("FOLDER", "繝ｪ繧ｹ繝医ｒ菴懈・")}
                 </span>
               </div>
             </div>
@@ -2713,7 +2713,7 @@ export default function App() {
   return (
                   <Panel
                     key="trackInfo"
-                    title={t("03 TRACK INFO", "03 トラック情報")}
+                    title={t("03 TRACK INFO", "03 繝医Λ繝・け諠・ｱ")}
                     className={cn(
                       "shrink-0 flex flex-col items-center min-w-0 w-full transition-all duration-300",
                       isTrackInfoCollapsed ? "h-[34px]" : "h-[260px]",
@@ -2779,9 +2779,9 @@ export default function App() {
               </div>
             ) : !isTrackInfoCollapsed ? (
               <div className="flex flex-1 items-center justify-center font-mono text-text-muted text-xs uppercase tracking-widest text-center">
-                {t("AWAITING INITIALIZATION...", "初期化待機中...")}
+                {t("AWAITING INITIALIZATION...", "蛻晄悄蛹門ｾ・ｩ滉ｸｭ...")}
                 <br />
-                {t("SELECT DATA UNIT", "データユニットを選択してください")}
+                {t("SELECT DATA UNIT", "繝・・繧ｿ繝ｦ繝九ャ繝医ｒ驕ｸ謚槭＠縺ｦ縺上□縺輔＞")}
               </div>
             ) : null}
                   </Panel>
@@ -2819,12 +2819,12 @@ export default function App() {
           <Panel
             title={
               <>
-                <span>{t("04 DATA BANKS", "04 データバンク")}</span>
+                <span>{t("04 DATA BANKS", "04 繝・・繧ｿ繝舌Φ繧ｯ")}</span>
                 <div className="flex items-center gap-2 border border-panel-border bg-panel-bg px-2 py-1 rounded">
                   <Search size={12} className="text-text-muted" />
                   <input
                     type="text"
-                    placeholder={t("SEARCH ALL...", "すべての画像を検索...")}
+                    placeholder={t("SEARCH ALL...", "縺吶∋縺ｦ縺ｮ逕ｻ蜒上ｒ讀懃ｴ｢...")}
                     value={searchInput}
                     onChange={(e) => {
                       setSearchInput(e.target.value);
@@ -2853,7 +2853,7 @@ export default function App() {
                     }}
                     className="px-2 py-1 h-auto text-[10px] shrink-0 border-none bg-transparent hover:bg-white/10"
                   >
-                    {t("SEARCH", "検索")}
+                    {t("SEARCH", "讀懃ｴ｢")}
                   </SolidButton>
                 </div>
               </>
@@ -2923,7 +2923,7 @@ export default function App() {
                       <button
                         onClick={() => handleCopySelected(favoriteDatasetId)}
                         className="text-[10px] uppercase font-mono tracking-wider transition-colors text-yellow-500 hover:text-yellow-400 px-2 py-0.5 bg-yellow-500/10 hover:bg-yellow-500/20 rounded mr-1 flex items-center gap-1"
-                        title={t("COPY TO FAVORITE", "お気に入りにコピー")}
+                        title={t("COPY TO FAVORITE", "縺頑ｰ励↓蜈･繧翫↓繧ｳ繝斐・")}
                       >
                         <Star size={12} fill="currentColor" /> COPY TO FAV
                       </button>
@@ -2949,7 +2949,7 @@ export default function App() {
                             handleCopySelected(moveTargetId);
                             setMoveTargetId("");
                           }}
-                          className="text-[10px] uppercase font-mono tracking-wider transition-colors text-blue-500 hover:text-blue-400 px-2 py-0.5 bg-blue-500/10 rounded mr-1"
+                          className="text-[10px] uppercase font-mono tracking-wider transition-colors text-blue-500 hover: px-2 py-0.5 bg-blue-500/10 rounded mr-1"
                         >
                           COPY
                         </button>
@@ -2973,7 +2973,7 @@ export default function App() {
                     disabled={selectedImageIds.size === 0}
                     className={cn(
                       "text-[10px] uppercase font-mono tracking-wider transition-colors px-2 py-0.5 rounded mr-1",
-                      selectedImageIds.size > 0 ? "text-blue-500 hover:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20" : "text-text-muted cursor-not-allowed"
+                      selectedImageIds.size > 0 ? "text-blue-500 hover: bg-blue-500/10 hover:bg-blue-500/20" : "text-text-muted cursor-not-allowed"
                     )}
                   >
                     DOWNLOAD
@@ -3063,7 +3063,7 @@ export default function App() {
                             <span>{f}</span>
                             {f !== "random" && (
                               <span className={cn("absolute left-full ml-1 flex items-center justify-center", sortField === f ? "opacity-100" : "opacity-0")}>
-                                {sortField === f ? (sortOrders[f] === "asc" ? "↑" : "↓") : "↑"}
+                                {sortField === f ? (sortOrders[f] === "asc" ? "竊・ : "竊・) : "竊・}
                               </span>
                             )}
                           </span>
@@ -3534,7 +3534,7 @@ export default function App() {
                       ? "border-black/15 text-black/60 hover:text-red-600 hover:border-red-600/50 hover:bg-red-500/10"
                       : "border-white/15 text-white/60 hover:text-red-400 hover:border-red-400/50 hover:bg-red-500/10",
                   )}
-                  title={t("Delete Image", "画像を削除")}
+                  title={t("Delete Image", "逕ｻ蜒上ｒ蜑企勁")}
                 >
                   <Trash2 size={16} />
                 </button>
@@ -3682,7 +3682,7 @@ export default function App() {
                     });
                   }}
                   className="p-1.5 hover:bg-white/20 rounded transition-colors touch-none"
-                  title={t("Flip Horizontal (H)", "左右反転 (H)")}
+                  title={t("Flip Horizontal (H)", "蟾ｦ蜿ｳ蜿崎ｻ｢ (H)")}
                 >
                   <FlipHorizontal size={18} />
                 </button>
@@ -3696,7 +3696,7 @@ export default function App() {
                     });
                   }}
                   className="p-1.5 hover:bg-white/20 rounded transition-colors touch-none"
-                  title={t("Rotate 90° (R)", "90度回転 (R)")}
+                  title={t("Rotate 90ﾂｰ (R)", "90蠎ｦ蝗櫁ｻ｢ (R)")}
                 >
                   <RotateCw size={18} />
                 </button>
@@ -3705,7 +3705,7 @@ export default function App() {
                     e.stopPropagation();
                     if (selectedImage) handleDownload([selectedImage]);
                   }}
-                  className="p-1.5 hover:bg-white/20 rounded transition-colors touch-none text-blue-400"
+                  className="p-1.5 hover:bg-white/20 rounded transition-colors touch-none "
                   title="Download Image"
                 >
                   <Download size={18} />
@@ -3731,7 +3731,7 @@ export default function App() {
                       ? "bg-white/20 border-black/10 text-black/70 hover:text-black hover:bg-white/40"
                       : "bg-black/20 border-white/10 text-white/70 hover:text-white hover:bg-black/40"
                   )}
-                  title={t("COPY TO FAVORITE", "お気に入りにコピー")}
+                  title={t("COPY TO FAVORITE", "縺頑ｰ励↓蜈･繧翫↓繧ｳ繝斐・")}
                 >
                   <Star 
                     size={24} 
@@ -3755,7 +3755,7 @@ export default function App() {
                     : "bg-black/20 border-white/10 text-white/70 hover:text-white hover:bg-black/40",
                   portraitMode !== "off" && (isFullscreenDarkText ? "bg-white/50 text-black border-black/20" : "bg-black/50 text-white border-white/20")
                 )}
-                title={t("Portrait Mode (P)", "ポートレート切替 (P)")}
+                title={t("Portrait Mode (P)", "繝昴・繝医Ξ繝ｼ繝亥・譖ｿ (P)")}
               >
                 <MonitorSmartphone size={24} className={cn("transition-transform duration-300", portraitMode === "left" ? "-rotate-90" : portraitMode === "right" ? "rotate-90" : "")} />
               </button>
@@ -3770,7 +3770,7 @@ export default function App() {
                     : "bg-black/20 border-white/10 text-white/70 hover:text-white hover:bg-black/40",
                   isAppFullscreen && (isFullscreenDarkText ? "bg-white/50 text-black border-black/20" : "bg-black/50 text-white border-white/20")
                 )}
-                title={t("Borderless (F)", "ボーダレス (F)")}
+                title={t("Borderless (F)", "繝懊・繝繝ｬ繧ｹ (F)")}
               >
                 {isAppFullscreen ? <Minimize size={24} /> : <Maximize size={24} />}
               </button>
@@ -3784,7 +3784,7 @@ export default function App() {
                     ? "bg-white/20 border-black/10 text-black/70 hover:text-black hover:bg-white/40"
                     : "bg-black/20 border-white/10 text-white/70 hover:text-white hover:bg-black/40"
                 )}
-                title={t("Close (Esc)", "閉じる (Esc)")}
+                title={t("Close (Esc)", "髢峨§繧・(Esc)")}
               >
                 <X size={26} />
               </button>
@@ -3927,16 +3927,16 @@ export default function App() {
             <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(239,68,68,0.2)]">
               <h2 className="text-red-500 mb-4 flex items-center gap-2">
                 <Trash2 size={20} />{" "}
-                {t("DELETE IMAGE", "画像を削除")}
+                {t("DELETE IMAGE", "逕ｻ蜒上ｒ蜑企勁")}
               </h2>
               <p className="text-text-secondary text-sm mb-6 uppercase leading-relaxed">
                 {language === "JP" ? (
                   <>
-                    警告: 現在表示中の画像を選択したデータベースから削除します。
+                    隴ｦ蜻・ 迴ｾ蝨ｨ陦ｨ遉ｺ荳ｭ縺ｮ逕ｻ蜒上ｒ驕ｸ謚槭＠縺溘ョ繝ｼ繧ｿ繝吶・繧ｹ縺九ｉ蜑企勁縺励∪縺吶・
                     <br />
                     <br />
                     <span className="text-accent">
-                      (※実際のデバイス上のファイルは削除されません)
+                      (窶ｻ螳滄圀縺ｮ繝・ヰ繧､繧ｹ荳翫・繝輔ぃ繧､繝ｫ縺ｯ蜑企勁縺輔ｌ縺ｾ縺帙ｓ)
                     </span>
                   </>
                 ) : (
@@ -3945,7 +3945,7 @@ export default function App() {
                     <br />
                     <br />
                     <span className="text-accent">
-                      (※ Actual files on your device will NOT be deleted)
+                      (窶ｻ Actual files on your device will NOT be deleted)
                     </span>
                   </>
                 )}
@@ -3980,12 +3980,12 @@ export default function App() {
           >
             <div className="bg-panel-bg border border-orange-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(249,115,22,0.2)]">
               <h2 className="text-orange-500 mb-4 uppercase">
-                {t("UPDATE EXISTING FILES", "既存のファイルを更新")}
+                {t("UPDATE EXISTING FILES", "譌｢蟄倥・繝輔ぃ繧､繝ｫ繧呈峩譁ｰ")}
               </h2>
               <p className="text-text-primary text-xs mb-6 leading-relaxed">
                 {t(
                   `${overwriteFiles.files.length} file(s) already exist. Do you want to overwrite and update them?`,
-                  `同じ名前の画像が ${overwriteFiles.files.length} 件あります。これらを新しい画像で上書き更新しますか？`
+                  `蜷後§蜷榊燕縺ｮ逕ｻ蜒上′ ${overwriteFiles.files.length} 莉ｶ縺ゅｊ縺ｾ縺吶ゅ％繧後ｉ繧呈眠縺励＞逕ｻ蜒上〒荳頑嶌縺肴峩譁ｰ縺励∪縺吶°・歔
                 )}
               </p>
               <div className="flex justify-end gap-3">
@@ -3993,13 +3993,13 @@ export default function App() {
                   onClick={() => setOverwriteFiles(null)}
                   className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
                 >
-                  {t("CANCEL", "キャンセル")}
+                  {t("CANCEL", "繧ｭ繝｣繝ｳ繧ｻ繝ｫ")}
                 </SolidButton>
                 <SolidButton
                   onClick={confirmOverwrite}
                   className="text-orange-500 hover:text-orange-400 border-orange-900/50"
                 >
-                  {t("UPDATE", "更新する")}
+                  {t("UPDATE", "譖ｴ譁ｰ縺吶ｋ")}
                 </SolidButton>
               </div>
             </div>
@@ -4057,17 +4057,17 @@ export default function App() {
             <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(239,68,68,0.2)]">
               <h2 className="text-red-500 mb-4 flex items-center gap-2">
                 <Trash2 size={20} />{" "}
-                {t("DELETE SELECTED IMAGES", "選択した画像を削除")}
+                {t("DELETE SELECTED IMAGES", "驕ｸ謚槭＠縺溽判蜒上ｒ蜑企勁")}
               </h2>
               <p className="text-text-secondary text-sm mb-6 uppercase leading-relaxed">
                 {language === "JP" ? (
                   <>
-                    警告: {selectedImageIds.size}{" "}
-                    個の画像を選択したデータベースから削除します。
+                    隴ｦ蜻・ {selectedImageIds.size}{" "}
+                    蛟九・逕ｻ蜒上ｒ驕ｸ謚槭＠縺溘ョ繝ｼ繧ｿ繝吶・繧ｹ縺九ｉ蜑企勁縺励∪縺吶・
                     <br />
                     <br />
                     <span className="text-accent">
-                      (※実際のデバイス上のファイルは削除されません)
+                      (窶ｻ螳滄圀縺ｮ繝・ヰ繧､繧ｹ荳翫・繝輔ぃ繧､繝ｫ縺ｯ蜑企勁縺輔ｌ縺ｾ縺帙ｓ)
                     </span>
                   </>
                 ) : (
@@ -4077,7 +4077,7 @@ export default function App() {
                     <br />
                     <br />
                     <span className="text-accent">
-                      (※ Actual files on your device will NOT be deleted)
+                      (窶ｻ Actual files on your device will NOT be deleted)
                     </span>
                   </>
                 )}
@@ -4108,3 +4108,4 @@ export default function App() {
     </div>
   );
 }
+
