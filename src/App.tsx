@@ -1,3 +1,4 @@
+import JSZip from "jszip";
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   motion,
@@ -38,6 +39,7 @@ import {
   Edit2,
   Search,
   FlipHorizontal,
+  Download,
   Palette,
   Star,
   Smartphone,
@@ -450,6 +452,45 @@ export default function App() {
   const pendingFullscreenNav = useRef<{ direction: "next" | "prev"; datasetId: string } | null>(null);
   const scrollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+
+  const handleDownload = async (imagesToDownload: LoadedImage[]) => {
+    if (imagesToDownload.length === 0) return;
+    
+    const downloadSingle = (img: LoadedImage) => {
+      const a = document.createElement("a");
+      a.href = img.url;
+      a.download = img.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    };
+
+    if (imagesToDownload.length === 1) {
+      downloadSingle(imagesToDownload[0]);
+    } else {
+      const zip = new JSZip();
+      for (const img of imagesToDownload) {
+        try {
+          const res = await fetch(img.url);
+          const blob = await res.blob();
+          zip.file(img.name, blob);
+        } catch (e) {
+          console.error("Failed to fetch image for zip", img.name, e);
+        }
+      }
+      
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(zipBlob);
+      const ds = datasets.find(d => d.id === activeDatasetId);
+      const folderName = ds ? ds.name : "images";
+      a.download = `${folderName}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+  };
 
   const startSteppedScroll = (dir: "up" | "down") => {
     if (scrollIntervalRef.current || scrollTimeoutRef.current) return;
@@ -2924,6 +2965,32 @@ export default function App() {
                       </>
                     )}
                   </div>
+                                    <button
+                    onClick={() => {
+                      const imgs = sortedImages.filter(img => selectedImageIds.has(img.id));
+                      handleDownload(imgs);
+                    }}
+                    disabled={selectedImageIds.size === 0}
+                    className={cn(
+                      "text-[10px] uppercase font-mono tracking-wider transition-colors px-2 py-0.5 rounded mr-1",
+                      selectedImageIds.size > 0 ? "text-blue-500 hover:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20" : "text-text-muted cursor-not-allowed"
+                    )}
+                  >
+                    DOWNLOAD
+                  </button>
+                  <button
+                    onClick={() => {
+                      const imgs = sortedImages.filter(img => selectedImageIds.has(img.id));
+                      handleDownload(imgs);
+                    }}
+                    disabled={selectedImageIds.size === 0}
+                    className={cn(
+                      "text-[10px] uppercase font-mono tracking-wider transition-colors px-2 py-0.5 rounded mr-1",
+                      selectedImageIds.size > 0 ? "text-blue-500 hover:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20" : "text-text-muted cursor-not-allowed"
+                    )}
+                  >
+                    DOWNLOAD
+                  </button>
                   <button
                     onClick={() => setShowDeleteSelectedModal(true)}
                     disabled={selectedImageIds.size === 0}
@@ -3644,6 +3711,16 @@ export default function App() {
                   title={t("Rotate 90° (R)", "90度回転 (R)")}
                 >
                   <RotateCw size={18} />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (selectedImage) handleDownload([selectedImage]);
+                  }}
+                  className="p-1.5 hover:bg-white/20 rounded transition-colors touch-none text-blue-400"
+                  title="Download Image"
+                >
+                  <Download size={18} />
                 </button>
               </div>
               {/* Favorite Button in Fullscreen */}
