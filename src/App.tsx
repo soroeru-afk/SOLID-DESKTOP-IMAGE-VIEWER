@@ -793,6 +793,18 @@ export default function App() {
   // Apply Theme
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
+    setTimeout(() => {
+      const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--bg-app').trim();
+      if (bgColor) {
+        let metaThemeColor = document.querySelector('meta[name="theme-color"]');
+        if (!metaThemeColor) {
+          metaThemeColor = document.createElement('meta');
+          metaThemeColor.setAttribute('name', 'theme-color');
+          document.head.appendChild(metaThemeColor);
+        }
+        metaThemeColor.setAttribute('content', bgColor);
+      }
+    }, 10);
   }, [theme]);
 
   // Load from DB on mount
