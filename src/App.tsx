@@ -1,4 +1,3 @@
-import JSZip from "jszip";
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   motion,
@@ -7,7 +6,9 @@ import {
   useMotionValue,
   Reorder,
 } from "motion/react";
+import JSZip from "jszip";
 import {
+  Download,
   ZoomIn,
   ZoomOut,
   FolderOpen, FolderPlus,
@@ -39,11 +40,11 @@ import {
   Edit2,
   Search,
   FlipHorizontal,
-  Download,
   Palette,
   Star,
   Smartphone,
   RectangleHorizontal,
+  ExternalLink,
 } from "lucide-react";
 import {
   ImageRecord,
@@ -437,6 +438,7 @@ export default function App() {
 
   const [selectedImage, setSelectedImage] = useState<LoadedImage | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>("");
   const [isReadingDirectory, setIsReadingDirectory] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showFullscreenUI, setShowFullscreenUI] = useState(true);
@@ -452,45 +454,6 @@ export default function App() {
   const pendingFullscreenNav = useRef<{ direction: "next" | "prev"; datasetId: string } | null>(null);
   const scrollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-
-  const handleDownload = async (imagesToDownload: LoadedImage[]) => {
-    if (imagesToDownload.length === 0) return;
-    
-    const downloadSingle = (img: LoadedImage) => {
-      const a = document.createElement("a");
-      a.href = img.url;
-      a.download = img.name;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    };
-
-    if (imagesToDownload.length === 1) {
-      downloadSingle(imagesToDownload[0]);
-    } else {
-      const zip = new JSZip();
-      for (const img of imagesToDownload) {
-        try {
-          const res = await fetch(img.url);
-          const blob = await res.blob();
-          zip.file(img.name, blob);
-        } catch (e) {
-          console.error("Failed to fetch image for zip", img.name, e);
-        }
-      }
-      
-      const zipBlob = await zip.generateAsync({ type: "blob" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(zipBlob);
-      const ds = datasets.find(d => d.id === activeDatasetId);
-      const folderName = ds ? ds.name : "images";
-      a.download = `${folderName}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    }
-  };
 
   const startSteppedScroll = (dir: "up" | "down") => {
     if (scrollIntervalRef.current || scrollTimeoutRef.current) return;
@@ -761,6 +724,8 @@ export default function App() {
   const [fileNameInput, setFileNameInput] = useState("");
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
   const [showClearAllModal, setShowClearAllModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [selectedExportDatasetIds, setSelectedExportDatasetIds] = useState<string[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const fullscreenContainerRef = React.useRef<HTMLDivElement>(null);
 
@@ -828,21 +793,6 @@ export default function App() {
   // Apply Theme
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
-    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
-    let color = "#000000"; // default for BLACK
-    if (theme === "LIGHT") color = "#e2e8f0";
-    else if (theme === "PAPER") color = "#f5f5f0";
-    else if (theme === "RED") color = "#0d0404";
-    else if (theme === "NAVY") color = "#06090e";
-    
-    if (metaThemeColor) {
-      metaThemeColor.setAttribute("content", color);
-    } else {
-      const meta = document.createElement("meta");
-      meta.name = "theme-color";
-      meta.content = color;
-      document.head.appendChild(meta);
-    }
   }, [theme]);
 
   // Load from DB on mount
@@ -1078,6 +1028,205 @@ export default function App() {
   const handleReadDirectoryClick = () => {
     fileInputRef.current?.click();
   };
+
+
+  // ==========================================
+  // EXPORT / IMPORT USING FILE SYSTEM ACCESS API
+  // ==========================================
+
+  const handleExportDatasets = async (targetIds: string[]) => {
+    try {
+      if (!('showDirectoryPicker' in window)) {
+        setLoadingMessage("Your browser does not support the File System Access API.\nPlease use Chrome, Edge, or Opera.");
+        setIsLoading(true);
+        return;
+      }
+      
+      const targetDatasets = datasets.filter(ds => targetIds.includes(ds.id));
+      if (targetDatasets.length === 0) return;
+      
+      const dirHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+      
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const backupDirName = targetDatasets.length === 1
+        ? `ImageViewer_Backup_${targetDatasets[0].name.replace(/[^a-zA-Z0-9_-]/g, '_')}_${timestamp}`
+        : `ImageViewer_Backup_${timestamp}`;
+      const backupDirHandle = await dirHandle.getDirectoryHandle(backupDirName, { create: true });
+
+      const metaFileHandle = await backupDirHandle.getFileHandle('datasets.json', { create: true });
+      const metaWritable = await metaFileHandle.createWritable();
+      await metaWritable.write(JSON.stringify(targetDatasets, null, 2));
+      await metaWritable.close();
+
+      let totalImages = 0;
+      let exportedImages = 0;
+      for (const ds of targetDatasets) {
+        const count = await getImageCountByDataset(ds.id);
+        totalImages += count;
+      }
+
+      setIsLoading(true);
+      
+      for (const ds of targetDatasets) {
+        const dsImages = await getImagesByDataset(ds.id);
+        if (dsImages.length === 0) continue;
+
+        const safeDsName = ds.name.replace(/[^a-zA-Z0-9]/g, '_') + "_" + ds.id.substring(0, 4);
+        const dsDirHandle = await backupDirHandle.getDirectoryHandle(safeDsName, { create: true });
+
+        const dsMetaHandle = await dsDirHandle.getFileHandle('metadata.json', { create: true });
+        const dsMetaWritable = await dsMetaHandle.createWritable();
+        const metaOnly = dsImages.map(img => ({
+          id: img.id,
+          name: img.name,
+          type: img.type,
+          size: img.size,
+          lastModified: img.lastModified,
+          orderIndex: img.orderIndex
+        }));
+        await dsMetaWritable.write(JSON.stringify(metaOnly, null, 2));
+        await dsMetaWritable.close();
+
+        for (const img of dsImages) {
+          try {
+            const safeImgName = img.name.replace(/[/\?%*:|"<>]/g, '-');
+            const uniqueName = `${img.id.substring(0,6)}_${safeImgName}`;
+            const fileHandle = await dsDirHandle.getFileHandle(uniqueName, { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(img.data);
+            await writable.close();
+          } catch (e) {
+            console.error("Failed to write image:", img.name, e);
+          }
+          exportedImages++;
+          setLoadingMessage(`EXPORTING... ${exportedImages}/${totalImages}`);
+        }
+      }
+      
+      setLoadingMessage(`Export completed!\nFolder: ${backupDirName}\nDatasets: ${targetDatasets.length}\nImages: ${exportedImages}`);
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        console.error("Export failed:", error);
+        if (error.message && error.message.includes("Cross origin")) {
+          setLoadingMessage("【⚠️ 新しいタブで開いてください】\nプレビュー画面（iFrame）のセキュリティ制限により、フォルダ選択ダイアログを開けません。\n画面右上の「↗️ Open in New Tab（新しいタブで開く）」ボタンからアプリを別タブで開いて実行してください。");
+        } else {
+          setLoadingMessage("Export failed:\n" + error.message);
+        }
+        setIsLoading(true);
+      }
+    }
+  };
+
+  const handleExportAll = () => {
+    if (datasets.length === 0) {
+      setLoadingMessage("エクスポートできるデータセットがありません。");
+      setIsLoading(true);
+      return;
+    }
+    const initialIds = (activeDatasetId && activeDatasetId !== "all") ? [activeDatasetId] : datasets.map(d => d.id);
+    setSelectedExportDatasetIds(initialIds);
+    setShowExportModal(true);
+  };
+
+  const handleImportAll = async () => {
+    try {
+      if (!('showDirectoryPicker' in window)) {
+        setLoadingMessage("Your browser does not support the File System Access API.\nPlease use Chrome, Edge, or Opera."); setIsLoading(true); return;
+        return;
+      }
+      
+      const backupDirHandle = await (window as any).showDirectoryPicker({ mode: 'read' });
+      
+      setIsLoading(true);
+      setLoadingMessage("READING BACKUP...");
+
+      let datasetsJson = null;
+      try {
+        const fileHandle = await backupDirHandle.getFileHandle('datasets.json');
+        const file = await fileHandle.getFile();
+        const text = await file.text();
+        datasetsJson = JSON.parse(text);
+      } catch (e) {
+        setLoadingMessage("Invalid backup folder. 'datasets.json' not found.\nPlease select a valid backup folder created by EXPORT DATA."); setIsLoading(true); return;
+        return;
+      }
+
+      if (!Array.isArray(datasetsJson)) {
+         setLoadingMessage("Invalid datasets.json format."); setIsLoading(true); return;
+         return;
+      }
+
+      let importedImages = 0;
+      
+      for (const dsMeta of datasetsJson) {
+        const newDs = await createDataset(dsMeta.name);
+        
+        const safeDsName = dsMeta.name.replace(/[^a-zA-Z0-9]/g, '_') + "_" + dsMeta.id.substring(0, 4);
+        
+        let dsDirHandle;
+        try {
+          dsDirHandle = await backupDirHandle.getDirectoryHandle(safeDsName);
+        } catch(e) {
+          continue;
+        }
+
+        let imgMetaList = [];
+        try {
+          const mHandle = await dsDirHandle.getFileHandle('metadata.json');
+          const mFile = await mHandle.getFile();
+          const mText = await mFile.text();
+          imgMetaList = JSON.parse(mText);
+        } catch(e) {
+        }
+
+        const imagesToStore = [];
+        
+        for await (const entry of dsDirHandle.values()) {
+          if (entry.kind === 'file' && entry.name !== 'metadata.json') {
+            const fileHandle = await dsDirHandle.getFileHandle(entry.name);
+            const file = await fileHandle.getFile();
+            
+            const idPart = entry.name.split('_')[0];
+            const originalMeta = imgMetaList.find(m => m.id.startsWith(idPart));
+            
+            const originalName = originalMeta ? originalMeta.name : file.name;
+            const orderIndex = originalMeta ? originalMeta.orderIndex : Date.now();
+            
+            const imageRecord = {
+              id: `${originalName}-${file.lastModified}-${crypto.randomUUID()}`,
+              datasetId: newDs.id,
+              name: originalName,
+              type: file.type || 'image/jpeg',
+              size: file.size,
+              lastModified: file.lastModified,
+              data: file,
+              orderIndex: orderIndex
+            };
+            imagesToStore.push(imageRecord);
+            importedImages++;
+            setLoadingMessage(`IMPORTING... ${importedImages}`);
+          }
+        }
+        
+        if (imagesToStore.length > 0) {
+          imagesToStore.sort((a, b) => a.orderIndex - b.orderIndex);
+          await storeImages(imagesToStore);
+        }
+      }
+      
+      await loadDatasets();
+      setLoadingMessage(`Import completed!\nImages imported: ${importedImages}`);
+    } catch (error: any) {
+       if (error.name !== 'AbortError') {
+        console.error("Import failed:", error);
+        if (error.message && error.message.includes("Cross origin")) {
+          setLoadingMessage("【⚠️ 新しいタブで開いてください】\nプレビュー画面（iFrame）のセキュリティ制限により、フォルダ選択ダイアログを開けません。\n画面右上の「↗️ Open in New Tab（新しいタブで開く）」ボタンからアプリを別タブで開いて実行してください。");
+        } else {
+          setLoadingMessage("Import failed:\n" + error.message);
+        }
+        setIsLoading(true);
+      }
+    } };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0 || !activeDatasetId)
@@ -1764,6 +1913,45 @@ export default function App() {
     stopZooming,
   ]);
 
+  const handleDownloadImage = (image: ImageRecord) => {
+    const url = URL.createObjectURL(image.data);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = image.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+  };
+
+  const handleDownloadSelected = async () => {
+    const selected = images.filter(img => selectedImageIds.has(img.id));
+    if (selected.length === 0) return;
+    
+    if (selected.length === 1) {
+      handleDownloadImage(selected[0]);
+      return;
+    }
+
+    const zip = new JSZip();
+    selected.forEach(img => {
+      zip.file(img.name, img.data);
+    });
+
+    const blob = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    
+    const ds = datasets.find(d => d.id === activeDatasetId);
+    a.download = ds ? `${ds.name}.zip` : "download.zip";
+    
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+  };
+
   const handleClear = () => {
     setShowClearAllModal(true);
   };
@@ -2302,6 +2490,13 @@ export default function App() {
                 <PanelRight size={16} />
               )}
             </SolidButton>
+            <SolidButton
+              onClick={() => window.open(window.location.href, '_blank')}
+              className="px-2 ml-2"
+              title="OPEN IN NEW TAB"
+            >
+              <ExternalLink size={16} />
+            </SolidButton>
           </div>
         </div>
       </header>
@@ -2504,6 +2699,25 @@ export default function App() {
                 <span className="text-text-primary">{totalImagesCount}</span>
               </div>
             </div>
+            
+            <div className="flex gap-2 shrink-0">
+              <SolidButton
+                onClick={handleExportAll}
+                className="flex-1 justify-center text-[10px]"
+                title="Export all data to a local folder"
+                disabled={isLoading || isReadingDirectory}
+              >
+                EXPORT DATA
+              </SolidButton>
+              <SolidButton
+                onClick={handleImportAll}
+                className="flex-1 justify-center text-[10px]"
+                title="Import data from a local folder"
+                disabled={isLoading || isReadingDirectory}
+              >
+                IMPORT DATA
+              </SolidButton>
+            </div>
 
             <div className="pt-3 border-t border-panel-border overflow-y-scroll flex flex-col gap-1 min-h-[80px] flex-1 scrollbar-dark pr-1">
               {datasetViewMode === "list" ? (
@@ -2571,6 +2785,16 @@ export default function App() {
                           {activeDatasetId === ds.id && (
                             <>
                               <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleExportDatasets([ds.id]);
+                                }}
+                                className="hover:text-accent opacity-50 hover:opacity-100 transition-opacity"
+                                title="EXPORT THIS DATASET"
+                              >
+                                <Download size={14} />
+                              </button>
+                              <button
                                 onClick={(e) =>
                                   handleRenameDatasetClick(e, ds.id, ds.name)
                                 }
@@ -2635,6 +2859,18 @@ export default function App() {
                         >
                           <ArrowDown size={14} />
                         </button>
+                        {activeDatasetId !== "all" && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleExportDatasets([activeDatasetId]);
+                            }}
+                            title="EXPORT THIS DATASET"
+                            className="hover:text-accent"
+                          >
+                            <Download size={14} />
+                          </button>
+                        )}
                         <button
                           onClick={(e) => {
                             const ds = datasets.find(
@@ -2965,20 +3201,18 @@ export default function App() {
                       </>
                     )}
                   </div>
-                                    <button
-                    onClick={() => {
-                      const imgs = sortedImages.filter(img => selectedImageIds.has(img.id));
-                      handleDownload(imgs);
-                    }}
+                  <button
+                    onClick={handleDownloadSelected}
                     disabled={selectedImageIds.size === 0}
                     className={cn(
-                      "text-[10px] uppercase font-mono tracking-wider transition-colors px-2 py-0.5 rounded mr-1",
-                      selectedImageIds.size > 0 ? "text-blue-500 hover:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20" : "text-text-muted cursor-not-allowed"
+                      "text-[10px] uppercase font-mono tracking-wider transition-colors",
+                      selectedImageIds.size > 0
+                        ? "text-green-500 hover:text-green-400"
+                        : "text-text-muted cursor-not-allowed",
                     )}
                   >
                     DOWNLOAD
                   </button>
-                  
                   <button
                     onClick={() => setShowDeleteSelectedModal(true)}
                     disabled={selectedImageIds.size === 0}
@@ -3328,6 +3562,39 @@ export default function App() {
           </Panel>
         </div>
       </div>
+
+      
+      {/* Export / Import Loading & Message Overlay */}
+      <AnimatePresence>
+        {(isLoading || loadingMessage) && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          >
+            <div className="flex flex-col items-center gap-6 max-w-md w-full bg-panel-bg border border-panel-border p-6 rounded-lg shadow-2xl">
+              {loadingMessage && (loadingMessage.includes("EXPORTING") || loadingMessage.includes("IMPORTING") || loadingMessage.includes("READING")) ? (
+                <RefreshCw size={32} className="animate-spin text-accent" />
+              ) : null}
+              <div className="text-sm tracking-widest text-center whitespace-pre-line text-text-primary">
+                {loadingMessage || "PROCESSING..."}
+              </div>
+              {loadingMessage && !(loadingMessage.includes("EXPORTING") || loadingMessage.includes("IMPORTING") || loadingMessage.includes("READING") || loadingMessage === "") && (
+                <SolidButton 
+                  onClick={() => {
+                     setIsLoading(false);
+                     setLoadingMessage("");
+                  }} 
+                  className="mt-4 px-6 py-2"
+                >
+                  OK
+                </SolidButton>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Fullscreen Modal overlay */}
       <AnimatePresence>
@@ -3700,13 +3967,14 @@ export default function App() {
                 >
                   <RotateCw size={18} />
                 </button>
+                <div className={cn("w-full h-px my-1", isFullscreenDarkText ? "bg-black/15" : "bg-white/15")}></div>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (selectedImage) handleDownload([selectedImage]);
+                    if (selectedImage) handleDownloadImage(selectedImage);
                   }}
                   className="p-1.5 hover:bg-white/20 rounded transition-colors touch-none"
-                  title="Download Image"
+                  title={t("Download", "ダウンロード")}
                 >
                   <Download size={18} />
                 </button>
@@ -4095,6 +4363,109 @@ export default function App() {
                 >
                   CONFIRM
                 </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+        {/* Export Dataset Selection Modal */}
+        {showExportModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          >
+            <div className="bg-panel-bg border border-panel-border p-6 font-mono w-[460px] max-h-[85vh] flex flex-col shadow-2xl">
+              <h2 className="text-text-primary mb-2 uppercase text-sm font-semibold flex items-center gap-2">
+                <FolderOpen size={16} className="text-accent" /> {t("EXPORT DATASETS", "データセットのエクスポート")}
+              </h2>
+              <p className="text-text-secondary text-xs mb-4">
+                {t("Select the dataset(s) you want to backup/export to a local folder.", "エクスポート（バックアップ）したいリストを選択してください。")}
+              </p>
+              
+              <div className="flex justify-between items-center mb-2 text-xs">
+                <span className="text-text-muted text-[10px]">
+                  {t("SELECTED:", "選択中:")} <span className="text-text-primary font-bold">{selectedExportDatasetIds.length}</span> / {datasets.length} {t("SETS", "セット")}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedExportDatasetIds(datasets.map(d => d.id))}
+                    className="text-[10px] text-accent hover:underline"
+                  >
+                    {t("SELECT ALL", "すべて選択")}
+                  </button>
+                  <span className="text-text-muted text-[10px]">|</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedExportDatasetIds([])}
+                    className="text-[10px] text-text-muted hover:text-text-primary hover:underline"
+                  >
+                    {t("CLEAR", "全解除")}
+                  </button>
+                </div>
+              </div>
+
+              {/* Dataset list with checkboxes (up to ~10 items visible, then scrollable) */}
+              <div className="flex-1 overflow-y-auto max-h-[370px] border border-panel-border bg-root-bg/50 p-2 flex flex-col gap-1.5 scrollbar-dark mb-5">
+                {datasets.length === 0 ? (
+                  <div className="text-center text-xs text-text-muted py-6">
+                    {t("NO DATASETS AVAILABLE", "データセットがありません")}
+                  </div>
+                ) : (
+                  datasets.map((ds) => {
+                    const isChecked = selectedExportDatasetIds.includes(ds.id);
+                    const count = datasetCounts[ds.id] || 0;
+                    return (
+                      <label
+                        key={ds.id}
+                        className={cn(
+                          "flex items-center gap-2.5 p-2 text-xs cursor-pointer border rounded transition-colors",
+                          isChecked
+                            ? "bg-accent/10 border-accent/40 text-text-primary"
+                            : "border-panel-border/40 text-text-secondary hover:bg-panel-border/30 hover:text-text-primary"
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedExportDatasetIds(prev => [...prev, ds.id]);
+                            } else {
+                              setSelectedExportDatasetIds(prev => prev.filter(id => id !== ds.id));
+                            }
+                          }}
+                          className="accent-accent cursor-pointer rounded"
+                        />
+                        <span className="truncate flex-1 font-mono">{ds.name}</span>
+                        <span className="text-[10px] text-text-muted font-mono shrink-0">
+                          {count} {t("images", "枚")}
+                        </span>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+
+              <div className="flex justify-end gap-3 shrink-0">
+                <SolidButton
+                  onClick={() => setShowExportModal(false)}
+                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none text-xs"
+                >
+                  {t("CANCEL", "キャンセル")}
+                </SolidButton>
+                <SolidButton
+                  onClick={() => {
+                    if (selectedExportDatasetIds.length === 0) return;
+                    setShowExportModal(false);
+                    handleExportDatasets(selectedExportDatasetIds);
+                  }}
+                  disabled={selectedExportDatasetIds.length === 0}
+                  className="text-accent hover:text-accent text-xs"
+                >
+                  {t("START EXPORT", "エクスポート開始")}
+                </SolidButton>
               </div>
             </div>
           </motion.div>
