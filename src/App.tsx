@@ -45,6 +45,8 @@ import {
   Smartphone,
   RectangleHorizontal,
   ExternalLink,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import {
   ImageRecord,
@@ -57,6 +59,7 @@ import {
   storeImages,
   clearAll,
   deleteImage,
+  updateImagesVisibility,
   renameImage,
   updateImagesDataset,
   copyImagesToDataset,
@@ -238,8 +241,17 @@ export default function App() {
   const [datasetViewMode, setDatasetViewMode] = useState<"list" | "dropdown">(
     "list",
   );
+
   const [images, setImages] = useState<LoadedImage[]>([]);
+  const [showHiddenImages, setShowHiddenImages] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    const total = datasets
+      .reduce((acc, ds) => acc + (datasetCounts[ds.id] || 0), 0);
+    setTotalImagesCount(total);
+  }, [datasets, datasetCounts]);
+
   const [searchInput, setSearchInput] = useState("");
   const [totalImagesCount, setTotalImagesCount] = useState<number>(0);
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
@@ -700,8 +712,6 @@ export default function App() {
 
   const [moveTargetId, setMoveTargetId] = useState<string>("");
   const [lastSelectedIdx, setLastSelectedIdx] = useState<number | null>(null);
-  const [showDeleteSelectedModal, setShowDeleteSelectedModal] = useState(false);
-  const [showDeleteFullscreenModal, setShowDeleteFullscreenModal] = useState(false);
   const [showDeleteDatasetModal, setShowDeleteDatasetModal] = useState(false);
   const [datasetToDelete, setDatasetToDelete] = useState<string | null>(null);
   const [overwriteFiles, setOverwriteFiles] = useState<{ files: File[], datasetId: string, forceLoad: boolean, existingMap: Map<string, ImageRecord> } | null>(null);
@@ -824,6 +834,11 @@ export default function App() {
 
   const sortedImages = useMemo(() => {
     let filteredImages = images;
+    if (showHiddenImages) {
+      filteredImages = filteredImages.filter(img => img.isHidden);
+    } else {
+      filteredImages = filteredImages.filter(img => !img.isHidden);
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       filteredImages = images.filter(img => img.name.toLowerCase().includes(q));
@@ -873,7 +888,7 @@ export default function App() {
       }
       return sortOrders[sortField] === "asc" ? comparison : -comparison;
     });
-  }, [images, sortField, sortOrders, randomSeed, searchQuery, orientationFilter]);
+  }, [images, sortField, sortOrders, randomSeed, searchQuery, orientationFilter, showHiddenImages]);
 
   const masonryColumns = useMemo(() => {
     if (viewMode !== "grid-ma") return [];
@@ -910,8 +925,7 @@ export default function App() {
       }
       setDatasetCounts(counts);
 
-      const total = await getTotalImageCount();
-      setTotalImagesCount(total);
+      // totalImagesCount is now calculated via useEffect
 
       if (dsList.length > 0 && !activeDatasetId) {
         setActiveDatasetId(dsList[0].id);
@@ -932,7 +946,8 @@ export default function App() {
   const loadImages = async (datasetId: string) => {
     setIsLoading(true);
     try {
-      const dbImages = datasetId === "all" ? await getAllImages() : await getImagesByDataset(datasetId);
+      let dbImages = datasetId === "all" ? await getAllImages() : await getImagesByDataset(datasetId);
+
       // Revoke old URLs
       images.forEach((img) => URL.revokeObjectURL(img.url));
 
@@ -1376,6 +1391,8 @@ export default function App() {
     }
   };
 
+
+
   const handleDeleteDataset = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     setDatasetToDelete(id);
@@ -1452,38 +1469,42 @@ export default function App() {
     setIsLoading(false);
   };
 
-  const handleDeleteSelected = async () => {
-    setIsLoading(true);
-    for (const id of selectedImageIds) {
-      await deleteImage(id);
-    }
+  const handleHideSelected = async (hide: boolean) => {
+    await updateImagesVisibility(Array.from(selectedImageIds), hide);
+    setImages(prev => prev.map(img => 
+      selectedImageIds.has(img.id) ? { ...img, isHidden: hide } : img
+    ));
     setSelectedImageIds(new Set());
     setLastSelectedIdx(null);
     setIsSelectionMode(false);
-    setShowDeleteSelectedModal(false);
+    
+    // Background refresh
     if (activeDatasetId) {
-      await loadImages(activeDatasetId);
-      await loadDatasets();
+      loadImages(activeDatasetId).finally(() => loadDatasets());
     }
-    setIsLoading(false);
+    showNotification(language === "JP" ? `${hide ? "シークレット" : "通常表示"}にしました` : `Marked as ${hide ? "secret" : "revealed"}`);
   };
 
-  const executeDeleteFullscreenImage = async () => {
+  const executeHideFullscreenImage = async () => {
     if (!selectedImage) return;
-    setIsLoading(true);
-    await deleteImage(selectedImage.id);
-    setSelectedImageIds(prev => {
-      const next = new Set(prev);
-      next.delete(selectedImage.id);
-      return next;
-    });
-    setIsFullscreen(false);
-    setShowDeleteFullscreenModal(false);
-    if (activeDatasetId) {
-      await loadImages(activeDatasetId);
-      await loadDatasets();
+    const newHiddenState = !selectedImage.isHidden;
+    await updateImagesVisibility([selectedImage.id], newHiddenState);
+
+    setImages(prev => prev.map(img => 
+      img.id === selectedImage.id ? { ...img, isHidden: newHiddenState } : img
+    ));
+
+    const shouldClose = (showHiddenImages && !newHiddenState) || (!showHiddenImages && newHiddenState);
+    if (shouldClose) {
+        setIsFullscreen(false);
+    } else {
+        setSelectedImage(prev => prev ? { ...prev, isHidden: newHiddenState } as any : null);
     }
-    setIsLoading(false);
+
+    if (activeDatasetId) {
+      loadImages(activeDatasetId).finally(() => loadDatasets());
+    }
+    showNotification(language === "JP" ? `${newHiddenState ? "シークレット" : "通常表示"}にしました` : `Marked as ${newHiddenState ? "secret" : "revealed"}`);
   };
 
   const handleMoveSelected = async (newDatasetId: string) => {
@@ -1780,6 +1801,13 @@ export default function App() {
         handleToggleZoomFill(e);
         return;
       }
+      if (key === "Delete") {
+        if (e.repeat) return;
+        e.preventDefault();
+        executeHideFullscreenImage();
+        return;
+      }
+      
       if (key === "Escape" || key === "Backspace") {
         if (e.repeat) return;
         e.preventDefault();
@@ -2230,7 +2258,7 @@ export default function App() {
       )}
       style={
         viewMode === "free"
-          ? {
+          ? { opacity: img.isHidden ? 0.4 : 1,
               width: itemScale,
               height: itemScale,
               left: `50%`,
@@ -2251,7 +2279,7 @@ export default function App() {
                   height: "auto",
                   zIndex: isSelected ? 50 : 1,
                 }
-              : {
+              : { opacity: img.isHidden ? 0.4 : 1,
                   width: "100%",
                   height: "auto",
                   zIndex: isSelected ? 50 : 1,
@@ -2326,6 +2354,11 @@ export default function App() {
         </div>
       )}
       
+      {img.isHidden && (
+        <div className="absolute top-2 right-2 z-20 pointer-events-none text-amber-500/80 bg-root-bg/80 rounded p-0.5 backdrop-blur-sm" title="Secret">
+          <EyeOff size={16} />
+        </div>
+      )}
       {isSelectionMode && (
         <div className="absolute top-2 left-2 z-20 pointer-events-none">
           <div className={cn(
@@ -2673,6 +2706,7 @@ export default function App() {
                   <ChevronDown size={16} />
                 )}
               </SolidButton>
+
               <SolidButton
                 onClick={handleClear}
                 className="px-3"
@@ -3226,16 +3260,25 @@ export default function App() {
                     DOWNLOAD
                   </button>
                   <button
-                    onClick={() => setShowDeleteSelectedModal(true)}
+                    onClick={() => {
+                      const allHidden = Array.from(selectedImageIds).every(id => {
+                        const img = images.find(img => img.id === id);
+                        return img?.isHidden;
+                      });
+                      handleHideSelected(!allHidden);
+                    }}
                     disabled={selectedImageIds.size === 0}
                     className={cn(
                       "text-[10px] uppercase font-mono tracking-wider transition-colors",
                       selectedImageIds.size > 0
-                        ? "text-red-500 hover:text-red-400"
+                        ? "text-amber-500 hover:text-amber-400"
                         : "text-text-muted cursor-not-allowed",
                     )}
                   >
-                    DELETE
+                    {Array.from(selectedImageIds).every(id => {
+                        const img = images.find(img => img.id === id);
+                        return img?.isHidden;
+                      }) ? "REVEAL" : "SECRET"}
                   </button>
                   <button
                     onClick={() => {
@@ -3250,6 +3293,24 @@ export default function App() {
                 </div>
               ) : (
                 <div className="flex items-center gap-6">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] uppercase text-text-muted">
+                      SECRET:
+                    </span>
+                    <button
+                      onClick={() => setShowHiddenImages(prev => !prev)}
+                      className={cn(
+                        "h-6 min-w-[32px] px-2 flex items-center justify-center border rounded-[2px] transition-colors",
+                        showHiddenImages
+                          ? "border-amber-500/50 text-amber-400 bg-amber-500/10"
+                          : "border-panel-border text-text-secondary bg-panel-bg hover:text-text-primary"
+                      )}
+                      title={showHiddenImages ? "HIDE SECRETS" : "SHOW SECRETS"}
+                    >
+                      {showHiddenImages ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                  
                   <div className="flex items-center gap-2 mr-2">
                     <span className="text-[10px] uppercase text-text-muted">
                       ORIENT:
@@ -3806,16 +3867,16 @@ export default function App() {
               <div className="absolute bottom-6 right-6 flex items-center gap-2 pointer-events-auto">
                 {/* Delete Button */}
                 <button
-                  onClick={(e) => { e.stopPropagation(); setShowDeleteFullscreenModal(true); }}
+                  onClick={(e) => { e.stopPropagation(); executeHideFullscreenImage(); }}
                   className={cn(
                     "p-1.5 flex items-center justify-center border rounded bg-black/15 backdrop-blur-sm transition-colors outline-none focus:outline-none",
                     isFullscreenDarkText
-                      ? "border-black/15 text-black/60 hover:text-red-600 hover:border-red-600/50 hover:bg-red-500/10"
-                      : "border-white/15 text-white/60 hover:text-red-400 hover:border-red-400/50 hover:bg-red-500/10",
+                      ? "border-black/15 text-black/60 hover:text-amber-600 hover:border-amber-600/50 hover:bg-amber-500/10"
+                      : "border-white/15 text-white/60 hover:text-amber-400 hover:border-amber-400/50 hover:bg-amber-500/10",
                   )}
-                  title={t("Delete Image", "画像を削除")}
+                  title={selectedImage?.isHidden ? "REVEAL (Del)" : "SECRET (Del)"}
                 >
-                  <Trash2 size={16} />
+                  {selectedImage?.isHidden ? <Eye size={16} /> : <EyeOff size={16} />}
                 </button>
 
                 {/* BG Toggle Button Group */}
@@ -4195,59 +4256,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Delete Fullscreen Image Modal */}
-      <AnimatePresence>
-        {showDeleteFullscreenModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
-          >
-            <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(239,68,68,0.2)]">
-              <h2 className="text-red-500 mb-4 flex items-center gap-2">
-                <Trash2 size={20} />{" "}
-                {t("DELETE IMAGE", "画像を削除")}
-              </h2>
-              <p className="text-text-secondary text-sm mb-6 uppercase leading-relaxed">
-                {language === "JP" ? (
-                  <>
-                    警告: 現在表示中の画像を選択したデータベースから削除します。
-                    <br />
-                    <br />
-                    <span className="text-accent">
-                      (※実際のデバイス上のファイルは削除されません)
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    Warning: This will delete the currently viewed image from the database.
-                    <br />
-                    <br />
-                    <span className="text-accent">
-                      (※ Actual files on your device will NOT be deleted)
-                    </span>
-                  </>
-                )}
-              </p>
-              <div className="flex justify-end gap-3">
-                <SolidButton
-                  onClick={() => setShowDeleteFullscreenModal(false)}
-                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
-                >
-                  CANCEL
-                </SolidButton>
-                <button
-                  onClick={executeDeleteFullscreenImage}
-                  className="px-4 py-2 border border-red-500 text-red-500 hover:bg-red-500/10 uppercase transition-colors outline-none"
-                >
-                  CONFIRM
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      
 
       {/* Overwrite Confirmation Modal */}
       <AnimatePresence>
@@ -4325,164 +4334,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Delete Selected Modal */}
-      <AnimatePresence>
-        {showDeleteSelectedModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
-          >
-            <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(239,68,68,0.2)]">
-              <h2 className="text-red-500 mb-4 flex items-center gap-2">
-                <Trash2 size={20} />{" "}
-                {t("DELETE SELECTED IMAGES", "選択した画像を削除")}
-              </h2>
-              <p className="text-text-secondary text-sm mb-6 uppercase leading-relaxed">
-                {language === "JP" ? (
-                  <>
-                    警告: {selectedImageIds.size}{" "}
-                    個の画像を選択したデータベースから削除します。
-                    <br />
-                    <br />
-                    <span className="text-accent">
-                      (※実際のデバイス上のファイルは削除されません)
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    Warning: This will delete {selectedImageIds.size} selected
-                    image(s) from the database.
-                    <br />
-                    <br />
-                    <span className="text-accent">
-                      (※ Actual files on your device will NOT be deleted)
-                    </span>
-                  </>
-                )}
-              </p>
-              <div className="flex justify-end gap-3">
-                <SolidButton
-                  onClick={() => setShowDeleteSelectedModal(false)}
-                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
-                >
-                  CANCEL
-                </SolidButton>
-                <button
-                  onClick={handleDeleteSelected}
-                  className="px-4 py-2 border border-red-500 text-red-500 hover:bg-red-500/10  uppercase transition-colors outline-none"
-                >
-                  CONFIRM
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-        {/* Export Dataset Selection Modal */}
-        {showExportModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          >
-            <div className="bg-panel-bg border border-panel-border p-6 font-mono w-[460px] max-h-[85vh] flex flex-col shadow-2xl">
-              <h2 className="text-text-primary mb-2 uppercase text-sm font-semibold flex items-center gap-2">
-                <FolderOpen size={16} className="text-accent" /> {t("EXPORT DATASETS", "データセットのエクスポート")}
-              </h2>
-              <p className="text-text-secondary text-xs mb-4">
-                {t("Select the dataset(s) you want to backup/export to a local folder.", "エクスポート（バックアップ）したいリストを選択してください。")}
-              </p>
-              
-              <div className="flex justify-between items-center mb-2 text-xs">
-                <span className="text-text-muted text-[10px]">
-                  {t("SELECTED:", "選択中:")} <span className="text-text-primary font-bold">{selectedExportDatasetIds.length}</span> / {datasets.length} {t("SETS", "セット")}
-                </span>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedExportDatasetIds(datasets.map(d => d.id))}
-                    className="text-[10px] text-accent hover:underline"
-                  >
-                    {t("SELECT ALL", "すべて選択")}
-                  </button>
-                  <span className="text-text-muted text-[10px]">|</span>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedExportDatasetIds([])}
-                    className="text-[10px] text-text-muted hover:text-text-primary hover:underline"
-                  >
-                    {t("CLEAR", "全解除")}
-                  </button>
-                </div>
-              </div>
-
-              {/* Dataset list with checkboxes (up to ~10 items visible, then scrollable) */}
-              <div className="flex-1 overflow-y-auto max-h-[370px] border border-panel-border bg-root-bg/50 p-2 flex flex-col gap-1.5 scrollbar-dark mb-5">
-                {datasets.length === 0 ? (
-                  <div className="text-center text-xs text-text-muted py-6">
-                    {t("NO DATASETS AVAILABLE", "データセットがありません")}
-                  </div>
-                ) : (
-                  datasets.map((ds) => {
-                    const isChecked = selectedExportDatasetIds.includes(ds.id);
-                    const count = datasetCounts[ds.id] || 0;
-                    return (
-                      <label
-                        key={ds.id}
-                        className={cn(
-                          "flex items-center gap-2.5 p-2 text-xs cursor-pointer border rounded transition-colors",
-                          isChecked
-                            ? "bg-accent/10 border-accent/40 text-text-primary"
-                            : "border-panel-border/40 text-text-secondary hover:bg-panel-border/30 hover:text-text-primary"
-                        )}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedExportDatasetIds(prev => [...prev, ds.id]);
-                            } else {
-                              setSelectedExportDatasetIds(prev => prev.filter(id => id !== ds.id));
-                            }
-                          }}
-                          className="accent-accent cursor-pointer rounded"
-                        />
-                        <span className="truncate flex-1 font-mono">{ds.name}</span>
-                        <span className="text-[10px] text-text-muted font-mono shrink-0">
-                          {count} {t("images", "枚")}
-                        </span>
-                      </label>
-                    );
-                  })
-                )}
-              </div>
-
-              <div className="flex justify-end gap-3 shrink-0">
-                <SolidButton
-                  onClick={() => setShowExportModal(false)}
-                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none text-xs"
-                >
-                  {t("CANCEL", "キャンセル")}
-                </SolidButton>
-                <SolidButton
-                  onClick={() => {
-                    if (selectedExportDatasetIds.length === 0) return;
-                    setShowExportModal(false);
-                    handleExportDatasets(selectedExportDatasetIds);
-                  }}
-                  disabled={selectedExportDatasetIds.length === 0}
-                  className="text-accent hover:text-accent text-xs"
-                >
-                  {t("START EXPORT", "エクスポート開始")}
-                </SolidButton>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      
 
       <footer className="flex justify-between text-[10px] font-mono text-text-muted uppercase tracking-widest shrink-0">
         <span>SYSTEM_READY_</span>

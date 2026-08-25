@@ -4,6 +4,7 @@ export interface DatasetRecord {
   id: string;
   name: string;
   createdAt: number;
+  isHidden?: boolean;
 }
 
 export interface ImageRecord {
@@ -19,6 +20,7 @@ export interface ImageRecord {
   autoBg?: "black" | "white" | "checkerboard";
   width?: number;
   height?: number;
+  isHidden?: boolean;
 }
 
 interface ImageViewerDB extends DBSchema {
@@ -168,6 +170,21 @@ export async function updateImagesDataset(imageIds: string[], newDatasetId: stri
     if (img) {
       img.datasetId = newDatasetId;
       await tx.store.put(img);
+    }
+  }
+  await tx.done;
+}
+
+export async function updateImagesVisibility(ids: string[], isHidden: boolean) {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME_IMAGES, 'readwrite');
+  const store = tx.objectStore(STORE_NAME_IMAGES);
+  
+  for (const id of ids) {
+    const img = await store.get(id);
+    if (img) {
+      img.isHidden = isHidden;
+      await store.put(img);
     }
   }
   await tx.done;
