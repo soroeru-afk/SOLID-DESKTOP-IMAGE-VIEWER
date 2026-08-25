@@ -77,6 +77,18 @@ export async function getAllDatasets(): Promise<DatasetRecord[]> {
   return datasets.sort((a, b) => b.createdAt - a.createdAt);
 }
 
+export async function toggleDatasetVisibility(id: string, isHidden: boolean) {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME_DATASETS, 'readwrite');
+  const store = tx.objectStore(STORE_NAME_DATASETS);
+  const ds = await store.get(id);
+  if (ds) {
+    ds.isHidden = isHidden;
+    await store.put(ds);
+  }
+  await tx.done;
+}
+
 export async function renameDataset(id: string, newName: string) {
   const db = await initDB();
   const tx = db.transaction(STORE_NAME_DATASETS, 'readwrite');
