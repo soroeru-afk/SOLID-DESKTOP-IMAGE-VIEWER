@@ -3322,6 +3322,18 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => {
+                      if (selectedImageIds.size > 0) setShowDeleteSelectedModal(true);
+                    }}
+                    className={cn(
+                      "text-[10px] uppercase font-mono tracking-wider transition-colors",
+                      selectedImageIds.size > 0 ? "text-red-500 hover:text-red-400" : "text-text-muted cursor-not-allowed"
+                    )}
+                    disabled={selectedImageIds.size === 0}
+                  >
+                    DELETE
+                  </button>
+                  <button
+                    onClick={() => {
                       setIsSelectionMode(false);
                       setSelectedImageIds(new Set());
                       setLastSelectedIdx(null);
@@ -3435,7 +3447,7 @@ export default function App() {
                   >
                     EDIT
                   </button>
-                  <span className="text-accent pl-4 border-l border-panel-border h-4 flex items-center justify-end w-[110px]">
+                  <span className="text-accent pl-4 border-l border-panel-border h-4 flex items-center justify-end w-auto min-w-[110px]">
                     {viewMode.toUpperCase()}{" "}
                     {viewMode === "free" ? "BOARD" : "VIEW"}
                   </span>
