@@ -713,6 +713,8 @@ export default function App() {
   const [moveTargetId, setMoveTargetId] = useState<string>("");
   const [lastSelectedIdx, setLastSelectedIdx] = useState<number | null>(null);
   const [showDeleteDatasetModal, setShowDeleteDatasetModal] = useState(false);
+  const [showDeleteImageModal, setShowDeleteImageModal] = useState(false);
+  const [showDeleteSelectedModal, setShowDeleteSelectedModal] = useState(false);
   const [datasetToDelete, setDatasetToDelete] = useState<string | null>(null);
   const [overwriteFiles, setOverwriteFiles] = useState<{ files: File[], datasetId: string, forceLoad: boolean, existingMap: Map<string, ImageRecord> } | null>(null);
   const [favoriteDatasetId, setFavoriteDatasetId] = useState<string | null>(() => localStorage.getItem("favoriteDatasetId"));
@@ -1483,6 +1485,28 @@ export default function App() {
     setShowDeleteDatasetModal(false);
     setDatasetToDelete(null);
     setIsLoading(false);
+  };
+
+  const confirmDeleteFullscreenImage = async () => {
+    if (selectedImage) {
+      await deleteImage(selectedImage.id);
+      await loadImages(activeDatasetId);
+      setShowDeleteImageModal(false);
+      setSelectedImage(null);
+      setIsAppFullscreen(false);
+      showNotification(language === "JP" ? "画像を削除しました。" : "Image deleted.");
+    }
+  };
+
+  const confirmDeleteSelectedImages = async () => {
+    for (const id of selectedImageIds) {
+      await deleteImage(id);
+    }
+    await loadImages(activeDatasetId);
+    setShowDeleteSelectedModal(false);
+    setSelectedImageIds(new Set());
+    setIsSelectionMode(false);
+    showNotification(language === "JP" ? "選択した画像を削除しました。" : "Selected images deleted.");
   };
 
   const handleHideSelected = async (hide: boolean) => {
@@ -3883,6 +3907,19 @@ export default function App() {
               <div className="absolute bottom-6 right-6 flex items-center gap-2 pointer-events-auto">
                 {/* Delete Button */}
                 <button
+                  onClick={(e) => { e.stopPropagation(); setShowDeleteImageModal(true); }}
+                  className={cn(
+                    "p-1.5 flex items-center justify-center border rounded bg-black/15 backdrop-blur-sm transition-colors outline-none focus:outline-none",
+                    isFullscreenDarkText
+                      ? "border-black/15 text-black/60 hover:text-red-600 hover:border-red-600/50 hover:bg-red-500/10"
+                      : "border-white/15 text-white/60 hover:text-red-400 hover:border-red-400/50 hover:bg-red-500/10",
+                  )}
+                  title={t("Delete Image", "画像を削除")}
+                >
+                  <Trash2 size={16} />
+                </button>
+                {/* Secret Button */}
+                <button
                   onClick={(e) => { e.stopPropagation(); executeHideFullscreenImage(); }}
                   className={cn(
                     "p-1.5 flex items-center justify-center border rounded bg-black/15 backdrop-blur-sm transition-colors outline-none focus:outline-none",
@@ -4319,30 +4356,115 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => setShowDeleteDatasetModal(false)}
           >
-            <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(239,68,68,0.2)]">
-              <h2 className="text-red-500 mb-4 uppercase">
-                DELETE DATASET
+            <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(239,68,68,0.2)]" onClick={e => e.stopPropagation()}>
+              <h2 className="text-red-500 mb-4 flex items-center gap-2">
+                <Trash2 size={20} /> {t("DELETE FOLDER", "フォルダーを削除")}
               </h2>
-              <p className="text-text-primary text-xs mb-6">
-                Are you sure you want to delete this dataset? This action cannot be undone.
+              <p className="text-text-secondary text-sm mb-6 uppercase leading-relaxed">
+                {language === "JP" ? (
+                  <>
+                    警告: {datasetToDelete && datasets.find(d => d.id === datasetToDelete)?.name} を削除します。<br/><br/>
+                    <span className="text-accent">(※実際のデバイス上のファイルは削除されません)</span>
+                  </>
+                ) : (
+                  <>
+                    WARNING: Deleting folder "{datasetToDelete && datasets.find(d => d.id === datasetToDelete)?.name}".<br/><br/>
+                    <span className="text-accent">(※ Actual files on your device will NOT be deleted)</span>
+                  </>
+                )}
               </p>
               <div className="flex justify-end gap-3">
-                <SolidButton
-                  onClick={() => {
-                    setShowDeleteDatasetModal(false);
-                    setDatasetToDelete(null);
-                  }}
-                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
-                >
-                  CANCEL
+                <SolidButton onClick={() => setShowDeleteDatasetModal(false)} className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none">
+                  {t("CANCEL", "キャンセル")}
                 </SolidButton>
-                <SolidButton
-                  onClick={confirmDeleteDataset}
-                  className="text-red-500 hover:text-red-400 border-red-900/50"
-                >
-                  DELETE DATASET
+                <SolidButton onClick={confirmDeleteDataset} className="text-red-500 hover:text-red-400 border-red-900/50 hover:bg-red-900/20">
+                  {t("DELETE", "削除する")}
+                </SolidButton>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Image Modal */}
+      <AnimatePresence>
+        {showDeleteImageModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => setShowDeleteImageModal(false)}
+          >
+            <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(239,68,68,0.2)]" onClick={e => e.stopPropagation()}>
+              <h2 className="text-red-500 mb-4 flex items-center gap-2">
+                <Trash2 size={20} /> {t("DELETE IMAGE", "画像を削除")}
+              </h2>
+              <p className="text-text-secondary text-sm mb-6 uppercase leading-relaxed">
+                {language === "JP" ? (
+                  <>
+                    警告: 現在表示中の画像をデータベースから削除します。<br/><br/><span className="text-red-500 font-bold">この操作は元に戻せません。</span><br/><br/>
+                    <span className="text-accent">(※実際のデバイス上のファイルは削除されません)</span>
+                  </>
+                ) : (
+                  <>
+                    WARNING: Deleting the currently displayed image from the database.<br/><br/><span className="text-red-500 font-bold">This action cannot be undone.</span><br/><br/>
+                    <span className="text-accent">(※ Actual files on your device will NOT be deleted)</span>
+                  </>
+                )}
+              </p>
+              <div className="flex justify-end gap-3">
+                <SolidButton onClick={() => setShowDeleteImageModal(false)} className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none">
+                  {t("CANCEL", "キャンセル")}
+                </SolidButton>
+                <SolidButton onClick={confirmDeleteFullscreenImage} className="text-red-500 hover:text-red-400 border-red-900/50 hover:bg-red-900/20">
+                  {t("DELETE", "削除する")}
+                </SolidButton>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Selected Images Modal */}
+      <AnimatePresence>
+        {showDeleteSelectedModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => setShowDeleteSelectedModal(false)}
+          >
+            <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(239,68,68,0.2)]" onClick={e => e.stopPropagation()}>
+              <h2 className="text-red-500 mb-4 flex items-center gap-2">
+                <Trash2 size={20} /> {t("DELETE SELECTED IMAGES", "選択した画像を削除")}
+              </h2>
+              <p className="text-text-secondary text-sm mb-6 uppercase leading-relaxed">
+                {language === "JP" ? (
+                  <>
+                    警告: {selectedImageIds.size} 個の画像をデータベースから削除します。<br/><br/><span className="text-red-500 font-bold">この操作は元に戻せません。</span><br/><br/>
+                    <span className="text-accent">(※実際のデバイス上のファイルは削除されません)</span>
+                  </>
+                ) : (
+                  <>
+                    WARNING: Deleting {selectedImageIds.size} selected image(s) from the database.<br/><br/><span className="text-red-500 font-bold">This action cannot be undone.</span><br/><br/>
+                    <span className="text-accent">(※ Actual files on your device will NOT be deleted)</span>
+                  </>
+                )}
+              </p>
+              <div className="flex justify-end gap-3">
+                <SolidButton onClick={() => setShowDeleteSelectedModal(false)} className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none">
+                  {t("CANCEL", "キャンセル")}
+                </SolidButton>
+                <SolidButton onClick={confirmDeleteSelectedImages} className="text-red-500 hover:text-red-400 border-red-900/50 hover:bg-red-900/20">
+                  {t("DELETE", "削除する")}
                 </SolidButton>
               </div>
             </div>
