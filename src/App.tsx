@@ -1838,12 +1838,10 @@ Images imported: ${importedImages}`);
       pressedKeys.add(e.key);
       if (!isFullscreen && !e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
         e.preventDefault();
-        if (autoScrollDirRef.current !== null) {
-          if (e.key === "ArrowUp") {
-            setAutoScrollDir("up");
-          } else if (e.key === "ArrowDown") {
-            setAutoScrollDir("down");
-          }
+        if (e.key === "ArrowUp") {
+          setAutoScrollDir("up");
+        } else if (e.key === "ArrowDown") {
+          setAutoScrollDir("down");
         }
         startKbdScroll();
       }
@@ -1897,6 +1895,12 @@ Images imported: ${importedImages}`);
 
       if (!isFullscreen) {
         // 一覧画面での操作
+        if (key === "t" || key === "T") {
+          if (e.repeat) return;
+          e.preventDefault();
+          setAutoScrollSpeed((s) => (s >= 4 ? 1 : (s + 1)));
+          return;
+        }
         if (key === "ArrowRight") {
           e.preventDefault();
           goToNextImage();
@@ -3145,82 +3149,178 @@ Images imported: ${importedImages}`);
             </div>
                   </Panel>
                 );
-              } else if (section.id === "trackInfo") {
-
-  return (
+              } else if (section.id === "trackInfo" || section.id === "commandInfo") {
+                return (
                   <Panel
-                    key="trackInfo"
-                    title={t("03 TRACK INFO", "03 トラック情報")}
+                    key="commandInfo"
+                    title={t("03 COMMAND INFO", "03 コマンド一覧")}
                     className={cn(
                       "shrink-0 flex flex-col items-center min-w-0 w-full transition-all duration-300",
-                      isTrackInfoCollapsed ? "h-[34px]" : "h-[260px]",
+                      isTrackInfoCollapsed ? "h-[34px]" : "h-[320px]",
                     )}
                     contentClassName={cn(
                       "flex flex-col w-full min-w-0 transition-opacity duration-300",
                       isTrackInfoCollapsed
                         ? "opacity-0 p-0 pointer-events-none hidden"
-                        : "opacity-100 p-4",
+                        : "opacity-100 p-3 flex-1 min-h-0 overflow-hidden",
                     )}
                     isCollapsible
                     isExpanded={!isTrackInfoCollapsed}
                     onToggle={() => setIsTrackInfoCollapsed(!isTrackInfoCollapsed)}
                     dragHandle
                   >
-                    {selectedImage && !isTrackInfoCollapsed ? (
-              <div className="flex flex-col gap-3 h-full w-full min-w-0 overflow-hidden">
-                <div
-                  className="flex-1 min-h-0 border border-panel-border rounded-sm overflow-hidden relative flex items-center justify-center cursor-pointer group bg-panel-bg w-full"
-                  onClick={() => setIsFullscreen(true)}
-                >
-                  <div
-                    className={cn(
-                      "relative flex items-center justify-center w-full h-full absolute inset-0",
-                      getCanvasBgClass(selectedImage.autoBg),
-                    )}
-                  >
-                    <img
-                      src={selectedImage.url}
-                      className="w-full h-full object-contain block p-2"
-                    />
-                  </div>
-                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white pointer-events-none">
-                    <Maximize size={24} />
-                  </div>
-                </div>
+                    {!isTrackInfoCollapsed && (
+                      <div className="flex flex-col gap-3 h-full w-full min-w-0 overflow-y-auto pr-1 select-none text-[11px]">
+                        {/* 一覧画面 (LIST / GRID) */}
+                        <div className="flex flex-col gap-1.5">
+                          <span className="font-mono text-[9px] text-text-muted tracking-wider uppercase font-bold border-b border-panel-border pb-0.5">
+                            {t("GRID / LIST MODE", "一覧画面")}
+                          </span>
+                          <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1.5 items-center">
+                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                              ↑ / ↓
+                            </kbd>
+                            <span className="text-text-secondary truncate">
+                              {t("Auto Scroll / Change Dir", "自動スクロール / 向き切替")}
+                            </span>
 
-                <div className="flex flex-col shrink-0 gap-1 w-full mt-auto mb-1 overflow-hidden">
-                  <div className="flex items-center justify-between w-full">
-                    <span className="text-text-muted text-[10px] uppercase">
-                      FILE SIZE:{" "}
-                      <span className="text-text-primary">
-                        {formatBytes(selectedImage.size)}
-                      </span>
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between w-full gap-2 min-w-0">
-                    <span
-                      className="text-text-primary text-[10px] truncate block min-w-0 flex-1"
-                      title={selectedImage.name}
-                    >
-                      {selectedImage.name}
-                    </span>
-                    <button
-                      onClick={(e) => handleRenameFileClick(e, selectedImage.id, selectedImage.name)}
-                      className="text-text-muted hover:text-accent transition-colors flex-shrink-0"
-                      title="RENAME FILE"
-                    >
-                      <Edit2 size={12} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : !isTrackInfoCollapsed ? (
-              <div className="flex flex-1 items-center justify-center font-mono text-text-muted text-xs uppercase tracking-widest text-center">
-                {t("AWAITING INITIALIZATION...", "初期化待機中...")}
-                <br />
-                {t("SELECT DATA UNIT", "データユニットを選択してください")}
-              </div>
-            ) : null}
+                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                              T
+                            </kbd>
+                            <span className="text-text-secondary truncate">
+                              {t("Scroll Speed (1x - 4x)", "スクロール速度切替 (1x〜4x)")}
+                            </span>
+
+                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                              ← / →
+                            </kbd>
+                            <span className="text-text-secondary truncate">
+                              {t("Select Prev / Next Image", "前 / 次の画像選択")}
+                            </span>
+
+                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                              Shift + ↑/↓
+                            </kbd>
+                            <span className="text-text-secondary truncate">
+                              {t("Switch Dataset", "データセット切替")}
+                            </span>
+
+                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                              Enter
+                            </kbd>
+                            <span className="text-text-secondary truncate">
+                              {t("Open Fullscreen", "全画面で開く")}
+                            </span>
+
+                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                              P
+                            </kbd>
+                            <span className="text-text-secondary truncate">
+                              {t("Portrait Rotate", "画面向き回転 (縦/横)")}
+                            </span>
+
+                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                              F
+                            </kbd>
+                            <span className="text-text-secondary truncate">
+                              {t("Browser Fullscreen", "ブラウザ全画面切替")}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* 全画面モード (FULLSCREEN & SLIDESHOW) */}
+                        <div className="flex flex-col gap-1.5 mt-1">
+                          <span className="font-mono text-[9px] text-text-muted tracking-wider uppercase font-bold border-b border-panel-border pb-0.5">
+                            {t("FULLSCREEN & SLIDESHOW", "全画面 & スライドショー")}
+                          </span>
+                          <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1.5 items-center">
+                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                              Space
+                            </kbd>
+                            <span className="text-text-secondary truncate">
+                              {t("Play / Stop Slideshow", "スライドショー 再生/停止")}
+                            </span>
+
+                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                              S
+                            </kbd>
+                            <span className="text-text-secondary truncate">
+                              {t("Direction (FWD / REV)", "再生方向切替 (順/逆)")}
+                            </span>
+
+                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                              T
+                            </kbd>
+                            <span className="text-text-secondary truncate">
+                              {t("Interval (1s - 10s)", "スライド秒数切替 (1s〜10s)")}
+                            </span>
+
+                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                              Z
+                            </kbd>
+                            <span className="text-text-secondary truncate">
+                              {t("Zoom to Fill / Reset", "画面フィット (ズーム切替)")}
+                            </span>
+
+                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                              R
+                            </kbd>
+                            <span className="text-text-secondary truncate">
+                              {t("Rotate Image (+90°)", "画像を90°回転")}
+                            </span>
+
+                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                              H
+                            </kbd>
+                            <span className="text-text-secondary truncate">
+                              {t("Flip Horizontal", "左右反転")}
+                            </span>
+
+                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                              U
+                            </kbd>
+                            <span className="text-text-secondary truncate">
+                              {t("Toggle UI Display", "操作UIの表示/非表示")}
+                            </span>
+
+                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                              + / -
+                            </kbd>
+                            <span className="text-text-secondary truncate">
+                              {t("Zoom In / Out", "ズーム拡大 / 縮小")}
+                            </span>
+
+                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                              ← / →
+                            </kbd>
+                            <span className="text-text-secondary truncate">
+                              {t("Prev / Next Image", "前 / 次の画像")}
+                            </span>
+
+                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                              Shift + ←/→
+                            </kbd>
+                            <span className="text-text-secondary truncate">
+                              {t("Switch Dataset", "データセット切替")}
+                            </span>
+
+                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                              Delete
+                            </kbd>
+                            <span className="text-text-secondary truncate">
+                              {t("Hide (Secret)", "一時非表示 (シークレット)")}
+                            </span>
+
+                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                              Esc / BS
+                            </kbd>
+                            <span className="text-text-secondary truncate">
+                              {t("Close Fullscreen", "全画面を閉じる")}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </Panel>
                 );
               }
