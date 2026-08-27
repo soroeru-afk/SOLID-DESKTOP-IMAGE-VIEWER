@@ -47,6 +47,9 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  Play,
+  Pause,
+  Square,
 } from "lucide-react";
 import {
   ImageRecord,
@@ -464,43 +467,54 @@ export default function App() {
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pendingFullscreenNav = useRef<{ direction: "next" | "prev"; datasetId: string } | null>(null);
-  const scrollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const startSteppedScroll = (dir: "up" | "down") => {
-    if (scrollIntervalRef.current || scrollTimeoutRef.current) return;
-    const scrollStep = dir === "down" ? 10 : -10;
-    const stepScroll = () => {
+  // Auto Scroll States & Loop
+  const [autoScrollDir, setAutoScrollDir] = useState<"up" | "down" | null>(null);
+  const [autoScrollSpeed, setAutoScrollSpeed] = useState<number>(2);
+  const autoScrollDirRef = useRef<"up" | "down" | null>(null);
+
+  useEffect(() => {
+    autoScrollDirRef.current = autoScrollDir;
+  }, [autoScrollDir]);
+
+  useEffect(() => {
+    if (!autoScrollDir) return;
+    let animId: number;
+    let lastTime = performance.now();
+
+    // 速度 (1x: 100px/s, 2x: 250px/s, 3x: 500px/s, 4x: 1000px/s)
+    const baseSpeed =
+      autoScrollSpeed === 1 ? 100 : autoScrollSpeed === 2 ? 250 : autoScrollSpeed === 3 ? 500 : 1000;
+    const dirFactor = autoScrollDir === "down" ? 1 : -1;
+
+    const loop = (now: number) => {
+      const delta = (now - lastTime) / 1000;
+      lastTime = now;
       if (scrollContainerRef.current) {
-        scrollContainerRef.current.scrollBy({ top: scrollStep, behavior: "auto" });
-      }
-    };
-    stepScroll();
-    scrollIntervalRef.current = setInterval(stepScroll, 16);
-  };
+        const el = scrollContainerRef.current;
+        const maxScroll = el.scrollHeight - el.clientHeight;
+        el.scrollBy({ top: dirFactor * baseSpeed * delta, behavior: "auto" });
 
-  const startScroll = (dir: "up" | "down") => {
-    if (scrollIntervalRef.current || scrollTimeoutRef.current) return;
-    const scrollStep = dir === "down" ? 25 : -25;
-    const stepScroll = () => {
-      if (scrollContainerRef.current) {
-        scrollContainerRef.current.scrollBy({ top: scrollStep, behavior: "auto" });
+        // 端に到達したら停止
+        if (
+          (autoScrollDir === "down" && el.scrollTop >= maxScroll - 1) ||
+          (autoScrollDir === "up" && el.scrollTop <= 1)
+        ) {
+          setAutoScrollDir(null);
+          return;
+        }
       }
+      animId = requestAnimationFrame(loop);
     };
-    stepScroll();
-    scrollIntervalRef.current = setInterval(stepScroll, 16);
-  };
 
-  const stopScroll = () => {
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current);
-      scrollTimeoutRef.current = null;
-    }
-    if (scrollIntervalRef.current) {
-      clearInterval(scrollIntervalRef.current);
-      scrollIntervalRef.current = null;
-    }
-  };
+    animId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(animId);
+  }, [autoScrollDir, autoScrollSpeed]);
+
+  // Fullscreen Slideshow States
+  const [isSlideshowPlaying, setIsSlideshowPlaying] = useState(false);
+  const [slideshowDirection, setSlideshowDirection] = useState<"fwd" | "rev">("fwd");
+  const [slideshowIntervalSec, setSlideshowIntervalSec] = useState<number>(3);
 
   const zoomIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const zoomTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -714,7 +728,7 @@ export default function App() {
   const [lastSelectedIdx, setLastSelectedIdx] = useState<number | null>(null);
   const [showDeleteDatasetModal, setShowDeleteDatasetModal] = useState(false);
   const [showDeleteImageModal, setShowDeleteImageModal] = useState(false);
-  const [showDeleteSelectedModal, setShowDeleteSelectedModal] = useState(false);
+  const [imageToDeleteContext, setImageToDeleteContext] = useState<'selected' | 'fullscreen' | null>(null);
   const [datasetToDelete, setDatasetToDelete] = useState<string | null>(null);
   const [overwriteFiles, setOverwriteFiles] = useState<{ files: File[], datasetId: string, forceLoad: boolean, existingMap: Map<string, ImageRecord> } | null>(null);
   const [favoriteDatasetId, setFavoriteDatasetId] = useState<string | null>(() => localStorage.getItem("favoriteDatasetId"));
@@ -1166,7 +1180,8 @@ export default function App() {
   const handleImportAll = async () => {
     try {
       if (!('showDirectoryPicker' in window)) {
-        setLoadingMessage("Your browser does not support the File System Access API.\nPlease use Chrome, Edge, or Opera."); setIsLoading(true); return;
+        setLoadingMessage("Your browser does not support the File System Access API.\nPlease use Chrome, Edge, or Opera.");
+        setIsLoading(true);
         return;
       }
       
@@ -1182,12 +1197,14 @@ export default function App() {
         const text = await file.text();
         datasetsJson = JSON.parse(text);
       } catch (e) {
-        setLoadingMessage("Invalid backup folder. 'datasets.json' not found.\nPlease select a valid backup folder created by EXPORT DATA."); setIsLoading(true); return;
+        setLoadingMessage("Invalid backup folder. 'datasets.json' not found.\nPlease select a valid backup folder created by EXPORT DATA.");
+        setIsLoading(true);
         return;
       }
 
       if (!Array.isArray(datasetsJson)) {
-         setLoadingMessage("Invalid datasets.json format."); setIsLoading(true); return;
+         setLoadingMessage("Invalid datasets.json format.");
+         setIsLoading(true);
          return;
       }
 
@@ -1260,7 +1277,8 @@ export default function App() {
       }
       
       await loadDatasets();
-      setLoadingMessage(`Import completed!\nImages imported: ${importedImages}`);
+      setLoadingMessage(`Import completed!
+Images imported: ${importedImages}`);
     } catch (error: any) {
        if (error.name !== 'AbortError') {
         console.error("Import failed:", error);
@@ -1487,28 +1505,6 @@ export default function App() {
     setIsLoading(false);
   };
 
-  const confirmDeleteFullscreenImage = async () => {
-    if (selectedImage) {
-      await deleteImage(selectedImage.id);
-      await loadImages(activeDatasetId);
-      setShowDeleteImageModal(false);
-      setSelectedImage(null);
-      setIsAppFullscreen(false);
-      showNotification(language === "JP" ? "画像を削除しました。" : "Image deleted.");
-    }
-  };
-
-  const confirmDeleteSelectedImages = async () => {
-    for (const id of selectedImageIds) {
-      await deleteImage(id);
-    }
-    await loadImages(activeDatasetId);
-    setShowDeleteSelectedModal(false);
-    setSelectedImageIds(new Set());
-    setIsSelectionMode(false);
-    showNotification(language === "JP" ? "選択した画像を削除しました。" : "Selected images deleted.");
-  };
-
   const handleHideSelected = async (hide: boolean) => {
     await updateImagesVisibility(Array.from(selectedImageIds), hide);
     setImages(prev => prev.map(img => 
@@ -1523,6 +1519,26 @@ export default function App() {
       loadImages(activeDatasetId).finally(() => loadDatasets());
     }
     showNotification(language === "JP" ? `${hide ? "シークレット" : "通常表示"}にしました` : `Marked as ${hide ? "secret" : "revealed"}`);
+  };
+
+  const handleDeleteSelected = () => {
+    setImageToDeleteContext('selected');
+    setShowDeleteImageModal(true);
+  };
+  
+  const executeDeleteSelectedImages = async () => {
+    await Promise.all(Array.from(selectedImageIds).map(id => deleteImage(id as string)));
+    setImages(prev => prev.filter(img => !selectedImageIds.has(img.id)));
+    setSelectedImageIds(new Set());
+    setLastSelectedIdx(null);
+    setIsSelectionMode(false);
+    
+    if (activeDatasetId) {
+      loadDatasets();
+    }
+    showNotification(language === "JP" ? "削除しました" : "Deleted");
+    setShowDeleteImageModal(false);
+    setImageToDeleteContext(null);
   };
 
   const executeHideFullscreenImage = async () => {
@@ -1545,6 +1561,40 @@ export default function App() {
       loadImages(activeDatasetId).finally(() => loadDatasets());
     }
     showNotification(language === "JP" ? `${newHiddenState ? "シークレット" : "通常表示"}にしました` : `Marked as ${newHiddenState ? "secret" : "revealed"}`);
+  };
+
+  const executeDeleteFullscreenImage = () => {
+    if (!selectedImage) return;
+    setImageToDeleteContext('fullscreen');
+    setShowDeleteImageModal(true);
+  };
+  
+  const performDeleteFullscreenImage = async () => {
+    if (!selectedImage) return;
+    
+    await deleteImage(selectedImage.id);
+    setImages(prev => prev.filter(img => img.id !== selectedImage.id));
+    
+    const currentIndex = sortedImages.findIndex((img) => img.id === selectedImage.id);
+    const newSorted = sortedImages.filter(img => img.id !== selectedImage.id);
+    
+    if (newSorted.length > 0) {
+      let nextIndex = currentIndex;
+      if (nextIndex >= newSorted.length) {
+        nextIndex = newSorted.length - 1;
+      }
+      setSelectedImage(newSorted[nextIndex]);
+    } else {
+      setIsFullscreen(false);
+      setSelectedImage(null);
+    }
+
+    if (activeDatasetId) {
+      loadDatasets();
+    }
+    showNotification(language === "JP" ? "削除しました" : "Deleted");
+    setShowDeleteImageModal(false);
+    setImageToDeleteContext(null);
   };
 
   const handleMoveSelected = async (newDatasetId: string) => {
@@ -1710,6 +1760,38 @@ export default function App() {
     setSelectedImage(sortedImages[prevIndex]);
   }, [selectedImage, sortedImages]);
 
+  // Fullscreen Slideshow Loop
+  const [slideshowProgressKey, setSlideshowProgressKey] = useState(0);
+
+  useEffect(() => {
+    if (!isFullscreen) {
+      setIsSlideshowPlaying(false);
+      return;
+    }
+    if (!isSlideshowPlaying || sortedImages.length <= 1) return;
+
+    setSlideshowProgressKey((k) => k + 1);
+
+    const timer = setInterval(() => {
+      setSlideshowProgressKey((k) => k + 1);
+      if (slideshowDirection === "fwd") {
+        goToNextImage();
+      } else {
+        goToPrevImage();
+      }
+    }, slideshowIntervalSec * 1000);
+
+    return () => clearInterval(timer);
+  }, [
+    isSlideshowPlaying,
+    isFullscreen,
+    sortedImages.length,
+    slideshowDirection,
+    slideshowIntervalSec,
+    goToNextImage,
+    goToPrevImage,
+  ]);
+
   useEffect(() => {
     // 選択画像が変わったらスクロール (isFullscreen時も裏側でスクロールされて良い)
     if (selectedImage && !isFullscreen) {
@@ -1756,6 +1838,13 @@ export default function App() {
       pressedKeys.add(e.key);
       if (!isFullscreen && !e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
         e.preventDefault();
+        if (autoScrollDirRef.current !== null) {
+          if (e.key === "ArrowUp") {
+            setAutoScrollDir("up");
+          } else if (e.key === "ArrowDown") {
+            setAutoScrollDir("down");
+          }
+        }
         startKbdScroll();
       }
       // 共通ショートカット
@@ -1830,6 +1919,28 @@ export default function App() {
       }
 
       // フルスクリーン時
+      if (key === " " || code === "Space") {
+        if (e.repeat) return;
+        e.preventDefault();
+        setIsSlideshowPlaying((prev) => !prev);
+        return;
+      }
+      if (key === "s" || key === "S") {
+        if (e.repeat) return;
+        e.preventDefault();
+        setSlideshowDirection((d) => (d === "fwd" ? "rev" : "fwd"));
+        return;
+      }
+      if (key === "t" || key === "T") {
+        if (e.repeat) return;
+        e.preventDefault();
+        const intervals = [1, 2, 3, 5, 8, 10];
+        setSlideshowIntervalSec((sec) => {
+          const idx = intervals.indexOf(sec);
+          return intervals[(idx + 1) % intervals.length];
+        });
+        return;
+      }
       if (key === "u" || key === "U") {
         if (e.repeat) return;
         e.preventDefault();
@@ -2252,6 +2363,10 @@ export default function App() {
         },
       }}
       onClick={(e) => {
+        if (autoScrollDirRef.current !== null) {
+          setAutoScrollDir(null);
+          return;
+        }
         if (isSelectionMode) {
           const next = new Set(selectedImageIds);
           
@@ -3321,14 +3436,14 @@ export default function App() {
                       }) ? "REVEAL" : "SECRET"}
                   </button>
                   <button
-                    onClick={() => {
-                      if (selectedImageIds.size > 0) setShowDeleteSelectedModal(true);
-                    }}
+                    onClick={handleDeleteSelected}
+                    disabled={selectedImageIds.size === 0}
                     className={cn(
                       "text-[10px] uppercase font-mono tracking-wider transition-colors",
-                      selectedImageIds.size > 0 ? "text-red-500 hover:text-red-400" : "text-text-muted cursor-not-allowed"
+                      selectedImageIds.size > 0
+                        ? "text-red-500 hover:text-red-400"
+                        : "text-text-muted cursor-not-allowed",
                     )}
-                    disabled={selectedImageIds.size === 0}
                   >
                     DELETE
                   </button>
@@ -3447,7 +3562,7 @@ export default function App() {
                   >
                     EDIT
                   </button>
-                  <span className="text-accent pl-4 border-l border-panel-border h-4 flex items-center justify-end w-auto min-w-[110px]">
+                  <span className="text-accent pl-4 border-l border-panel-border h-4 flex items-center justify-end w-[110px]">
                     {viewMode.toUpperCase()}{" "}
                     {viewMode === "free" ? "BOARD" : "VIEW"}
                   </span>
@@ -3459,6 +3574,17 @@ export default function App() {
             <div
               ref={scatterContainerRef}
               className={cn("w-full h-full relative")}
+              onClickCapture={(e) => {
+                if (autoScrollDirRef.current !== null) {
+                  const target = e.target as HTMLElement;
+                  if (target.closest('[data-scroll-controls="true"]')) {
+                    return;
+                  }
+                  setAutoScrollDir(null);
+                  e.stopPropagation();
+                  e.preventDefault();
+                }
+              }}
             >
               <AnimatePresence mode="wait">
                 <motion.div
@@ -3644,43 +3770,122 @@ export default function App() {
                 </motion.div>
               </AnimatePresence>
               {viewMode !== "free" && sortedImages.length > 0 && (
-                <div className="absolute bottom-4 right-8 z-[60] flex flex-col gap-1.5">
-                  <button
-                    onPointerDown={(e) => { e.preventDefault(); startScroll("up"); }}
-                    onPointerUp={(e) => { e.preventDefault(); stopScroll(); }}
-                    onPointerLeave={(e) => { e.preventDefault(); stopScroll(); }}
-                    className="p-1.5 bg-white/60 backdrop-blur-sm border border-gray-300/50 text-gray-600 hover:text-black hover:border-gray-400 hover:bg-white shadow-sm rounded-none transition-all touch-none focus:outline-none"
-                    title="FAST SCROLL UP"
-                  >
-                    <ChevronsUp size={16} />
-                  </button>
-                  <button
-                    onPointerDown={(e) => { e.preventDefault(); startSteppedScroll("up"); }}
-                    onPointerUp={(e) => { e.preventDefault(); stopScroll(); }}
-                    onPointerLeave={(e) => { e.preventDefault(); stopScroll(); }}
-                    className="p-1 bg-white/60 backdrop-blur-sm border border-gray-300/50 text-gray-600 hover:text-black hover:border-gray-400 hover:bg-white shadow-sm rounded-none transition-all touch-none focus:outline-none"
-                    title="SCROLL UP"
-                  >
-                    <ChevronUp size={16} />
-                  </button>
-                  <button
-                    onPointerDown={(e) => { e.preventDefault(); startSteppedScroll("down"); }}
-                    onPointerUp={(e) => { e.preventDefault(); stopScroll(); }}
-                    onPointerLeave={(e) => { e.preventDefault(); stopScroll(); }}
-                    className="p-1 bg-white/60 backdrop-blur-sm border border-gray-300/50 text-gray-600 hover:text-black hover:border-gray-400 hover:bg-white shadow-sm rounded-none transition-all touch-none focus:outline-none"
-                    title="SCROLL DOWN"
-                  >
-                    <ChevronDown size={16} />
-                  </button>
-                  <button
-                    onPointerDown={(e) => { e.preventDefault(); startScroll("down"); }}
-                    onPointerUp={(e) => { e.preventDefault(); stopScroll(); }}
-                    onPointerLeave={(e) => { e.preventDefault(); stopScroll(); }}
-                    className="p-1.5 bg-white/60 backdrop-blur-sm border border-gray-300/50 text-gray-600 hover:text-black hover:border-gray-400 hover:bg-white shadow-sm rounded-none transition-all touch-none focus:outline-none"
-                    title="FAST SCROLL DOWN"
-                  >
-                    <ChevronsDown size={16} />
-                  </button>
+                <div data-scroll-controls="true" className="absolute bottom-6 right-8 z-[60] flex flex-col items-end gap-2 select-none">
+                  {/* Vertical Scroll Nav Bar */}
+                  <div className="flex flex-col items-center bg-white/95 dark:bg-[#18181b]/95 backdrop-blur-md border border-gray-300/80 dark:border-gray-700/80 shadow-md w-9 py-1 rounded-none">
+                    {/* Scroll To Top */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAutoScrollDir(null);
+                        scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+                      }}
+                      className="w-full py-1.5 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
+                      title="SCROLL TO TOP"
+                    >
+                      <ChevronsUp size={14} />
+                    </button>
+
+                    {/* Auto Scroll UP Toggle */}
+                    <button
+                      type="button"
+                      onClick={() => setAutoScrollDir((d) => (d === "up" ? null : "up"))}
+                      className={cn(
+                        "w-full py-1.5 flex items-center justify-center transition-colors cursor-pointer outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
+                        autoScrollDir === "up"
+                          ? "bg-gray-200 dark:bg-gray-700 text-black dark:text-white font-bold"
+                          : "text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+                      )}
+                      title="AUTO SCROLL UP"
+                    >
+                      <ChevronUp size={14} />
+                    </button>
+
+                    {/* AUTO / STOP Toggle Button */}
+                    <button
+                      type="button"
+                      onClick={() => setAutoScrollDir((d) => (d ? null : "down"))}
+                      className={cn(
+                        "w-full py-1 text-center font-mono font-bold text-[9px] tracking-wider transition-colors cursor-pointer outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
+                        autoScrollDir !== null
+                          ? "bg-gray-800 text-white dark:bg-gray-200 dark:text-black font-extrabold shadow-inner"
+                          : "text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+                      )}
+                      title={autoScrollDir ? "STOP AUTO SCROLL" : "START AUTO SCROLL"}
+                    >
+                      {autoScrollDir !== null ? "STOP" : "AUTO"}
+                    </button>
+
+                    {/* Auto Scroll DOWN Toggle */}
+                    <button
+                      type="button"
+                      onClick={() => setAutoScrollDir((d) => (d === "down" ? null : "down"))}
+                      className={cn(
+                        "w-full py-1.5 flex items-center justify-center transition-colors cursor-pointer outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
+                        autoScrollDir === "down"
+                          ? "bg-gray-200 dark:bg-gray-700 text-black dark:text-white font-bold"
+                          : "text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+                      )}
+                      title="AUTO SCROLL DOWN"
+                    >
+                      <ChevronDown size={14} />
+                    </button>
+
+                    {/* Scroll To Bottom */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAutoScrollDir(null);
+                        if (scrollContainerRef.current) {
+                          scrollContainerRef.current.scrollTo({
+                            top: scrollContainerRef.current.scrollHeight,
+                            behavior: "smooth",
+                          });
+                        }
+                      }}
+                      className="w-full py-1.5 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
+                      title="SCROLL TO BOTTOM"
+                    >
+                      <ChevronsDown size={14} />
+                    </button>
+                  </div>
+
+                  {/* Horizontal Speed Control Bar (Bottom) */}
+                  <div className="flex items-center bg-white/95 dark:bg-[#18181b]/95 backdrop-blur-md border border-gray-300/80 dark:border-gray-700/80 shadow-md h-7 px-1 rounded-none">
+                    <button
+                      type="button"
+                      onClick={() => setAutoScrollSpeed((s) => Math.max(1, s - 1))}
+                      disabled={autoScrollSpeed <= 1}
+                      className={cn(
+                        "w-5 h-5 flex items-center justify-center text-[12px] font-bold transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
+                        autoScrollSpeed <= 1
+                          ? "opacity-30 cursor-not-allowed text-gray-400"
+                          : "hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 cursor-pointer"
+                      )}
+                      title="SPEED DOWN (-)"
+                    >
+                      <Minus size={11} />
+                    </button>
+
+                    <span className="font-mono font-bold text-[11px] tabular-nums px-1 text-gray-800 dark:text-gray-200 pointer-events-none min-w-[22px] text-center select-none">
+                      {autoScrollSpeed}x
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => setAutoScrollSpeed((s) => Math.min(4, s + 1))}
+                      disabled={autoScrollSpeed >= 4}
+                      className={cn(
+                        "w-5 h-5 flex items-center justify-center text-[12px] font-bold transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
+                        autoScrollSpeed >= 4
+                          ? "opacity-30 cursor-not-allowed text-gray-400"
+                          : "hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 cursor-pointer"
+                      )}
+                      title="SPEED UP (+)"
+                    >
+                      <Plus size={11} />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -3816,9 +4021,14 @@ export default function App() {
                   key={selectedImage.id}
                   src={selectedImage.url}
                   style={{ x: imgX, y: imgY }}
-                  initial={{ scale: fullscreenScale, rotate: fullscreenRotation, rotateY: fullscreenFlipX ? 180 : 0 }}
+                  initial={{
+                    scale: fullscreenScale,
+                    rotate: fullscreenRotation,
+                    rotateY: fullscreenFlipX ? 180 : 0,
+                  }}
+                  animate={imgControls}
                   className={cn(
-                    "w-full h-full object-contain block",
+                    "w-full h-full object-contain block select-none",
                     fullscreenScale > 1.0 ? "cursor-move" : "cursor-default",
                   )}
                   drag={fullscreenScale > 1.0}
@@ -3835,9 +4045,13 @@ export default function App() {
                       w: e.currentTarget.naturalWidth,
                       h: e.currentTarget.naturalHeight,
                     });
+                    imgControls.start({
+                      scale: fullscreenScale,
+                      rotate: fullscreenRotation,
+                      rotateY: fullscreenFlipX ? 180 : 0,
+                      transition: { duration: 0.05 },
+                    });
                   }}
-                  animate={imgControls}
-                  transition={{ duration: 0.1, ease: "easeOut" }}
                   onDoubleClick={(e) => {
                     e.stopPropagation();
                     setFullscreenScale(1);
@@ -3856,6 +4070,84 @@ export default function App() {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                   >
+              {/* Slideshow Pill Controls (Bottom Left) */}
+              <div
+                className={cn(
+                  "absolute bottom-6 left-6 z-[60] flex flex-col bg-[#e4e4e7]/90 dark:bg-[#27272a]/90 backdrop-blur-md border border-black/10 dark:border-white/10 shadow-lg rounded-full pointer-events-auto select-none overflow-hidden",
+                )}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center px-2 py-1">
+                  {/* Direction: FWD » or « REV (Fixed width) */}
+                  <button
+                    type="button"
+                    onClick={() => setSlideshowDirection((d) => (d === "fwd" ? "rev" : "fwd"))}
+                    className="w-[52px] inline-flex items-center justify-center font-mono text-[11px] font-bold py-1 text-gray-800 dark:text-gray-200 hover:text-black dark:hover:text-white transition-colors cursor-pointer rounded-full"
+                    title={slideshowDirection === "fwd" ? "Slideshow: Forward (Click to reverse, S)" : "Slideshow: Reverse (Click to forward, S)"}
+                  >
+                    {slideshowDirection === "fwd" ? "FWD »" : "« REV"}
+                  </button>
+
+                  <div className="h-3.5 w-px bg-black/20 dark:bg-white/20 mx-1" />
+
+                  {/* PLAY / STOP */}
+                  <button
+                    type="button"
+                    onClick={() => setIsSlideshowPlaying((p) => !p)}
+                    className={cn(
+                      "w-[68px] flex items-center justify-center gap-1.5 py-1 rounded-full text-[11px] font-bold font-mono transition-colors cursor-pointer",
+                      isSlideshowPlaying
+                        ? "bg-black text-white dark:bg-white dark:text-black shadow-sm"
+                        : "bg-black/10 dark:bg-white/10 text-gray-900 dark:text-gray-100 hover:bg-black/20 dark:hover:bg-white/20"
+                    )}
+                    title={isSlideshowPlaying ? "Stop Slideshow (Space)" : "Play Slideshow (Space)"}
+                  >
+                    {isSlideshowPlaying ? (
+                      <>
+                        <Square size={9} className="fill-current" />
+                        <span>STOP</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play size={10} className="fill-current ml-0.5" />
+                        <span>PLAY</span>
+                      </>
+                    )}
+                  </button>
+
+                  <div className="h-3.5 w-px bg-black/20 dark:bg-white/20 mx-1" />
+
+                  {/* Interval: 1s, 2s, 3s, 5s, 8s, 10s (Fixed width for 2-digits) */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const intervals = [1, 2, 3, 5, 8, 10];
+                      setSlideshowIntervalSec((sec) => {
+                        const idx = intervals.indexOf(sec);
+                        return intervals[(idx + 1) % intervals.length];
+                      });
+                    }}
+                    className="w-[38px] inline-flex items-center justify-center font-mono text-[11px] font-bold py-1 tabular-nums text-gray-800 dark:text-gray-200 hover:text-black dark:hover:text-white transition-colors cursor-pointer rounded-full"
+                    title="Click to change slide interval (T)"
+                  >
+                    {slideshowIntervalSec}s
+                  </button>
+                </div>
+
+                {/* Progress Bar (Always 2px height to avoid shifting) */}
+                <div className="w-full h-[2px] bg-transparent overflow-hidden">
+                  {isSlideshowPlaying && (
+                    <motion.div
+                      key={slideshowProgressKey}
+                      initial={{ width: "0%" }}
+                      animate={{ width: "100%" }}
+                      transition={{ duration: slideshowIntervalSec, ease: "linear" }}
+                      className="h-full bg-black dark:bg-white"
+                    />
+                  )}
+                </div>
+              </div>
+
               {/* Overlay Meta */}
               <div className="absolute top-0 left-0 p-3 pointer-events-none max-w-[80%] flex flex-col gap-1">
                 <h2
@@ -3919,19 +4211,6 @@ export default function App() {
               <div className="absolute bottom-6 right-6 flex items-center gap-2 pointer-events-auto">
                 {/* Delete Button */}
                 <button
-                  onClick={(e) => { e.stopPropagation(); setShowDeleteImageModal(true); }}
-                  className={cn(
-                    "p-1.5 flex items-center justify-center border rounded bg-black/15 backdrop-blur-sm transition-colors outline-none focus:outline-none",
-                    isFullscreenDarkText
-                      ? "border-black/15 text-black/60 hover:text-red-600 hover:border-red-600/50 hover:bg-red-500/10"
-                      : "border-white/15 text-white/60 hover:text-red-400 hover:border-red-400/50 hover:bg-red-500/10",
-                  )}
-                  title={t("Delete Image", "画像を削除")}
-                >
-                  <Trash2 size={16} />
-                </button>
-                {/* Secret Button */}
-                <button
                   onClick={(e) => { e.stopPropagation(); executeHideFullscreenImage(); }}
                   className={cn(
                     "p-1.5 flex items-center justify-center border rounded bg-black/15 backdrop-blur-sm transition-colors outline-none focus:outline-none",
@@ -3942,6 +4221,18 @@ export default function App() {
                   title={selectedImage?.isHidden ? "REVEAL (Del)" : "SECRET (Del)"}
                 >
                   {selectedImage?.isHidden ? <Eye size={16} /> : <EyeOff size={16} />}
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); executeDeleteFullscreenImage(); }}
+                  className={cn(
+                    "p-1.5 flex items-center justify-center border rounded bg-black/15 backdrop-blur-sm transition-colors outline-none focus:outline-none",
+                    isFullscreenDarkText
+                      ? "border-black/15 text-black/60 hover:text-red-600 hover:border-red-600/50 hover:bg-red-500/10"
+                      : "border-white/15 text-white/60 hover:text-red-400 hover:border-red-400/50 hover:bg-red-500/10",
+                  )}
+                  title="DELETE IMAGE"
+                >
+                  <Trash2 size={16} />
                 </button>
 
                 {/* BG Toggle Button Group */}
@@ -4361,6 +4652,52 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Delete Image(s) Modal */}
+      <AnimatePresence>
+        {showDeleteImageModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+          >
+            <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(239,68,68,0.2)]">
+              <h2 className="text-red-500 mb-4 flex items-center gap-2">
+                <Trash2 size={20} /> {imageToDeleteContext === 'selected' ? "DELETE IMAGES" : "DELETE IMAGE"}
+              </h2>
+              <p className="text-text-secondary text-sm mb-6 uppercase leading-relaxed">
+                {language === "JP" 
+                  ? "完全に削除してもよろしいですか？この操作は元に戻せません。"
+                  : "Are you sure you want to permanently delete? This action cannot be undone."}
+              </p>
+              <div className="flex justify-end gap-3">
+                <SolidButton
+                  onClick={() => {
+                    setShowDeleteImageModal(false);
+                    setImageToDeleteContext(null);
+                  }}
+                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
+                >
+                  {t("CANCEL", "キャンセル")}
+                </SolidButton>
+                <SolidButton
+                  onClick={() => {
+                    if (imageToDeleteContext === 'selected') {
+                      executeDeleteSelectedImages();
+                    } else if (imageToDeleteContext === 'fullscreen') {
+                      performDeleteFullscreenImage();
+                    }
+                  }}
+                  className="bg-red-500/10 text-red-500 hover:text-red-400 hover:bg-red-500/20 border-red-500/30 hover:border-red-500/50"
+                >
+                  {t("DELETE", "削除する")}
+                </SolidButton>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Delete Dataset Modal */}
       <AnimatePresence>
         {showDeleteDatasetModal && (
@@ -4368,115 +4705,30 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-            onClick={() => setShowDeleteDatasetModal(false)}
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
           >
-            <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(239,68,68,0.2)]" onClick={e => e.stopPropagation()}>
-              <h2 className="text-red-500 mb-4 flex items-center gap-2">
-                <Trash2 size={20} /> {t("DELETE FOLDER", "フォルダーを削除")}
+            <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(239,68,68,0.2)]">
+              <h2 className="text-red-500 mb-4 uppercase">
+                DELETE DATASET
               </h2>
-              <p className="text-text-secondary text-sm mb-6 uppercase leading-relaxed">
-                {language === "JP" ? (
-                  <>
-                    警告: {datasetToDelete && datasets.find(d => d.id === datasetToDelete)?.name} を削除します。<br/><br/>
-                    <span className="text-accent">(※実際のデバイス上のファイルは削除されません)</span>
-                  </>
-                ) : (
-                  <>
-                    WARNING: Deleting folder "{datasetToDelete && datasets.find(d => d.id === datasetToDelete)?.name}".<br/><br/>
-                    <span className="text-accent">(※ Actual files on your device will NOT be deleted)</span>
-                  </>
-                )}
+              <p className="text-text-primary text-xs mb-6">
+                Are you sure you want to delete this dataset? This action cannot be undone.
               </p>
               <div className="flex justify-end gap-3">
-                <SolidButton onClick={() => setShowDeleteDatasetModal(false)} className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none">
-                  {t("CANCEL", "キャンセル")}
+                <SolidButton
+                  onClick={() => {
+                    setShowDeleteDatasetModal(false);
+                    setDatasetToDelete(null);
+                  }}
+                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
+                >
+                  CANCEL
                 </SolidButton>
-                <SolidButton onClick={confirmDeleteDataset} className="text-red-500 hover:text-red-400 border-red-900/50 hover:bg-red-900/20">
-                  {t("DELETE", "削除する")}
-                </SolidButton>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Delete Image Modal */}
-      <AnimatePresence>
-        {showDeleteImageModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-            onClick={() => setShowDeleteImageModal(false)}
-          >
-            <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(239,68,68,0.2)]" onClick={e => e.stopPropagation()}>
-              <h2 className="text-red-500 mb-4 flex items-center gap-2">
-                <Trash2 size={20} /> {t("DELETE IMAGE", "画像を削除")}
-              </h2>
-              <p className="text-text-secondary text-sm mb-6 uppercase leading-relaxed">
-                {language === "JP" ? (
-                  <>
-                    警告: 現在表示中の画像をデータベースから削除します。<br/><br/><span className="text-red-500 font-bold">この操作は元に戻せません。</span><br/><br/>
-                    <span className="text-accent">(※実際のデバイス上のファイルは削除されません)</span>
-                  </>
-                ) : (
-                  <>
-                    WARNING: Deleting the currently displayed image from the database.<br/><br/><span className="text-red-500 font-bold">This action cannot be undone.</span><br/><br/>
-                    <span className="text-accent">(※ Actual files on your device will NOT be deleted)</span>
-                  </>
-                )}
-              </p>
-              <div className="flex justify-end gap-3">
-                <SolidButton onClick={() => setShowDeleteImageModal(false)} className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none">
-                  {t("CANCEL", "キャンセル")}
-                </SolidButton>
-                <SolidButton onClick={confirmDeleteFullscreenImage} className="text-red-500 hover:text-red-400 border-red-900/50 hover:bg-red-900/20">
-                  {t("DELETE", "削除する")}
-                </SolidButton>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Delete Selected Images Modal */}
-      <AnimatePresence>
-        {showDeleteSelectedModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-            onClick={() => setShowDeleteSelectedModal(false)}
-          >
-            <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(239,68,68,0.2)]" onClick={e => e.stopPropagation()}>
-              <h2 className="text-red-500 mb-4 flex items-center gap-2">
-                <Trash2 size={20} /> {t("DELETE SELECTED IMAGES", "選択した画像を削除")}
-              </h2>
-              <p className="text-text-secondary text-sm mb-6 uppercase leading-relaxed">
-                {language === "JP" ? (
-                  <>
-                    警告: {selectedImageIds.size} 個の画像をデータベースから削除します。<br/><br/><span className="text-red-500 font-bold">この操作は元に戻せません。</span><br/><br/>
-                    <span className="text-accent">(※実際のデバイス上のファイルは削除されません)</span>
-                  </>
-                ) : (
-                  <>
-                    WARNING: Deleting {selectedImageIds.size} selected image(s) from the database.<br/><br/><span className="text-red-500 font-bold">This action cannot be undone.</span><br/><br/>
-                    <span className="text-accent">(※ Actual files on your device will NOT be deleted)</span>
-                  </>
-                )}
-              </p>
-              <div className="flex justify-end gap-3">
-                <SolidButton onClick={() => setShowDeleteSelectedModal(false)} className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none">
-                  {t("CANCEL", "キャンセル")}
-                </SolidButton>
-                <SolidButton onClick={confirmDeleteSelectedImages} className="text-red-500 hover:text-red-400 border-red-900/50 hover:bg-red-900/20">
-                  {t("DELETE", "削除する")}
+                <SolidButton
+                  onClick={confirmDeleteDataset}
+                  className="text-red-500 hover:text-red-400 border-red-900/50"
+                >
+                  DELETE DATASET
                 </SolidButton>
               </div>
             </div>
