@@ -472,9 +472,13 @@ export default function App() {
   const [autoScrollDir, setAutoScrollDir] = useState<"up" | "down" | null>(null);
   const [autoScrollSpeed, setAutoScrollSpeed] = useState<number>(2);
   const autoScrollDirRef = useRef<"up" | "down" | null>(null);
+  const lastAutoScrollDirRef = useRef<"up" | "down">("down");
 
   useEffect(() => {
     autoScrollDirRef.current = autoScrollDir;
+    if (autoScrollDir) {
+      lastAutoScrollDirRef.current = autoScrollDir;
+    }
   }, [autoScrollDir]);
 
   useEffect(() => {
@@ -1895,6 +1899,12 @@ Images imported: ${importedImages}`);
 
       if (!isFullscreen) {
         // 一覧画面での操作
+        if (key === " " || code === "Space") {
+          if (e.repeat) return;
+          e.preventDefault();
+          setAutoScrollDir((prev) => (prev !== null ? null : (lastAutoScrollDirRef.current || "down")));
+          return;
+        }
         if (key === "t" || key === "T") {
           if (e.repeat) return;
           e.preventDefault();
@@ -3177,6 +3187,13 @@ Images imported: ${importedImages}`);
                             {t("GRID / LIST MODE", "一覧画面")}
                           </span>
                           <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1.5 items-center">
+                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                              Space
+                            </kbd>
+                            <span className="text-text-secondary truncate">
+                              {t("Auto Scroll Play / Stop", "自動スクロール 開始/停止")}
+                            </span>
+
                             <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
                               ↑ / ↓
                             </kbd>
