@@ -11,6 +11,7 @@ import {
   Download,
   ZoomIn,
   ZoomOut,
+  Folder,
   FolderOpen, FolderPlus,
   LayoutGrid,
   List,
@@ -2956,30 +2957,9 @@ Images imported: ${importedImages}`);
                   >
                     <span className="truncate flex-1 min-w-0 pr-2 flex items-center gap-2">
                       <Square size={12} className={activeDatasetId === null ? "fill-accent" : "fill-none"} />
-                      {t("HOME (EMPTY)", "ホーム (空)")}
+                      IMAGE DATA
                     </span>
-                  </div>
-                  <div
-                    onClick={() => {
-                      if (activeDatasetId !== "all" && totalImagesCount >= 500) {
-                        setShowAllImageWarningModal(true);
-                        return;
-                      }
-                      setActiveDatasetId("all");
-                      setSearchQuery("");
-                      setSearchInput("");
-                    }}
-                    className={cn(
-                      "flex items-center justify-between px-3 py-2 text-xs font-mono cursor-pointer border transition-colors group min-h-[32px] overflow-hidden shrink-0",
-                      activeDatasetId === "all"
-                        ? "bg-accent/10 border-accent/50 text-accent"
-                        : "border-transparent text-text-secondary hover:bg-panel-border hover:text-text-primary",
-                    )}
-                  >
-                    <span className="truncate flex-1 min-w-0 pr-2">
-                      {t("ALL IMAGES", "すべての画像")}
-                    </span>
-                    <span className="text-text-muted text-[10px] shrink-0">
+                    <span className="text-text-muted text-[10px] shrink-0 font-mono">
                       ({totalImagesCount})
                     </span>
                   </div>
@@ -3065,17 +3045,12 @@ Images imported: ${importedImages}`);
                     value={activeDatasetId || ""}
                     onChange={(e) => {
                       const val = e.target.value;
-                      if (val === "all" && activeDatasetId !== "all" && totalImagesCount >= 500) {
-                        setShowAllImageWarningModal(true);
-                        return;
-                      }
                       setActiveDatasetId(val === "" ? null : val);
                       setSearchQuery("");
                       setSearchInput("");
                     }}
                   >
-                    <option value="" className="bg-white text-black">{t("HOME (EMPTY)", "ホーム (空)")}</option>
-                    <option value="all" className="bg-white text-black">{t("ALL IMAGES", "すべての画像")}</option>
+                    <option value="" className="bg-white text-black">IMAGE DATA ({totalImagesCount})</option>
                     {datasets.map((ds) => (
                       <option key={ds.id} value={ds.id} className="bg-white text-black">
                         {ds.name} ({datasetCounts[ds.id] || 0})
@@ -3410,14 +3385,20 @@ Images imported: ${importedImages}`);
                   <Search size={12} className="text-text-muted" />
                   <input
                     type="text"
-                    placeholder={activeDatasetId === "all" ? t("SEARCH ALL...", "すべての画像を検索...") : t("SEARCH IN LIST...", "リスト内を検索...")}
+                    placeholder={activeDatasetId ? t("SEARCH IN LIST...", "リスト内を検索...") : t("SEARCH...", "検索...")}
                     value={searchInput}
                     onChange={(e) => {
                       setSearchInput(e.target.value);
                     }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
-                        setSearchQuery(searchInput);
+                        if (!searchInput.trim()) {
+                          setSearchInput("");
+                          setSearchQuery("");
+                          setActiveDatasetId(null);
+                        } else {
+                          setSearchQuery(searchInput);
+                        }
                       }
                     }}
                     className="bg-transparent border-none outline-none text-text-primary w-40 text-[10px] placeholder:text-text-muted focus:ring-0"
@@ -3427,18 +3408,23 @@ Images imported: ${importedImages}`);
                       onClick={() => { 
                         setSearchInput(""); 
                         setSearchQuery(""); 
-                        if (activeDatasetId === "all") {
-                          setActiveDatasetId(null);
-                        }
+                        setActiveDatasetId(null);
                       }} 
                       className="text-text-muted hover:text-text-primary ml-1 shrink-0"
+                      title={t("Clear search (Return to Home)", "検索解除 (ホームに戻る)")}
                     >
                       <X size={12} />
                     </button>
                   )}
                   <SolidButton
                     onClick={() => {
-                      setSearchQuery(searchInput);
+                      if (!searchInput.trim()) {
+                        setSearchInput("");
+                        setSearchQuery("");
+                        setActiveDatasetId(null);
+                      } else {
+                        setSearchQuery(searchInput);
+                      }
                     }}
                     className="px-2 py-1 h-auto text-[10px] shrink-0 border-none bg-transparent hover:bg-white/10"
                   >
@@ -3922,12 +3908,67 @@ Images imported: ${importedImages}`);
                     );
                   })()}
                   {activeDatasetId === null ? (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none">
-                      <div className="text-[15vw] font-black tracking-tight text-panel-border/30 leading-none text-center">
-                        IMAGE<br />DATA
+                    <div className="absolute inset-0 flex flex-col overflow-hidden">
+                      {/* Background Watermark (Anchored and perfectly centered within main panel) */}
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none z-0 overflow-hidden">
+                        <div className="text-[10vw] font-black tracking-tight text-panel-border/25 leading-none text-center select-none">
+                          IMAGE<br />DATA
+                        </div>
                       </div>
-                      <div className="text-text-muted text-sm mt-8 tracking-widest uppercase font-mono bg-panel-bg/50 px-6 py-2 rounded-full border border-panel-border/50">
-                        {t("Select a dataset to view images", "リストを選択して画像を表示します")}
+
+                      {/* Foreground Content (Scrollable) */}
+                      <div className="relative z-10 w-full h-full overflow-y-auto p-6 sm:p-8 scrollbar-dark flex flex-col items-center justify-start">
+                        <div className="w-full max-w-6xl flex flex-col items-center">
+                          <div className="text-text-muted text-xs sm:text-sm mb-6 tracking-widest uppercase font-mono bg-panel-bg/80 backdrop-blur-md px-6 py-2 rounded-full border border-panel-border shadow-sm flex items-center gap-2 select-none">
+                            <Folder size={14} className="text-accent" />
+                            <span>{t("SELECT A DATASET TO VIEW IMAGES", "リストを選択して画像を表示します")}</span>
+                            <span className="text-text-primary font-bold">({datasets.length} DATASETS / {totalImagesCount} IMAGES)</span>
+                          </div>
+
+                          {/* Dataset Cards Grid */}
+                          {datasets.length === 0 ? (
+                            <div className="text-text-muted font-mono text-xs mt-12 bg-panel-bg/60 px-6 py-4 border border-panel-border rounded-sm">
+                              {t("NO DATASETS YET. CREATE ONE FROM THE SIDEBAR.", "データセットがありません。サイドバーから新規作成してください。")}
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 w-full pb-12">
+                              {datasets.map((ds) => {
+                                const count = datasetCounts[ds.id] || 0;
+                                const isFav = favoriteDatasetId === ds.id;
+                                return (
+                                  <button
+                                    key={ds.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveDatasetId(ds.id);
+                                      setSearchQuery("");
+                                      setSearchInput("");
+                                    }}
+                                    className="group flex flex-col justify-between p-3.5 bg-panel-bg/85 hover:bg-panel-bg backdrop-blur-md border border-panel-border hover:border-accent/60 transition-all text-left shadow-sm hover:shadow-md rounded-none text-text-primary"
+                                  >
+                                    <div className="flex items-start justify-between gap-2 w-full mb-2">
+                                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                                        <Folder size={16} className="text-accent shrink-0 group-hover:scale-110 transition-transform" />
+                                        <span className="font-mono text-xs font-semibold truncate group-hover:text-accent transition-colors">
+                                          {ds.name}
+                                        </span>
+                                      </div>
+                                      {isFav && (
+                                        <Star size={12} className="text-yellow-400 fill-yellow-400 shrink-0" />
+                                      )}
+                                    </div>
+                                    <div className="flex items-center justify-between text-[11px] font-mono text-text-muted mt-1 pt-2 border-t border-panel-border/40">
+                                      <span>{count} {count === 1 ? "IMAGE" : "IMAGES"}</span>
+                                      <span className="text-[10px] text-accent opacity-0 group-hover:opacity-100 transition-opacity">
+                                        OPEN &rarr;
+                                      </span>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ) : sortedImages.length === 0 && !isLoading ? (
@@ -4744,52 +4785,7 @@ Images imported: ${importedImages}`);
         )}
       </AnimatePresence>
 
-      {/* All Image Warning Modal */}
-      <AnimatePresence>
-        {showAllImageWarningModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
-          >
-            <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(239,68,68,0.2)]">
-              <h2 className="text-red-500 mb-4 flex items-center gap-2 font-bold tracking-wider">
-                <AlertTriangle size={20} /> HIGH MEMORY WARNING
-              </h2>
-              <p className="text-text-secondary text-[11px] mb-6 uppercase leading-relaxed tracking-wider">
-                {t(
-                  `Loading all ${totalImagesCount} images may cause performance issues or crash the application. Are you sure you want to proceed?`,
-                  `すべての画像 (${totalImagesCount}枚) を一度に読み込むと、動作が極端に重くなったりブラウザがフリーズする可能性があります。実行してもよろしいですか？`
-                )}
-              </p>
-              <div className="flex justify-end gap-3">
-                <SolidButton
-                  onClick={() => setShowAllImageWarningModal(false)}
-                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
-                >
-                  CANCEL
-                </SolidButton>
-                <button
-                  onClick={() => {
-                    setShowAllImageWarningModal(false);
-                    setActiveDatasetId("all");
-                    if (searchInput) {
-                      setSearchQuery(searchInput);
-                    } else {
-                      setSearchQuery("");
-                      setSearchInput("");
-                    }
-                  }}
-                  className="px-4 py-2 border border-red-500 text-red-500 hover:bg-red-500/10 uppercase transition-colors outline-none tracking-wider text-xs font-bold"
-                >
-                  PROCEED ANYWAY
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
 
       {/* Clear All Modal */}
       <AnimatePresence>
