@@ -5,6 +5,8 @@ export interface DatasetRecord {
   name: string;
   createdAt: number;
   isHidden?: boolean;
+  coverImageId?: string;
+  coverImagePosition?: "top" | "center" | "bottom";
 }
 
 export interface ImageRecord {
@@ -113,6 +115,35 @@ export async function updateDatasetDate(id: string, newDate: number) {
   await tx.done;
 }
 
+export async function updateDatasetCoverImage(id: string, coverImageId: string | null) {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME_DATASETS, 'readwrite');
+  const store = tx.objectStore(STORE_NAME_DATASETS);
+  const ds = await store.get(id);
+  if (ds) {
+    if (coverImageId) {
+      ds.coverImageId = coverImageId;
+    } else {
+      delete ds.coverImageId;
+      delete ds.coverImagePosition;
+    }
+    await store.put(ds);
+  }
+  await tx.done;
+}
+
+export async function updateDatasetCoverPosition(id: string, position: "top" | "center" | "bottom") {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME_DATASETS, 'readwrite');
+  const store = tx.objectStore(STORE_NAME_DATASETS);
+  const ds = await store.get(id);
+  if (ds) {
+    ds.coverImagePosition = position;
+    await store.put(ds);
+  }
+  await tx.done;
+}
+
 export async function deleteDataset(id: string) {
   const db = await initDB();
   const tx = db.transaction([STORE_NAME_DATASETS, STORE_NAME_IMAGES], 'readwrite');
@@ -142,6 +173,33 @@ export async function storeImages(images: ImageRecord[]) {
 export async function getImagesByDataset(datasetId: string): Promise<ImageRecord[]> {
   const db = await initDB();
   return db.getAllFromIndex(STORE_NAME_IMAGES, 'by-dataset', datasetId);
+}
+
+export async function getImageById(id: string): Promise<ImageRecord | undefined> {
+  const db = await initDB();
+  return db.get(STORE_NAME_IMAGES, id);
+}
+
+export async function getFirstImageOfDataset(datasetId: string): Promise<ImageRecord | null> {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME_IMAGES, 'readonly');
+  const index = tx.store.index('by-dataset');
+  let cursor = await index.openCursor(datasetId);
+  if (cursor) {
+    return cursor.value;
+  }
+  return null;
+}
+
+export async function getCoverImageOfDataset(datasetId: string, coverImageId?: string): Promise<ImageRecord | null> {
+  const db = await initDB();
+  if (coverImageId) {
+    const img = await db.get(STORE_NAME_IMAGES, coverImageId);
+    if (img && img.datasetId === datasetId) {
+      return img;
+    }
+  }
+  return getFirstImageOfDataset(datasetId);
 }
 
 export async function getAllImages(): Promise<ImageRecord[]> {

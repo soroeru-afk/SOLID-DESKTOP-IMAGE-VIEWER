@@ -52,6 +52,7 @@ import {
   Pause,
   Square,
   AlertTriangle,
+  Bookmark,
 } from "lucide-react";
 import {
   ImageRecord,
@@ -60,6 +61,10 @@ import {
   createDataset,
   deleteDataset,
   getImagesByDataset,
+  getFirstImageOfDataset,
+  getCoverImageOfDataset,
+  updateDatasetCoverImage,
+  updateDatasetCoverPosition,
   getAllImages,
   storeImages,
   clearAll,
@@ -653,6 +658,7 @@ export default function App() {
   }, [imgDims, portraitMode, isAppFullscreen, fullscreenScale, imgControls, fullscreenRotation]);
   const isPortraitMode = portraitMode !== "off";
   const [notification, setNotification] = useState<string | null>(null);
+  const notificationTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Preserve scale and rotation across image switch, and clamp x/y position to the new image bounds once loaded
   useEffect(() => {
@@ -703,10 +709,14 @@ export default function App() {
   }, [imgDims, isFullscreen, imgControls, portraitMode, isAppFullscreen]);
 
   const showNotification = (msg: string) => {
+    if (notificationTimerRef.current) {
+      clearTimeout(notificationTimerRef.current);
+    }
     setNotification(msg);
-    setTimeout(() => {
-      setNotification((prev) => (prev === msg ? null : prev));
-    }, 3000);
+    notificationTimerRef.current = setTimeout(() => {
+      setNotification(null);
+      notificationTimerRef.current = null;
+    }, 2500);
   };
 
   useEffect(() => {
@@ -741,6 +751,17 @@ export default function App() {
   const [overwriteFiles, setOverwriteFiles] = useState<{ files: File[], datasetId: string, forceLoad: boolean, existingMap: Map<string, ImageRecord> } | null>(null);
   const [favoriteDatasetId, setFavoriteDatasetId] = useState<string | null>(() => localStorage.getItem("favoriteDatasetId"));
   const [fullscreenFavorited, setFullscreenFavorited] = useState<Set<string>>(new Set());
+  const [homeViewMode, setHomeViewMode] = useState<"text" | "popup" | "card" | "cover">(() => {
+    const saved = localStorage.getItem("homeViewMode");
+    return (saved === "text" || saved === "popup" || saved === "card" || saved === "cover") ? saved : "cover";
+  });
+  const [datasetPreviewUrls, setDatasetPreviewUrls] = useState<Record<string, string>>({});
+  const [hoveredDatasetId, setHoveredDatasetId] = useState<string | null>(null);
+  const [popupMousePos, setPopupMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  useEffect(() => {
+    localStorage.setItem("homeViewMode", homeViewMode);
+  }, [homeViewMode]);
 
   useEffect(() => {
     if (favoriteDatasetId) {
@@ -856,6 +877,106 @@ export default function App() {
       setImages([]);
     }
   }, [activeDatasetId]);
+
+  // Load preview thumbnails for datasets when activeDatasetId === null (HOME screen)
+  useEffect(() => {
+    if (activeDatasetId !== null || datasets.length === 0) return;
+
+    let isMounted = true;
+    const fetchPreviews = async () => {
+      const newUrls: Record<string, string> = {};
+      for (const ds of datasets) {
+        try {
+          const coverImg = await getCoverImageOfDataset(ds.id, ds.coverImageId);
+          if (coverImg && coverImg.data) {
+            newUrls[ds.id] = URL.createObjectURL(coverImg.data);
+          }
+        } catch (err) {
+          console.error(`Failed to load preview for dataset ${ds.id}`, err);
+        }
+      }
+      if (isMounted) {
+        setDatasetPreviewUrls((prev) => ({ ...prev, ...newUrls }));
+      }
+    };
+
+    fetchPreviews();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeDatasetId, datasets]);
+
+  const handleSetAsCover = async (datasetId: string, targetImage: LoadedImage | ImageRecord) => {
+    try {
+      const currentDs = datasets.find((d) => d.id === datasetId);
+      const isAlreadyCover = currentDs?.coverImageId === targetImage.id;
+      const newCoverId = isAlreadyCover ? null : targetImage.id;
+
+      await updateDatasetCoverImage(datasetId, newCoverId);
+
+      setDatasets((prev) =>
+        prev.map((d) => (d.id === datasetId ? { ...d, coverImageId: newCoverId || undefined } : d))
+      );
+
+      if (newCoverId) {
+        const urlToUse = (targetImage as LoadedImage).url || (targetImage.data ? URL.createObjectURL(targetImage.data) : "");
+        if (urlToUse) {
+          setDatasetPreviewUrls((prev) => ({
+            ...prev,
+            [datasetId]: urlToUse,
+          }));
+        }
+        showNotification(t("SET AS DATASET COVER IMAGE", "リストのカバー画像に設定しました"));
+      } else {
+        const firstImg = await getFirstImageOfDataset(datasetId);
+        if (firstImg && firstImg.data) {
+          setDatasetPreviewUrls((prev) => ({
+            ...prev,
+            [datasetId]: URL.createObjectURL(firstImg.data),
+          }));
+        }
+        showNotification(t("RESET COVER IMAGE TO DEFAULT", "カバー画像を初期状態（先頭画像）に戻しました"));
+      }
+    } catch (err) {
+      console.error("Failed to set cover image", err);
+      showNotification(t("FAILED TO SET COVER IMAGE", "カバー画像の設定に失敗しました"));
+    }
+  };
+
+  const getCoverPositionStyle = (pos?: "top" | "center" | "bottom"): string => {
+    if (pos === "center") return "50% 50%";
+    if (pos === "bottom") return "50% 85%";
+    return "50% 15%"; // default: TOP (15% from top)
+  };
+
+  const handleCycleCoverPosition = async (datasetId: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    try {
+      const currentDs = datasets.find((d) => d.id === datasetId);
+      const currentPos = currentDs?.coverImagePosition || "top";
+      const nextPos: "top" | "center" | "bottom" =
+        currentPos === "top" ? "center" : currentPos === "center" ? "bottom" : "top";
+
+      await updateDatasetCoverPosition(datasetId, nextPos);
+      setDatasets((prev) =>
+        prev.map((d) => (d.id === datasetId ? { ...d, coverImagePosition: nextPos } : d))
+      );
+
+      const posLabel =
+        nextPos === "top"
+          ? t("TOP (HEAD)", "上部寄り")
+          : nextPos === "center"
+          ? t("CENTER", "中央")
+          : t("BOTTOM", "下部寄り");
+      showNotification(t(`COVER POSITION: ${posLabel}`, `カバー表示位置: ${posLabel}`));
+    } catch (err) {
+      console.error("Failed to cycle cover position", err);
+    }
+  };
 
   const sortedImages = useMemo(() => {
     let filteredImages = images;
@@ -1971,6 +2092,14 @@ Images imported: ${importedImages}`);
         handleToggleZoomFill(e);
         return;
       }
+      if (key === "c" || key === "C") {
+        if (e.repeat) return;
+        e.preventDefault();
+        if (activeDatasetId && selectedImage) {
+          handleSetAsCover(activeDatasetId, selectedImage);
+        }
+        return;
+      }
       if (key === "Delete") {
         if (e.repeat) return;
         e.preventDefault();
@@ -2485,14 +2614,35 @@ Images imported: ${importedImages}`);
           <div className="flex-1 min-w-0 px-2 flex flex-col justify-center group/name transition-colors rounded hover:bg-panel-border/30 h-full">
             <div className="flex items-center justify-between w-full">
               <span className="font-mono text-sm text-text-primary truncate block pr-2">{img.name}</span>
-              <button
-                onClick={(e) => handleRenameFileClick(e, img.id, img.name)}
-                onDoubleClick={(e) => e.stopPropagation()}
-                className="text-text-muted hover:text-accent transition-colors flex-shrink-0 opacity-0 group-hover/name:opacity-100 px-2 flex items-center justify-center"
-                title="RENAME FILE"
-              >
-                <Edit2 size={14} />
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                {datasets.find(d => d.id === activeDatasetId)?.coverImageId === img.id ? (
+                  <span className="flex items-center gap-1 bg-amber-500/90 text-black font-bold font-mono text-[9px] px-1.5 py-0.5 rounded shadow-xs">
+                    <Bookmark size={10} className="fill-black" /> COVER
+                  </span>
+                ) : (
+                  activeDatasetId && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (activeDatasetId) handleSetAsCover(activeDatasetId, img);
+                      }}
+                      onDoubleClick={(e) => e.stopPropagation()}
+                      className="text-text-muted hover:text-amber-400 transition-colors opacity-0 group-hover/name:opacity-100 px-1 py-0.5 flex items-center gap-1 font-mono text-[9px] rounded hover:bg-panel-border/50"
+                      title={t("Set as list cover thumbnail", "この画像をリストのカバー画像に設定")}
+                    >
+                      <Bookmark size={12} /> COVER
+                    </button>
+                  )
+                )}
+                <button
+                  onClick={(e) => handleRenameFileClick(e, img.id, img.name)}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  className="text-text-muted hover:text-accent transition-colors flex-shrink-0 opacity-0 group-hover/name:opacity-100 px-2 flex items-center justify-center"
+                  title="RENAME FILE"
+                >
+                  <Edit2 size={14} />
+                </button>
+              </div>
             </div>
           </div>
           <div className="font-mono text-sm text-text-muted w-24 text-right shrink-0">
@@ -2527,6 +2677,49 @@ Images imported: ${importedImages}`);
           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
         </div>
       )}
+
+      {/* Cover Image Indicator / Set Button */}
+      {(() => {
+        const currentDs = datasets.find(d => d.id === activeDatasetId);
+        const isCover = currentDs?.coverImageId === img.id;
+        
+        if (isCover) {
+          const currentPos = currentDs?.coverImagePosition || "top";
+          const posLabel = currentPos === "center" ? "MID" : currentPos === "bottom" ? "BTM" : "TOP";
+          return (
+            <div
+              className="absolute top-2 left-2 z-20 flex items-center gap-1 bg-amber-500/95 text-black font-bold font-mono text-[9px] px-1.5 py-0.5 rounded shadow-[0_2px_8px_rgba(0,0,0,0.5)] backdrop-blur-xs tracking-wider select-none"
+              title={t("Cover Image: Click to cycle crop position (TOP -> CENTER -> BOTTOM)", "カバー画像: クリックでトリミング位置切替（上部 -> 中央 -> 下部）")}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (activeDatasetId) handleCycleCoverPosition(activeDatasetId, e);
+              }}
+            >
+              <Bookmark size={11} className="fill-black" />
+              <span>COVER</span>
+              <span className="bg-black/20 text-black px-1 rounded text-[8px] ml-0.5">{posLabel}</span>
+            </div>
+          );
+        }
+
+        if (!isSelectionMode && activeDatasetId && viewMode !== "list") {
+          return (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (activeDatasetId) handleSetAsCover(activeDatasetId, img);
+              }}
+              onDoubleClick={(e) => e.stopPropagation()}
+              className="absolute top-2 left-2 z-20 opacity-0 group-hover:opacity-100 transition-all duration-150 bg-black/80 hover:bg-amber-500 text-white hover:text-black font-mono text-[9px] px-1.5 py-0.5 rounded flex items-center gap-1 border border-white/20 hover:border-amber-500 shadow-md backdrop-blur-xs tracking-wider"
+              title={t("Set as list cover thumbnail", "この画像をリストのカバー画像に設定")}
+            >
+              <Bookmark size={11} />
+              <span>SET COVER</span>
+            </button>
+          );
+        }
+        return null;
+      })()}
       
       {img.isHidden && (
         <div className="absolute top-2 right-2 z-20 pointer-events-none text-amber-500/80 bg-root-bg/80 rounded p-0.5 backdrop-blur-sm" title="Secret">
@@ -2579,7 +2772,9 @@ Images imported: ${importedImages}`);
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[110] bg-panel-border text-text-primary px-4 py-2 font-mono text-sm shadow-xl flex items-center gap-2 border border-accent/20"
+            onClick={() => setNotification(null)}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[110] bg-panel-border text-text-primary px-4 py-2 font-mono text-sm shadow-xl flex items-center gap-2 border border-accent/20 cursor-pointer hover:border-accent/50 select-none transition-colors"
+            title="Click to dismiss"
           >
             <span className="text-accent">!</span> {notification}
           </motion.div>
@@ -3287,6 +3482,13 @@ Images imported: ${importedImages}`);
                             </span>
 
                             <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                              C
+                            </kbd>
+                            <span className="text-text-secondary truncate">
+                              {t("Set as List Cover", "カバー画像設定/解除")}
+                            </span>
+
+                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
                               R
                             </kbd>
                             <span className="text-text-secondary truncate">
@@ -3494,6 +3696,30 @@ Images imported: ${importedImages}`);
                     </button>
                   </div>
                   <div className="flex items-center gap-1">
+                    {selectedImageIds.size === 1 && activeDatasetId && (
+                      <button
+                        onClick={() => {
+                          const selectedId = Array.from(selectedImageIds)[0];
+                          const targetImg = sortedImages.find(img => img.id === selectedId);
+                          if (targetImg) {
+                            handleSetAsCover(activeDatasetId, targetImg);
+                          }
+                        }}
+                        className={cn(
+                          "text-[10px] uppercase font-mono tracking-wider transition-colors px-2 py-0.5 rounded mr-1 flex items-center gap-1",
+                          datasets.find(d => d.id === activeDatasetId)?.coverImageId === Array.from(selectedImageIds)[0]
+                            ? "bg-amber-500/30 text-amber-300 font-bold"
+                            : "text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20"
+                        )}
+                        title={t("SET AS DATASET COVER", "リストのカバー画像に設定")}
+                      >
+                        <Bookmark
+                          size={12}
+                          fill={datasets.find(d => d.id === activeDatasetId)?.coverImageId === Array.from(selectedImageIds)[0] ? "currentColor" : "none"}
+                        />
+                        {datasets.find(d => d.id === activeDatasetId)?.coverImageId === Array.from(selectedImageIds)[0] ? "COVER SET" : "SET COVER"}
+                      </button>
+                    )}
                     {favoriteDatasetId && favoriteDatasetId !== activeDatasetId && selectedImageIds.size > 0 && (
                       <button
                         onClick={() => handleCopySelected(favoriteDatasetId)}
@@ -3919,10 +4145,69 @@ Images imported: ${importedImages}`);
                       {/* Foreground Content (Scrollable) */}
                       <div className="relative z-10 w-full h-full overflow-y-auto p-6 sm:p-8 scrollbar-dark flex flex-col items-center justify-start">
                         <div className="w-full max-w-6xl flex flex-col items-center">
-                          <div className="text-text-muted text-xs sm:text-sm mb-6 tracking-widest uppercase font-mono bg-panel-bg/80 backdrop-blur-md px-6 py-2 rounded-full border border-panel-border shadow-sm flex items-center gap-2 select-none">
-                            <Folder size={14} className="text-accent" />
-                            <span>{t("SELECT A DATASET TO VIEW IMAGES", "リストを選択して画像を表示します")}</span>
-                            <span className="text-text-primary font-bold">({datasets.length} DATASETS / {totalImagesCount} IMAGES)</span>
+                          {/* Home Header Pill & View Mode Switcher */}
+                          <div className="flex flex-wrap items-center justify-center gap-3 mb-6 select-none">
+                            <div className="text-text-muted text-xs sm:text-sm tracking-widest uppercase font-mono bg-panel-bg/90 backdrop-blur-md px-5 py-2 rounded-full border border-panel-border shadow-sm flex items-center gap-2">
+                              <Folder size={14} className="text-accent" />
+                              <span>{t("SELECT A DATASET TO VIEW IMAGES", "リストを選択して画像を表示します")}</span>
+                              <span className="text-text-primary font-bold">({datasets.length} DATASETS / {totalImagesCount} IMAGES)</span>
+                            </div>
+
+                            {/* View Style Switcher Buttons */}
+                            <div className="flex items-center border border-panel-border bg-panel-bg/90 backdrop-blur-md p-1 rounded-full text-[10px] font-mono shadow-sm">
+                              <button
+                                type="button"
+                                onClick={() => setHomeViewMode("text")}
+                                className={cn(
+                                  "px-3 py-1 rounded-full transition-colors uppercase",
+                                  homeViewMode === "text"
+                                    ? "bg-accent text-white font-bold"
+                                    : "text-text-secondary hover:text-text-primary"
+                                )}
+                                title={t("Text only", "テキストのみ")}
+                              >
+                                {t("TEXT", "テキスト")}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setHomeViewMode("popup")}
+                                className={cn(
+                                  "px-3 py-1 rounded-full transition-colors uppercase",
+                                  homeViewMode === "popup"
+                                    ? "bg-accent text-white font-bold"
+                                    : "text-text-secondary hover:text-text-primary"
+                                )}
+                                title={t("Hover to preview thumbnail", "ホバーでサムネイルポップアップ")}
+                              >
+                                {t("POPUP", "ポップアップ")}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setHomeViewMode("card")}
+                                className={cn(
+                                  "px-3 py-1 rounded-full transition-colors uppercase",
+                                  homeViewMode === "card"
+                                    ? "bg-accent text-white font-bold"
+                                    : "text-text-secondary hover:text-text-primary"
+                                )}
+                                title={t("Top thumbnail card", "上部サムネイルカード")}
+                              >
+                                {t("CARD", "カード")}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setHomeViewMode("cover")}
+                                className={cn(
+                                  "px-3 py-1 rounded-full transition-colors uppercase",
+                                  homeViewMode === "cover"
+                                    ? "bg-accent text-white font-bold"
+                                    : "text-text-secondary hover:text-text-primary"
+                                )}
+                                title={t("Background cover art", "背景カバーアート")}
+                              >
+                                {t("COVER", "カバー")}
+                              </button>
+                            </div>
                           </div>
 
                           {/* Dataset Cards Grid */}
@@ -3931,43 +4216,172 @@ Images imported: ${importedImages}`);
                               {t("NO DATASETS YET. CREATE ONE FROM THE SIDEBAR.", "データセットがありません。サイドバーから新規作成してください。")}
                             </div>
                           ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 w-full pb-12">
+                            <div className={cn(
+                              "grid gap-3.5 w-full pb-12",
+                              homeViewMode === "card"
+                                ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+                                : "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
+                            )}>
                               {datasets.map((ds) => {
                                 const count = datasetCounts[ds.id] || 0;
                                 const isFav = favoriteDatasetId === ds.id;
+                                const previewUrl = datasetPreviewUrls[ds.id];
+
                                 return (
-                                  <button
+                                  <div
                                     key={ds.id}
-                                    type="button"
-                                    onClick={() => {
-                                      setActiveDatasetId(ds.id);
-                                      setSearchQuery("");
-                                      setSearchInput("");
+                                    className="relative group"
+                                    onMouseEnter={(e) => {
+                                      setHoveredDatasetId(ds.id);
+                                      setPopupMousePos({ x: e.clientX, y: e.clientY });
                                     }}
-                                    className="group flex flex-col justify-between p-3.5 bg-panel-bg/85 hover:bg-panel-bg backdrop-blur-md border border-panel-border hover:border-accent/60 transition-all text-left shadow-sm hover:shadow-md rounded-none text-text-primary"
+                                    onMouseMove={(e) => {
+                                      setPopupMousePos({ x: e.clientX, y: e.clientY });
+                                    }}
+                                    onMouseLeave={() => setHoveredDatasetId(null)}
                                   >
-                                    <div className="flex items-start justify-between gap-2 w-full mb-2">
-                                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                                        <Folder size={16} className="text-accent shrink-0 group-hover:scale-110 transition-transform" />
-                                        <span className="font-mono text-xs font-semibold truncate group-hover:text-accent transition-colors">
-                                          {ds.name}
-                                        </span>
-                                      </div>
-                                      {isFav && (
-                                        <Star size={12} className="text-yellow-400 fill-yellow-400 shrink-0" />
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveDatasetId(ds.id);
+                                        setSearchQuery("");
+                                        setSearchInput("");
+                                      }}
+                                      className={cn(
+                                        "w-full h-full group flex flex-col justify-between transition-all text-left shadow-sm hover:shadow-md rounded-none text-text-primary overflow-hidden relative border",
+                                        "border-panel-border hover:border-accent/70",
+                                        homeViewMode === "card" ? "p-0 bg-panel-bg/90" : "p-3.5 bg-panel-bg/85 hover:bg-panel-bg backdrop-blur-md"
                                       )}
-                                    </div>
-                                    <div className="flex items-center justify-between text-[11px] font-mono text-text-muted mt-1 pt-2 border-t border-panel-border/40">
-                                      <span>{count} {count === 1 ? "IMAGE" : "IMAGES"}</span>
-                                      <span className="text-[10px] text-accent opacity-0 group-hover:opacity-100 transition-opacity">
-                                        OPEN &rarr;
-                                      </span>
-                                    </div>
-                                  </button>
+                                    >
+                                      {/* COVER MODE: Background Image with blur & subtle opacity */}
+                                      {homeViewMode === "cover" && previewUrl && (
+                                        <div
+                                          className="absolute inset-0 z-0 bg-cover pointer-events-none opacity-20 group-hover:opacity-35 transition-opacity duration-300 transform scale-105 group-hover:scale-100"
+                                          style={{
+                                            backgroundImage: `url(${previewUrl})`,
+                                            backgroundPosition: getCoverPositionStyle(ds.coverImagePosition),
+                                            filter: "blur(1px)",
+                                          }}
+                                        />
+                                      )}
+
+                                      {/* CARD MODE: Top Thumbnail Image */}
+                                      {homeViewMode === "card" && (
+                                        <div className="w-full aspect-[4/3] bg-black/20 overflow-hidden relative flex items-center justify-center border-b border-panel-border/60">
+                                          {previewUrl ? (
+                                            <img
+                                              src={previewUrl}
+                                              alt={ds.name}
+                                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                              style={{
+                                                objectPosition: getCoverPositionStyle(ds.coverImagePosition),
+                                              }}
+                                              referrerPolicy="no-referrer"
+                                            />
+                                          ) : (
+                                            <div className="flex flex-col items-center justify-center text-text-muted/40 font-mono text-[10px]">
+                                              <Folder size={24} className="mb-1 opacity-50" />
+                                              <span>EMPTY</span>
+                                            </div>
+                                          )}
+                                          {isFav && (
+                                            <div className="absolute top-2 right-2 bg-black/60 p-1 rounded-full backdrop-blur-xs">
+                                              <Star size={12} className="text-yellow-400 fill-yellow-400" />
+                                            </div>
+                                          )}
+                                          {/* Position switch button (TOP / MID / BTM) on CARD thumbnail */}
+                                          {previewUrl && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => handleCycleCoverPosition(ds.id, e)}
+                                              className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 hover:bg-black text-white hover:text-accent font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-white/20 backdrop-blur-xs flex items-center gap-0.5 shadow-sm"
+                                              title={t("Cycle crop position: TOP -> CENTER -> BOTTOM", "トリミング位置切替: 上部 -> 中央 -> 下部")}
+                                            >
+                                              <span>POS:</span>
+                                              <span className="text-accent uppercase">
+                                                {ds.coverImagePosition === "center" ? "MID" : ds.coverImagePosition === "bottom" ? "BTM" : "TOP"}
+                                              </span>
+                                            </button>
+                                          )}
+                                        </div>
+                                      )}
+
+                                      {/* CARD CONTENT */}
+                                      <div className={cn("relative z-10 flex flex-col justify-between flex-1", homeViewMode === "card" ? "p-3" : "")}>
+                                        <div className="flex items-start justify-between gap-2 w-full mb-2">
+                                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                                            {homeViewMode !== "card" && (
+                                              <Folder size={16} className="text-accent shrink-0 group-hover:scale-110 transition-transform" />
+                                            )}
+                                            <span className="font-mono text-xs font-semibold truncate group-hover:text-accent transition-colors">
+                                              {ds.name}
+                                            </span>
+                                          </div>
+                                          {homeViewMode !== "card" && isFav && (
+                                            <Star size={12} className="text-yellow-400 fill-yellow-400 shrink-0" />
+                                          )}
+                                        </div>
+                                        <div className="flex items-center justify-between text-[11px] font-mono text-text-muted mt-1 pt-2 border-t border-panel-border/40">
+                                          <span>{count} {count === 1 ? "IMAGE" : "IMAGES"}</span>
+                                          <span className="text-[10px] text-accent opacity-0 group-hover:opacity-100 transition-opacity">
+                                            OPEN &rarr;
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </button>
+                                  </div>
                                 );
                               })}
                             </div>
                           )}
+
+                          {/* POPUP MODE: Mouse-Following Floating Thumbnail below cursor */}
+                          {homeViewMode === "popup" && hoveredDatasetId && datasetPreviewUrls[hoveredDatasetId] && (() => {
+                            const hoveredDs = datasets.find((d) => d.id === hoveredDatasetId);
+                            if (!hoveredDs) return null;
+                            const count = datasetCounts[hoveredDs.id] || 0;
+                            const previewUrl = datasetPreviewUrls[hoveredDs.id];
+                            const popupWidth = 190;
+                            const popupHeight = 175;
+
+                            let left = popupMousePos.x - popupWidth / 2;
+                            if (typeof window !== "undefined") {
+                              left = Math.min(window.innerWidth - popupWidth - 16, Math.max(16, left));
+                            }
+
+                            let top = popupMousePos.y + 18;
+                            if (typeof window !== "undefined" && top + popupHeight > window.innerHeight - 10) {
+                              top = Math.max(10, popupMousePos.y - popupHeight - 16);
+                            }
+
+                            return (
+                              <div
+                                className="fixed z-[100] pointer-events-none transition-transform duration-75 ease-out"
+                                style={{
+                                  left: `${left}px`,
+                                  top: `${top}px`,
+                                }}
+                              >
+                                <div className="p-1 bg-panel-bg/95 backdrop-blur-md border border-panel-border shadow-[0_12px_32px_rgba(0,0,0,0.6)] rounded-none w-[190px] overflow-hidden">
+                                  <div className="aspect-[4/3] w-full bg-black/40 overflow-hidden relative">
+                                    <img
+                                      src={previewUrl}
+                                      alt={hoveredDs.name}
+                                      className="w-full h-full object-cover"
+                                      style={{
+                                        objectPosition: getCoverPositionStyle(hoveredDs.coverImagePosition),
+                                      }}
+                                      referrerPolicy="no-referrer"
+                                    />
+                                  </div>
+                                  <div className="p-1.5 font-mono text-[10px] text-text-secondary truncate border-t border-panel-border/40 flex justify-between items-center bg-panel-bg">
+                                    <span className="truncate font-semibold text-text-primary">{hoveredDs.name}</span>
+                                    <span className="shrink-0 text-text-muted ml-1.5 font-normal">{count} imgs</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -4644,6 +5058,39 @@ Images imported: ${importedImages}`);
                     size={24} 
                     className={selectedImage && fullscreenFavorited.has(selectedImage.id) ? "text-yellow-400" : "text-inherit"} 
                     fill={selectedImage && fullscreenFavorited.has(selectedImage.id) ? "currentColor" : "none"} 
+                  />
+                </button>
+              )}
+
+              {/* Cover Image Set Button in Fullscreen */}
+              {activeDatasetId && selectedImage && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSetAsCover(activeDatasetId, selectedImage);
+                  }}
+                  className={cn(
+                    "absolute top-6 w-12 h-12 flex items-center justify-center rounded-full transition-all hover:scale-110 outline-none focus:outline-none backdrop-blur-sm border shadow-sm",
+                    favoriteDatasetId && favoriteDatasetId !== activeDatasetId ? "right-[256px]" : "right-[196px]",
+                    isFullscreenDarkText
+                      ? "bg-white/20 border-black/10 text-black/70 hover:text-black hover:bg-white/40"
+                      : "bg-black/20 border-white/10 text-white/70 hover:text-white hover:bg-black/40",
+                    datasets.find(d => d.id === activeDatasetId)?.coverImageId === selectedImage.id && (
+                      isFullscreenDarkText
+                        ? "bg-amber-400/60 text-black border-amber-500/60"
+                        : "bg-amber-500/50 text-amber-300 border-amber-400/60"
+                    )
+                  )}
+                  title={
+                    datasets.find(d => d.id === activeDatasetId)?.coverImageId === selectedImage.id
+                      ? t("COVER IMAGE (CLICK TO RESET)", "カバー画像に設定中（クリックで初期解除）")
+                      : t("SET AS COVER IMAGE", "この画像をリストのカバー画像に設定")
+                  }
+                >
+                  <Bookmark 
+                    size={22} 
+                    className={datasets.find(d => d.id === activeDatasetId)?.coverImageId === selectedImage.id ? "text-amber-400" : "text-inherit"} 
+                    fill={datasets.find(d => d.id === activeDatasetId)?.coverImageId === selectedImage.id ? "currentColor" : "none"} 
                   />
                 </button>
               )}
