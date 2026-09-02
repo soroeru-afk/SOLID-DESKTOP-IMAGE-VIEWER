@@ -4506,20 +4506,8 @@ Images imported: ${importedImages}`);
                       <ChevronUp size={14} />
                     </button>
 
-                    {/* AUTO / STOP Toggle Button */}
-                    <button
-                      type="button"
-                      onClick={() => setAutoScrollDir((d) => (d ? null : "down"))}
-                      className={cn(
-                        "w-full py-1 text-center font-mono font-bold text-[9px] tracking-wider transition-colors cursor-pointer outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
-                        autoScrollDir !== null
-                          ? "bg-gray-800 text-white dark:bg-gray-200 dark:text-black font-extrabold shadow-inner"
-                          : "text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
-                      )}
-                      title={autoScrollDir ? "STOP AUTO SCROLL" : "START AUTO SCROLL"}
-                    >
-                      {autoScrollDir !== null ? "STOP" : "AUTO"}
-                    </button>
+                    {/* Subtle divider between UP and DOWN */}
+                    <div className="w-3/4 mx-auto border-t border-gray-200 dark:border-gray-700/60 my-0.5" />
 
                     {/* Auto Scroll DOWN Toggle */}
                     <button
