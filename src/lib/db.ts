@@ -5,6 +5,7 @@ export interface DatasetRecord {
   name: string;
   createdAt: number;
   isHidden?: boolean;
+  isPinned?: boolean;
   coverImageId?: string;
   coverImagePosition?: "top" | "center" | "bottom";
 }
@@ -76,7 +77,13 @@ export async function createDataset(name: string): Promise<DatasetRecord> {
 export async function getAllDatasets(): Promise<DatasetRecord[]> {
   const db = await initDB();
   const datasets = await db.getAll(STORE_NAME_DATASETS);
-  return datasets.sort((a, b) => b.createdAt - a.createdAt);
+  return datasets.sort((a, b) => {
+    // Pinned datasets always come first
+    if (a.isPinned && !b.isPinned) return -1;
+    if (!a.isPinned && b.isPinned) return 1;
+    // Within same pin status, sort by createdAt descending (newest / custom reorder on top)
+    return b.createdAt - a.createdAt;
+  });
 }
 
 export async function toggleDatasetVisibility(id: string, isHidden: boolean) {
@@ -139,6 +146,18 @@ export async function updateDatasetCoverPosition(id: string, position: "top" | "
   const ds = await store.get(id);
   if (ds) {
     ds.coverImagePosition = position;
+    await store.put(ds);
+  }
+  await tx.done;
+}
+
+export async function updateDatasetPinned(id: string, isPinned: boolean) {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME_DATASETS, 'readwrite');
+  const store = tx.objectStore(STORE_NAME_DATASETS);
+  const ds = await store.get(id);
+  if (ds) {
+    ds.isPinned = isPinned;
     await store.put(ds);
   }
   await tx.done;

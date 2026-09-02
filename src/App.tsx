@@ -53,6 +53,7 @@ import {
   Square,
   AlertTriangle,
   Bookmark,
+  Pin,
 } from "lucide-react";
 import {
   ImageRecord,
@@ -65,6 +66,7 @@ import {
   getCoverImageOfDataset,
   updateDatasetCoverImage,
   updateDatasetCoverPosition,
+  updateDatasetPinned,
   getAllImages,
   storeImages,
   clearAll,
@@ -978,6 +980,28 @@ export default function App() {
     }
   };
 
+  const handleTogglePinDataset = async (datasetId: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    try {
+      const currentDs = datasets.find((d) => d.id === datasetId);
+      const newPinned = !currentDs?.isPinned;
+      await updateDatasetPinned(datasetId, newPinned);
+
+      await loadDatasets();
+
+      if (newPinned) {
+        showNotification(t("PINNED DATASET TO TOP", "リストを最上部にピン留め固定しました"));
+      } else {
+        showNotification(t("UNPINNED DATASET", "リストのピン留めを解除しました"));
+      }
+    } catch (err) {
+      console.error("Failed to toggle pin dataset", err);
+    }
+  };
+
   const sortedImages = useMemo(() => {
     let filteredImages = images;
     if (showHiddenImages) {
@@ -1547,13 +1571,15 @@ Images imported: ${importedImages}`);
   };
 
   const handleReorderDatasets = async (newOrder: DatasetRecord[]) => {
-    setDatasets(newOrder);
-    // Sort array implies top-to-bottom.
-    // Datasets are normally sorted by createdAt descending (newest on top).
-    // We update them so the first has the highest timestamp.
+    // Preserve pinned separation: pinned datasets remain in their pinned subset, non-pinned in their non-pinned subset
+    const pinned = newOrder.filter((d) => d.isPinned);
+    const unpinned = newOrder.filter((d) => !d.isPinned);
+    const finalOrder = [...pinned, ...unpinned];
+
+    setDatasets(finalOrder);
     const now = Date.now();
-    for (let i = 0; i < newOrder.length; i++) {
-      await updateDatasetDate(newOrder[i].id, now - i * 1000);
+    for (let i = 0; i < finalOrder.length; i++) {
+      await updateDatasetDate(finalOrder[i].id, now - i * 1000);
     }
   };
 
@@ -3178,13 +3204,32 @@ Images imported: ${importedImages}`);
                         )}
                       >
                         <GripVertical size={14} className="shrink-0 mr-2 opacity-30 group-hover:opacity-100 transition-opacity" />
-                        <span className="truncate flex-1 min-w-0 pr-2 pointer-events-none">
-                          {ds.name}{" "}
-                          <span className="text-text-muted text-[10px] ml-1">
+                        <span className="truncate flex-1 min-w-0 pr-2 pointer-events-none flex items-center gap-1.5">
+                          {ds.isPinned && (
+                            <button
+                              type="button"
+                              onClick={(e) => handleTogglePinDataset(ds.id, e)}
+                              className="pointer-events-auto p-0.5 -ml-0.5 rounded text-accent hover:opacity-75 transition-opacity"
+                              title={t("UNPIN FROM TOP", "ピン留め解除")}
+                            >
+                              <Pin size={11} className="fill-accent shrink-0 rotate-45" />
+                            </button>
+                          )}
+                          <span className="truncate">{ds.name}</span>
+                          <span className="text-text-muted text-[10px] shrink-0">
                             ({datasetCounts[ds.id] || 0})
                           </span>
                         </span>
                         <div className="flex gap-2 shrink-0 bg-transparent items-center">
+                          {!ds.isPinned && (
+                            <button
+                              onClick={(e) => handleTogglePinDataset(ds.id, e)}
+                              className="transition-opacity p-0.5 rounded opacity-0 group-hover:opacity-50 hover:!opacity-100 text-text-muted hover:text-text-primary"
+                              title={t("PIN TO TOP", "最上部にピン留め固定")}
+                            >
+                              <Pin size={13} />
+                            </button>
+                          )}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -3248,7 +3293,7 @@ Images imported: ${importedImages}`);
                     <option value="" className="bg-white text-black">IMAGE DATA ({totalImagesCount})</option>
                     {datasets.map((ds) => (
                       <option key={ds.id} value={ds.id} className="bg-white text-black">
-                        {ds.name} ({datasetCounts[ds.id] || 0})
+                        {ds.isPinned ? "📌 " : ""}{ds.name} ({datasetCounts[ds.id] || 0})
                       </option>
                     ))}
                   </select>
@@ -4284,11 +4329,23 @@ Images imported: ${importedImages}`);
                                               <span>EMPTY</span>
                                             </div>
                                           )}
-                                          {isFav && (
-                                            <div className="absolute top-2 right-2 bg-black/60 p-1 rounded-full backdrop-blur-xs">
-                                              <Star size={12} className="text-yellow-400 fill-yellow-400" />
-                                            </div>
-                                          )}
+                                          <div className="absolute top-2 right-2 flex items-center gap-1 z-10">
+                                            {isFav && (
+                                              <div className="bg-black/60 p-1 rounded-full backdrop-blur-xs">
+                                                <Star size={12} className="text-yellow-400 fill-yellow-400" />
+                                              </div>
+                                            )}
+                                            {!ds.isPinned && (
+                                              <button
+                                                type="button"
+                                                onClick={(e) => handleTogglePinDataset(ds.id, e)}
+                                                className="p-1 rounded-full backdrop-blur-xs transition-opacity bg-black/60 text-white/70 hover:text-white opacity-0 group-hover:opacity-100"
+                                                title={t("PIN TO TOP", "最上部にピン留め固定")}
+                                              >
+                                                <Pin size={12} />
+                                              </button>
+                                            )}
+                                          </div>
                                           {/* Position switch button (TOP / MID / BTM) on CARD thumbnail */}
                                           {previewUrl && (
                                             <button
@@ -4308,19 +4365,43 @@ Images imported: ${importedImages}`);
 
                                       {/* CARD CONTENT */}
                                       <div className={cn("relative z-10 flex flex-col justify-between flex-1", homeViewMode === "card" ? "p-3" : "")}>
-                                        <div className="flex items-start justify-between gap-2 w-full mb-2">
-                                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                                          <div className="flex items-start justify-between gap-2 w-full mb-2">
+                                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                                              {homeViewMode !== "card" && (
+                                                <Folder size={16} className="text-accent shrink-0 group-hover:scale-110 transition-transform" />
+                                              )}
+                                              {ds.isPinned && (
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => handleTogglePinDataset(ds.id, e)}
+                                                  className="p-0.5 rounded text-accent hover:opacity-75 transition-opacity"
+                                                  title={t("UNPIN FROM TOP", "ピン留め解除")}
+                                                >
+                                                  <Pin size={11} className="fill-accent shrink-0 rotate-45" />
+                                                </button>
+                                              )}
+                                              <span className="font-mono text-xs font-semibold truncate group-hover:text-accent transition-colors">
+                                                {ds.name}
+                                              </span>
+                                            </div>
                                             {homeViewMode !== "card" && (
-                                              <Folder size={16} className="text-accent shrink-0 group-hover:scale-110 transition-transform" />
+                                              <div className="flex items-center gap-1.5 shrink-0">
+                                                {!ds.isPinned && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={(e) => handleTogglePinDataset(ds.id, e)}
+                                                    className="transition-opacity p-0.5 rounded opacity-0 group-hover:opacity-60 hover:!opacity-100 text-text-muted hover:text-text-primary"
+                                                    title={t("PIN TO TOP", "最上部にピン留め固定")}
+                                                  >
+                                                    <Pin size={13} />
+                                                  </button>
+                                                )}
+                                                {isFav && (
+                                                  <Star size={12} className="text-yellow-400 fill-yellow-400 shrink-0" />
+                                                )}
+                                              </div>
                                             )}
-                                            <span className="font-mono text-xs font-semibold truncate group-hover:text-accent transition-colors">
-                                              {ds.name}
-                                            </span>
                                           </div>
-                                          {homeViewMode !== "card" && isFav && (
-                                            <Star size={12} className="text-yellow-400 fill-yellow-400 shrink-0" />
-                                          )}
-                                        </div>
                                         <div className="flex items-center justify-between text-[11px] font-mono text-text-muted mt-1 pt-2 border-t border-panel-border/40">
                                           <span>{count} {count === 1 ? "IMAGE" : "IMAGES"}</span>
                                           <span className="text-[10px] text-accent opacity-0 group-hover:opacity-100 transition-opacity">
