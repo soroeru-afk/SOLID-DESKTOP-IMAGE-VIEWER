@@ -17,23 +17,24 @@
   :root[data-font="MONO"] {
     --font-primary: "Share Tech Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   }
-  :root {
+  :root,
+  :root[data-theme="NAVY"] {
     --bg-app: #06090e;
     --bg-panel: #0b111a;
     --bg-panel-header: #0c121a;
     --border-panel: #233348;
     --border-inner: #1a273b;
-    --text-main: #a2c5ee;
-    --text-sub: #4a6382;
-    --text-dim: #2f445e;
+    --text-main: #f0f6ff;
+    --text-sub: #9bbce6;
+    --text-dim: #6486af;
     --accent: #3b82f6;
     --accent-glow: rgba(59, 130, 246, 0.5);
 
-    --btn-bg: #182333;
+    --btn-bg: #15202f;
     --btn-border: #293d5a;
     --btn-border-b: #0b1018;
     --btn-border-r: #101722;
-    --btn-text: #869ab3;
+    --btn-text: #b2cde8;
     --btn-hover-bg: #1d2a3d;
     --btn-hover-text: #ffffff;
     --btn-hover-border-t: #354f73;
@@ -102,6 +103,34 @@
   }
 
   :root[data-theme="BLACK"] {
+    --bg-app: #0B0C0D;
+    --bg-panel: #14161A;
+    --bg-panel-header: #181B20;
+    --border-panel: #252932;
+    --border-inner: #1B1E25;
+    --text-main: #f2f4f7;
+    --text-sub: #9aa1b0;
+    --text-dim: #5b6271;
+    --accent: #e2e5e9;
+    --accent-glow: rgba(226, 229, 233, 0.25);
+
+    --btn-bg: #181B20;
+    --btn-border: #2b313c;
+    --btn-border-b: #0e1013;
+    --btn-border-r: #14161b;
+    --btn-text: #9aa1b0;
+    --btn-hover-bg: #232731;
+    --btn-hover-text: #ffffff;
+    --btn-hover-border-t: #3e4553;
+
+    --btn-active-bg: #eceff3;
+    --btn-active-border: #ffffff;
+    --btn-active-border-b: #7d8491;
+    --btn-active-border-r: #a5abb7;
+    --btn-active-text: #0B0C0D;
+  }
+
+  :root[data-theme="TRUE_BLACK"] {
     --bg-app: #000000;
     --bg-panel: #0a0a0a;
     --bg-panel-header: #121212;
@@ -209,6 +238,12 @@
     linear-gradient(-45deg, transparent 75%, #262626 75%);
   background-size: 16px 16px;
   background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+}
+
+button:focus,
+button:focus-visible {
+  outline: none !important;
+  box-shadow: none;
 }
 
 body {

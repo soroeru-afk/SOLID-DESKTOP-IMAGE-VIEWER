@@ -289,19 +289,19 @@ export default function App() {
     document.documentElement.setAttribute("data-font", appFont);
   }, [appFont]);
 
-  const [theme, setTheme] = useState<"NAVY" | "BLACK" | "RED" | "LIGHT" | "PAPER">(
+  const [theme, setTheme] = useState<"NAVY" | "BLACK" | "TRUE_BLACK" | "RED" | "LIGHT" | "PAPER">(
     () => {
       const saved = localStorage.getItem("app_theme");
 
-  return (saved as "NAVY" | "BLACK" | "RED" | "LIGHT" | "PAPER") || "BLACK";
+  return (saved as "NAVY" | "BLACK" | "TRUE_BLACK" | "RED" | "LIGHT" | "PAPER") || "BLACK";
     }
   );
   const [canvasBg, setCanvasBg] = useState<
     "theme" | "black" | "white" | "checker"
   >("white");
   const cycleTheme = () => {
-    const themes: Array<"NAVY" | "BLACK" | "RED" | "LIGHT" | "PAPER"> = ["NAVY", "BLACK", "RED", "LIGHT", "PAPER"];
-    setTheme((prev) => themes[(themes.indexOf(prev) + 1) % themes.length]);
+    const themes: Array<"NAVY" | "BLACK" | "TRUE_BLACK" | "RED" | "LIGHT" | "PAPER"> = ["NAVY", "BLACK", "TRUE_BLACK", "RED", "LIGHT", "PAPER"];
+    setTheme((prev) => themes[(themes.indexOf(prev as any) + 1) % themes.length]);
   };
 
   const [sortField, setSortField] = useState<"name" | "size" | "type" | "date" | "custom" | "random">(
@@ -851,18 +851,22 @@ export default function App() {
   // Apply Theme
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
-    setTimeout(() => {
-      const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--bg-app').trim();
-      if (bgColor) {
-        let metaThemeColor = document.querySelector('meta[name="theme-color"]');
-        if (!metaThemeColor) {
-          metaThemeColor = document.createElement('meta');
-          metaThemeColor.setAttribute('name', 'theme-color');
-          document.head.appendChild(metaThemeColor);
-        }
-        metaThemeColor.setAttribute('content', bgColor);
-      }
-    }, 10);
+    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    let color = "#0B0C0D"; // default for BLACK
+    if (theme === "TRUE_BLACK") color = "#000000";
+    else if (theme === "LIGHT") color = "#e2e8f0";
+    else if (theme === "PAPER") color = "#f5f5f0";
+    else if (theme === "RED") color = "#0d0404";
+    else if (theme === "NAVY") color = "#06090e";
+    
+    if (metaThemeColor) {
+      metaThemeColor.setAttribute("content", color);
+    } else {
+      const meta = document.createElement("meta");
+      meta.name = "theme-color";
+      meta.content = color;
+      document.head.appendChild(meta);
+    }
   }, [theme]);
 
   // Load from DB on mount
@@ -2870,11 +2874,14 @@ Images imported: ${importedImages}`);
 
           <div className="flex items-center h-full">
             <SolidButton
-              active={true}
               onClick={cycleTheme}
-              className="h-6 px-3 py-0 text-[10px] flex items-center justify-start gap-2 w-32"
+              className={`h-6 px-3 py-0 text-[10px] flex items-center justify-start gap-2 w-[138px] whitespace-nowrap ${
+                theme === "TRUE_BLACK"
+                  ? "!border-neutral-600 hover:!border-neutral-500 hover:!bg-neutral-900"
+                  : ""
+              }`}
             >
-              <Palette size={12} /> THEME: {theme}
+              <Palette size={12} className="shrink-0" /> THEME: {theme === "TRUE_BLACK" ? "T-BLACK" : theme}
             </SolidButton>
           </div>
 
