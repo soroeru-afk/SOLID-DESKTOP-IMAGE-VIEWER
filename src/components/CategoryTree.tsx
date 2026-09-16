@@ -276,37 +276,17 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
               : "border-transparent text-text-secondary hover:bg-panel-border/60 hover:text-text-primary"
           )}
         >
-          <div className="flex items-center gap-1 min-w-0 flex-1">
-            {/* Grip handle for Category */}
-            <div
-              className="p-0.5 text-text-muted/40 hover:text-folder-icon cursor-grab active:cursor-grabbing transition-colors shrink-0"
-              title={t("Drag to re-order/nest folder", "ドラッグしてフォルダーを移動")}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <GripVertical size={13} className="text-folder-icon/70" />
-            </div>
-
-            {/* Expand / Collapse Toggle Button */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleExpand(cat.id, e);
-              }}
-              className="p-0.5 text-text-muted hover:text-text-primary transition-colors shrink-0"
-            >
-              {isExpanded ? (
-                <ChevronDown size={14} />
-              ) : (
-                <ChevronRight size={14} />
-              )}
-            </button>
+          <div className="flex items-center gap-1.5 min-w-0 flex-1 pr-1">
+            <GripVertical
+              size={13}
+              className="shrink-0 opacity-40 group-hover:opacity-100 text-folder-icon/80 transition-opacity cursor-grab active:cursor-grabbing"
+            />
 
             {/* Folder Icon */}
             <FolderIconComponent
               iconType={cat.icon}
               isOpen={isExpanded}
-              size={14}
+              size={13}
               className={cn("shrink-0", isSelected ? "text-accent" : "text-folder-icon")}
               style={{ color: isSelected ? undefined : (cat.color || undefined) }}
             />
