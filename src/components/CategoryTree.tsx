@@ -258,9 +258,8 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
           draggable
           onDragStart={(e) => handleCategoryDragStart(e, cat.id)}
           onDragEnd={handleDragEnd}
-          onClick={(e) => {
+          onClick={() => {
             onSelectCategory(cat.id);
-            onToggleExpand(cat.id, e);
           }}
           onDragOver={(e) => handleDragOver(e, cat.id)}
           onDragLeave={(e) => handleDragLeave(e, cat.id)}
@@ -282,14 +281,23 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
               className="shrink-0 opacity-40 group-hover:opacity-100 text-folder-icon/80 transition-opacity cursor-grab active:cursor-grabbing"
             />
 
-            {/* Folder Icon */}
-            <FolderIconComponent
-              iconType={cat.icon}
-              isOpen={isExpanded}
-              size={13}
-              className={cn("shrink-0", isSelected ? "text-accent" : "text-folder-icon")}
-              style={{ color: isSelected ? undefined : (cat.color || undefined) }}
-            />
+            {/* Folder Icon - Clicking icon toggles expand/collapse */}
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleExpand(cat.id, e);
+              }}
+              className="shrink-0 p-0.5 rounded hover:bg-accent/20 cursor-pointer transition-all hover:scale-110"
+              title={isExpanded ? t("Click to collapse folder", "クリックでフォルダーをたたむ") : t("Click to expand folder", "クリックでフォルダーを開く")}
+            >
+              <FolderIconComponent
+                iconType={cat.icon}
+                isOpen={isExpanded}
+                size={13}
+                className={cn("shrink-0", isSelected ? "text-accent" : "text-folder-icon")}
+                style={{ color: isSelected ? undefined : (cat.color || undefined) }}
+              />
+            </div>
 
             {/* Name (Clicking on text triggers row click and expands/collapses folder) */}
             <span className={cn("truncate font-semibold tracking-wide", textClass)}>

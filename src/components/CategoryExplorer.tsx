@@ -28,6 +28,9 @@ import {
   FileText,
   Search,
   Folders,
+  ArrowUp,
+  ArrowDown,
+  List,
 } from "lucide-react";
 import { CategoryRecord, DatasetRecord } from "../lib/db";
 import { cn } from "../lib/utils";
@@ -40,9 +43,9 @@ interface CategoryExplorerProps {
   datasetPreviewUrls: Record<string, string>;
   activeCategoryId: string | null;
   totalImagesCount: number;
-  homeViewMode: "text" | "popup" | "card" | "cover";
+  homeViewMode: "text" | "popup" | "card" | "cover" | "list";
   favoriteDatasetId: string | null;
-  setHomeViewMode: (mode: "text" | "popup" | "card" | "cover") => void;
+  setHomeViewMode: (mode: "text" | "popup" | "card" | "cover" | "list") => void;
   onSelectCategory: (catId: string | null) => void;
   onSelectDataset: (datasetId: string) => void;
   onViewCategoryImages: (catId: string) => void;
@@ -109,6 +112,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
   // Bulk Selection States
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<string>>(new Set());
   const [selectedDatasetIds, setSelectedDatasetIds] = useState<Set<string>>(new Set());
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [showBulkMoveModal, setShowBulkMoveModal] = useState(false);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
 
@@ -253,6 +257,97 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
   const clearSelection = () => {
     setSelectedCategoryIds(new Set());
     setSelectedDatasetIds(new Set());
+    setLastSelectedIndex(null);
+  };
+
+  const allOrderedItems: Array<{ type: "category" | "dataset"; id: string }> = [
+    ...currentSubcategories.map((c) => ({ type: "category" as const, id: c.id })),
+    ...currentDatasets.map((d) => ({ type: "dataset" as const, id: d.id })),
+  ];
+
+  const handleSelectWithShift = (
+    type: "category" | "dataset",
+    id: string,
+    e: React.MouseEvent
+  ) => {
+    e.stopPropagation();
+    const currentIndex = allOrderedItems.findIndex(
+      (x) => x.type === type && x.id === id
+    );
+
+    if (e.shiftKey && lastSelectedIndex !== null && currentIndex !== -1) {
+      const start = Math.min(lastSelectedIndex, currentIndex);
+      const end = Math.max(lastSelectedIndex, currentIndex);
+
+      setSelectedCategoryIds((prev) => {
+        const next = new Set(prev);
+        for (let i = start; i <= end; i++) {
+          if (allOrderedItems[i].type === "category") {
+            next.add(allOrderedItems[i].id);
+          }
+        }
+        return next;
+      });
+
+      setSelectedDatasetIds((prev) => {
+        const next = new Set(prev);
+        for (let i = start; i <= end; i++) {
+          if (allOrderedItems[i].type === "dataset") {
+            next.add(allOrderedItems[i].id);
+          }
+        }
+        return next;
+      });
+    } else {
+      if (type === "category") {
+        toggleCategorySelect(id);
+      } else {
+        toggleDatasetSelect(id);
+      }
+      setLastSelectedIndex(currentIndex);
+    }
+  };
+
+  const handleMoveSelectionUp = () => {
+    if (selectedCategoryIds.size > 0 && onReorderCategories) {
+      const selectedCats = currentSubcategories.filter((c) => selectedCategoryIds.has(c.id));
+      for (const cat of selectedCats) {
+        const idx = currentSubcategories.findIndex((c) => c.id === cat.id);
+        if (idx > 0) {
+          onReorderCategories(cat.id, currentSubcategories[idx - 1].id, activeCategoryId);
+        }
+      }
+    }
+    if (selectedDatasetIds.size > 0 && onReorderDatasets) {
+      const selectedDs = currentDatasets.filter((d) => selectedDatasetIds.has(d.id));
+      for (const ds of selectedDs) {
+        const idx = currentDatasets.findIndex((d) => d.id === ds.id);
+        if (idx > 0) {
+          onReorderDatasets(ds.id, currentDatasets[idx - 1].id, activeCategoryId);
+        }
+      }
+    }
+  };
+
+  const handleMoveSelectionDown = () => {
+    if (selectedCategoryIds.size > 0 && onReorderCategories) {
+      const selectedCats = [...currentSubcategories].reverse().filter((c) => selectedCategoryIds.has(c.id));
+      for (const cat of selectedCats) {
+        const idx = currentSubcategories.findIndex((c) => c.id === cat.id);
+        if (idx >= 0 && idx < currentSubcategories.length - 1) {
+          onReorderCategories(cat.id, currentSubcategories[idx + 1].id, activeCategoryId);
+        }
+      }
+    }
+    if (selectedDatasetIds.size > 0 && onReorderDatasets) {
+      const selectedDs = [...currentDatasets].reverse().filter((d) => selectedDatasetIds.has(d.id));
+      for (const ds of selectedDs) {
+        const idx = currentDatasets.findIndex((d) => d.id === ds.id);
+        if (idx >= 0 && idx < currentDatasets.length - 1) {
+          onReorderDatasets(ds.id, currentDatasets[idx + 1].id, activeCategoryId);
+        }
+      }
+    }
   };
 
   const executeBulkDelete = async () => {
@@ -695,7 +790,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                 {t("💡 GRIP (⋮⋮) TO DRAG FOLDERS & DATASETS", "💡 グリップ (⋮⋮) でフォルダーやセットを自由に移動")}
               </span>
               <div className="flex items-center border border-panel-border bg-panel-bg/90 backdrop-blur-md p-1 text-[10px] font-mono shadow-sm">
-                {(["text", "popup", "card", "cover"] as const).map((mode) => (
+                {(["text", "popup", "card", "cover", "list"] as const).map((mode) => (
                   <button
                     key={mode}
                     type="button"
@@ -762,14 +857,46 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
               )}
             </div>
 
-            {/* Action Buttons: Rename, Move to... & DELETE */}
-            <div className="flex items-center gap-2">
+            {/* Action Buttons: Move Up/Down, Rename, Move to... & DELETE */}
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                disabled={totalSelected === 0}
+                onClick={handleMoveSelectionUp}
+                className={cn(
+                  "flex items-center gap-1 px-2.5 py-1.5 rounded-xs font-bold border transition-all shadow-xs",
+                  totalSelected > 0
+                    ? "bg-panel-bg border-accent/60 text-accent hover:bg-accent/15 hover:border-accent cursor-pointer"
+                    : "bg-panel-bg/40 border-panel-border/40 text-text-muted opacity-40 cursor-not-allowed"
+                )}
+                title={t("Move selected items up", "選択した項目を上へ移動")}
+              >
+                <ArrowUp size={14} />
+                <span>{t("UP", "上へ")}</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={totalSelected === 0}
+                onClick={handleMoveSelectionDown}
+                className={cn(
+                  "flex items-center gap-1 px-2.5 py-1.5 rounded-xs font-bold border transition-all shadow-xs",
+                  totalSelected > 0
+                    ? "bg-panel-bg border-accent/60 text-accent hover:bg-accent/15 hover:border-accent cursor-pointer"
+                    : "bg-panel-bg/40 border-panel-border/40 text-text-muted opacity-40 cursor-not-allowed"
+                )}
+                title={t("Move selected items down", "選択した項目を下へ移動")}
+              >
+                <ArrowDown size={14} />
+                <span>{t("DOWN", "下へ")}</span>
+              </button>
+
               <button
                 type="button"
                 disabled={totalSelected === 0}
                 onClick={handleOpenBulkRenameModal}
                 className={cn(
-                  "flex items-center gap-1.5 px-3.5 py-1.5 rounded-xs font-bold border transition-all shadow-xs",
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-xs font-bold border transition-all shadow-xs",
                   totalSelected > 0
                     ? "bg-panel-bg border-accent/60 text-accent hover:bg-accent/15 hover:border-accent cursor-pointer"
                     : "bg-panel-bg/40 border-panel-border/40 text-text-muted opacity-40 cursor-not-allowed"
@@ -838,10 +965,12 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
               </div>
               <div
                 className={cn(
-                  "grid gap-3.5 w-full",
-                  homeViewMode === "card"
-                    ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-                    : "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
+                  "w-full",
+                  homeViewMode === "list"
+                    ? "flex flex-col gap-1.5"
+                    : homeViewMode === "card"
+                    ? "grid gap-3.5 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+                    : "grid gap-3.5 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
                 )}
               >
                 {currentSubcategories.map((cat) => {
@@ -851,6 +980,114 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                   const coverUrl = getCategoryCoverUrl(cat.id);
                   const isCatSelected = selectedCategoryIds.has(cat.id);
                   const isFolderDragOver = dragOverTargetKey === cat.id;
+
+                  if (homeViewMode === "list") {
+                    return (
+                      <div
+                        key={cat.id}
+                        draggable
+                        onDragStart={(e) => handleCategoryDragStart(e, cat.id)}
+                        onDragEnd={handleDragEnd}
+                        onDragOver={(e) => handleFolderDragOver(e, cat.id)}
+                        onDragLeave={(e) => handleFolderDragLeave(e, cat.id)}
+                        onDrop={(e) => handleSubcategoryDrop(e, cat)}
+                        onClick={(e) => {
+                          if (e.shiftKey) {
+                            handleSelectWithShift("category", cat.id, e);
+                          } else if (totalSelected > 0) {
+                            toggleCategorySelect(cat.id, e);
+                          } else {
+                            onSelectCategory(cat.id);
+                          }
+                        }}
+                        className={cn(
+                          "flex items-center justify-between px-3 py-2 rounded border font-mono text-xs transition-all cursor-pointer group select-none",
+                          isCatSelected
+                            ? "bg-accent/20 border-accent text-accent font-bold shadow-md"
+                            : isFolderDragOver
+                            ? "bg-accent/30 border-accent text-accent ring-2 ring-accent scale-[1.01]"
+                            : "bg-panel-bg/90 border-panel-border hover:border-accent hover:bg-accent/15 text-text-primary"
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          {/* Selection Checkbox (Shift+Click supported) */}
+                          <div
+                            onClick={(e) => handleSelectWithShift("category", cat.id, e)}
+                            className={cn(
+                              "w-4 h-4 rounded border flex items-center justify-center shrink-0 cursor-pointer transition-all",
+                              isCatSelected
+                                ? "bg-accent border-accent text-accent-text"
+                                : "border-panel-border/80 hover:border-accent hover:bg-accent/10"
+                            )}
+                            title={t("Click or Shift+Click to select range", "クリックまたはShift+クリックで範囲選択")}
+                          >
+                            {isCatSelected ? <Check size={12} className="stroke-[3]" /> : null}
+                          </div>
+
+                          {/* Drag Grip */}
+                          <GripVertical size={14} className="shrink-0 opacity-40 group-hover:opacity-100 text-folder-icon cursor-grab" />
+
+                          {/* Folder Icon */}
+                          <FolderIconComponent
+                            iconType={cat.icon}
+                            isOpen={false}
+                            size={16}
+                            className="shrink-0 -translate-y-[1px]"
+                            style={{ color: cat.color || undefined }}
+                          />
+
+                          {/* Category Name */}
+                          <span className="font-bold truncate text-sm tracking-wide">
+                            {cat.name}
+                          </span>
+
+                          {/* Counts badge */}
+                          <span className="text-[10px] text-text-muted shrink-0 font-mono">
+                            ({totalImages} {t("IMAGES", "枚")})
+                          </span>
+                        </div>
+
+                        {/* Right side actions */}
+                        <div className="flex items-center gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {onRequestColorCategoryModal && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onRequestColorCategoryModal(cat);
+                              }}
+                              className="p-1 hover:text-accent text-text-muted hover:bg-panel-border/50 rounded transition-colors"
+                              title={t("Folder Settings", "フォルダー設定")}
+                            >
+                              <Palette size={13} style={{ color: cat.color || undefined }} />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onRenameCategory(e, cat);
+                            }}
+                            className="p-1 hover:text-accent text-text-muted hover:bg-panel-border/50 rounded transition-colors"
+                            title={t("Rename", "名前変更")}
+                          >
+                            <Edit3 size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteCategory(e, cat);
+                            }}
+                            className="p-1 hover:text-red-400 text-text-muted hover:bg-red-500/10 rounded transition-colors"
+                            title={t("Delete", "削除")}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
 
                   return (
                     <div
@@ -880,7 +1117,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                     >
                       {/* Selection Checkbox (K-Navigator Style) */}
                       <div
-                        onClick={(e) => toggleCategorySelect(cat.id, e)}
+                        onClick={(e) => handleSelectWithShift("category", cat.id, e)}
                         className={cn(
                           "absolute top-2 left-2 z-20 w-5 h-5 rounded flex items-center justify-center transition-all cursor-pointer border shadow-md",
                           isCatSelected
@@ -1096,10 +1333,12 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
               </div>
               <div
                 className={cn(
-                  "grid gap-3.5 w-full pb-12",
-                  homeViewMode === "card"
-                    ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-                    : "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
+                  "w-full pb-12",
+                  homeViewMode === "list"
+                    ? "flex flex-col gap-1.5"
+                    : homeViewMode === "card"
+                    ? "grid gap-3.5 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+                    : "grid gap-3.5 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
                 )}
               >
                 {currentDatasets.map((ds) => {
@@ -1108,6 +1347,102 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                   const previewUrl = datasetPreviewUrls[ds.id];
                   const isDsSelected = selectedDatasetIds.has(ds.id);
                   const isDatasetDragOver = dragOverTargetKey === ds.id;
+
+                  if (homeViewMode === "list") {
+                    return (
+                      <div
+                        key={ds.id}
+                        draggable
+                        onDragStart={(e) => handleDatasetDragStart(e, ds.id)}
+                        onDragEnd={handleDragEnd}
+                        onDragOver={(e) => handleFolderDragOver(e, ds.id)}
+                        onDragLeave={(e) => handleFolderDragLeave(e, ds.id)}
+                        onDrop={(e) => handleDatasetCardDrop(e, ds)}
+                        onClick={(e) => {
+                          if (e.shiftKey) {
+                            handleSelectWithShift("dataset", ds.id, e);
+                          } else if (totalSelected > 0) {
+                            toggleDatasetSelect(ds.id, e);
+                          } else {
+                            onSelectDataset(ds.id);
+                          }
+                        }}
+                        className={cn(
+                          "flex items-center justify-between px-3 py-2 rounded border font-mono text-xs transition-all cursor-pointer group select-none",
+                          isDsSelected
+                            ? "bg-accent/20 border-accent text-accent font-bold shadow-md"
+                            : isDatasetDragOver
+                            ? "bg-accent/30 border-accent text-accent ring-2 ring-accent scale-[1.01]"
+                            : "bg-panel-bg/90 border-panel-border hover:border-accent hover:bg-accent/15 text-text-primary"
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          {/* Selection Checkbox (Shift+Click supported) */}
+                          <div
+                            onClick={(e) => handleSelectWithShift("dataset", ds.id, e)}
+                            className={cn(
+                              "w-4 h-4 rounded border flex items-center justify-center shrink-0 cursor-pointer transition-all",
+                              isDsSelected
+                                ? "bg-accent border-accent text-accent-text"
+                                : "border-panel-border/80 hover:border-accent hover:bg-accent/10"
+                            )}
+                            title={t("Click or Shift+Click to select range", "クリックまたはShift+クリックで範囲選択")}
+                          >
+                            {isDsSelected ? <Check size={12} className="stroke-[3]" /> : null}
+                          </div>
+
+                          {/* Drag Grip */}
+                          <GripVertical size={14} className="shrink-0 opacity-40 group-hover:opacity-100 text-folder-icon cursor-grab" />
+
+                          {/* Dataset Icon */}
+                          <Layers size={16} className="shrink-0 text-accent -translate-y-[1px]" />
+
+                          {/* Dataset Name */}
+                          <span className="font-bold truncate text-sm tracking-wide">
+                            {ds.name}
+                          </span>
+
+                          {/* Pin & Favorite badges */}
+                          {ds.pinned && (
+                            <span className="bg-amber-500/20 text-amber-400 text-[9px] px-1.5 py-0.2 rounded border border-amber-500/40 shrink-0">
+                              PIN
+                            </span>
+                          )}
+                          {isFav && (
+                            <Star size={12} className="text-amber-400 fill-amber-400 shrink-0" />
+                          )}
+
+                          {/* Counts badge */}
+                          <span className="text-[10px] text-text-muted shrink-0 font-mono">
+                            ({count} {t("IMAGES", "枚")})
+                          </span>
+                        </div>
+
+                        {/* Right side actions */}
+                        <div className="flex items-center gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            onClick={(e) => onTogglePinDataset(ds.id, e)}
+                            className="p-1 hover:text-amber-400 text-text-muted hover:bg-panel-border/50 rounded transition-colors"
+                            title={t("Toggle Pin", "ピン留め切り替え")}
+                          >
+                            <Pin size={13} className={ds.pinned ? "text-amber-400 fill-amber-400" : ""} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onRequestMoveDatasetModal(ds);
+                            }}
+                            className="p-1 hover:text-accent text-text-muted hover:bg-panel-border/50 rounded transition-colors"
+                            title={t("Move Dataset", "フォルダーへ移動")}
+                          >
+                            <FolderInput size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
 
                   return (
                     <div
@@ -1137,7 +1472,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                     >
                       {/* Selection Checkbox (K-Navigator Style) */}
                       <div
-                        onClick={(e) => toggleDatasetSelect(ds.id, e)}
+                        onClick={(e) => handleSelectWithShift("dataset", ds.id, e)}
                         className={cn(
                           "absolute top-2 left-2 z-20 w-5 h-5 rounded flex items-center justify-center transition-all cursor-pointer border shadow-md",
                           isDsSelected

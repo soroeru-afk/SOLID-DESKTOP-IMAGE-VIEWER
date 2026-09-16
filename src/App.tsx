@@ -819,10 +819,18 @@ export default function App() {
   const [overwriteFiles, setOverwriteFiles] = useState<{ files: File[], datasetId: string, forceLoad: boolean, existingMap: Map<string, ImageRecord> } | null>(null);
   const [favoriteDatasetId, setFavoriteDatasetId] = useState<string | null>(() => localStorage.getItem("favoriteDatasetId"));
   const [fullscreenFavorited, setFullscreenFavorited] = useState<Set<string>>(new Set());
-  const [homeViewMode, setHomeViewMode] = useState<"text" | "popup" | "card" | "cover">(() => {
-    const saved = localStorage.getItem("homeViewMode");
-    return (saved === "text" || saved === "popup" || saved === "card" || saved === "cover") ? saved : "cover";
-  });
+  const [homeViewMode, setHomeViewMode] = useState<"text" | "popup" | "card" | "cover" | "list">(
+    () => {
+      const saved = localStorage.getItem("homeViewMode");
+      return saved === "text" ||
+        saved === "popup" ||
+        saved === "card" ||
+        saved === "cover" ||
+        saved === "list"
+        ? saved
+        : "cover";
+    }
+  );
   const [datasetPreviewUrls, setDatasetPreviewUrls] = useState<Record<string, string>>({});
   const [hoveredDatasetId, setHoveredDatasetId] = useState<string | null>(null);
   const [popupMousePos, setPopupMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
