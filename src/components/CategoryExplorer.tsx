@@ -20,6 +20,13 @@ import {
   X,
   AlertTriangle,
   Check,
+  Edit3,
+  Type,
+  Hash,
+  ArrowRight,
+  Replace,
+  FileText,
+  Search,
 } from "lucide-react";
 import { CategoryRecord, DatasetRecord } from "../lib/db";
 import { cn } from "../lib/utils";
@@ -54,6 +61,7 @@ interface CategoryExplorerProps {
   onRequestColorCategoryModal?: (category: CategoryRecord) => void;
   onBulkDeleteItems?: (categoryIds: string[], datasetIds: string[]) => Promise<void>;
   onBulkMoveItems?: (categoryIds: string[], datasetIds: string[], targetCategoryId: string | null) => Promise<void>;
+  onBulkRenameItems?: (renames: { id: string; type: "category" | "dataset"; newName: string }[]) => Promise<void>;
   t: (en: string, jp: string) => string;
 }
 
@@ -86,6 +94,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
   onRequestColorCategoryModal,
   onBulkDeleteItems,
   onBulkMoveItems,
+  onBulkRenameItems,
   t,
 }) => {
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
@@ -101,6 +110,22 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
   const [selectedDatasetIds, setSelectedDatasetIds] = useState<Set<string>>(new Set());
   const [showBulkMoveModal, setShowBulkMoveModal] = useState(false);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+
+  // Bulk Rename States
+  const [showBulkRenameModal, setShowBulkRenameModal] = useState(false);
+  const [bulkRenameTab, setBulkRenameTab] = useState<"quick" | "replace" | "prefix">("quick");
+  const [targetScope, setTargetScope] = useState<"all_items" | "all_datasets" | "all_categories" | "selected">("all_items");
+  const [checkedRenameIds, setCheckedRenameIds] = useState<Set<string>>(new Set());
+  const [filterSearch, setFilterSearch] = useState("");
+  const [quickNames, setQuickNames] = useState<Record<string, string>>({});
+  const [replaceSearch, setReplaceSearch] = useState("");
+  const [replaceWith, setReplaceWith] = useState("");
+  const [prefixInput, setPrefixInput] = useState("");
+  const [suffixInput, setSuffixInput] = useState("");
+  const [enableNumbering, setEnableNumbering] = useState(false);
+  const [numberStart, setNumberStart] = useState(1);
+  const [numberDigits, setNumberDigits] = useState(2);
+  const [numberPosition, setNumberPosition] = useState<"prefix" | "suffix">("prefix");
 
   // Get current active category
   const currentCategory = activeCategoryId
@@ -240,6 +265,176 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
     }
     setShowBulkMoveModal(false);
     clearSelection();
+  };
+
+  const getItemIdsForScope = (scope: "all_items" | "all_datasets" | "all_categories" | "selected"): string[] => {
+    if (scope === "all_datasets") {
+      return datasets.map((d) => d.id);
+    } else if (scope === "all_categories") {
+      return categories.map((c) => c.id);
+    } else if (scope === "all_items") {
+      return [...categories.map((c) => c.id), ...datasets.map((d) => d.id)];
+    } else {
+      return [...currentSubcategories.map((c) => c.id), ...currentDatasets.map((d) => d.id)];
+    }
+  };
+
+  const handleTargetScopeChange = (newScope: "all_items" | "all_datasets" | "all_categories" | "selected") => {
+    setTargetScope(newScope);
+    const ids = getItemIdsForScope(newScope);
+    setCheckedRenameIds(new Set(ids));
+  };
+
+  const handleOpenBulkRenameModal = () => {
+    const initNames: Record<string, string> = {};
+    categories.forEach((cat) => { initNames[cat.id] = cat.name; });
+    datasets.forEach((ds) => { initNames[ds.id] = ds.name; });
+
+    setQuickNames(initNames);
+    setReplaceSearch("");
+    setReplaceWith("");
+    setPrefixInput("");
+    setSuffixInput("");
+    setFilterSearch("");
+    setEnableNumbering(false);
+    setNumberStart(1);
+    setNumberDigits(2);
+    setNumberPosition("prefix");
+    setBulkRenameTab("quick");
+    setTargetScope("all_items");
+
+    // Check ALL items by default when opening
+    const allIds = [...categories.map((c) => c.id), ...datasets.map((d) => d.id)];
+    setCheckedRenameIds(new Set(allIds));
+
+    setShowBulkRenameModal(true);
+  };
+
+  const toggleItemRenameCheck = (id: string) => {
+    setCheckedRenameIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAllRename = (allVisibleItems: { id: string }[]) => {
+    const visibleIds = allVisibleItems.map((i) => i.id);
+    const allChecked = visibleIds.every((id) => checkedRenameIds.has(id));
+    setCheckedRenameIds((prev) => {
+      const next = new Set(prev);
+      if (allChecked) {
+        visibleIds.forEach((id) => next.delete(id));
+      } else {
+        visibleIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const getBulkRenameItemsList = () => {
+    const list: { id: string; type: "category" | "dataset"; originalName: string; newName: string }[] = [];
+    let numberIndex = 0;
+
+    let targetCatIds: string[] = [];
+    let targetDsIds: string[] = [];
+
+    if (targetScope === "all_datasets") {
+      targetCatIds = [];
+      targetDsIds = datasets.map((d) => d.id);
+    } else if (targetScope === "all_categories") {
+      targetCatIds = categories.map((c) => c.id);
+      targetDsIds = [];
+    } else if (targetScope === "all_items") {
+      targetCatIds = categories.map((c) => c.id);
+      targetDsIds = datasets.map((d) => d.id);
+    } else {
+      // CURRENT VIEW: Always load ALL subcategories and datasets in the current view
+      targetCatIds = currentSubcategories.map((c) => c.id);
+      targetDsIds = currentDatasets.map((d) => d.id);
+    }
+
+    targetCatIds.forEach((id: string) => {
+      const cat = categories.find((c) => c.id === id);
+      if (!cat) return;
+      if (filterSearch && !cat.name.toLowerCase().includes(filterSearch.toLowerCase())) return;
+
+      let newName = cat.name;
+
+      if (bulkRenameTab === "quick") {
+        newName = quickNames[id] ?? cat.name;
+      } else if (bulkRenameTab === "replace") {
+        if (replaceSearch) {
+          newName = cat.name.split(replaceSearch).join(replaceWith);
+        }
+      } else if (bulkRenameTab === "prefix") {
+        let name = cat.name;
+        if (prefixInput) name = `${prefixInput}${name}`;
+        if (suffixInput) name = `${name}${suffixInput}`;
+        if (enableNumbering) {
+          const numStr = String(numberStart + numberIndex).padStart(numberDigits, "0");
+          if (numberPosition === "prefix") name = `${numStr}_${name}`;
+          else name = `${name}_${numStr}`;
+        }
+        newName = name;
+      }
+
+      list.push({ id, type: "category", originalName: cat.name, newName });
+      if (checkedRenameIds.has(id)) {
+        numberIndex++;
+      }
+    });
+
+    targetDsIds.forEach((id: string) => {
+      const ds = datasets.find((d) => d.id === id);
+      if (!ds) return;
+      if (filterSearch && !ds.name.toLowerCase().includes(filterSearch.toLowerCase())) return;
+
+      let newName = ds.name;
+
+      if (bulkRenameTab === "quick") {
+        newName = quickNames[id] ?? ds.name;
+      } else if (bulkRenameTab === "replace") {
+        if (replaceSearch) {
+          newName = ds.name.split(replaceSearch).join(replaceWith);
+        }
+      } else if (bulkRenameTab === "prefix") {
+        let name = ds.name;
+        if (prefixInput) name = `${prefixInput}${name}`;
+        if (suffixInput) name = `${name}${suffixInput}`;
+        if (enableNumbering) {
+          const numStr = String(numberStart + numberIndex).padStart(numberDigits, "0");
+          if (numberPosition === "prefix") name = `${numStr}_${name}`;
+          else name = `${name}_${numStr}`;
+        }
+        newName = name;
+      }
+
+      list.push({ id, type: "dataset", originalName: ds.name, newName });
+      if (checkedRenameIds.has(id)) {
+        numberIndex++;
+      }
+    });
+
+    return list;
+  };
+
+  const executeBulkRename = async () => {
+    if (onBulkRenameItems) {
+      const items = getBulkRenameItemsList();
+      const renames = items
+        .filter((i) => checkedRenameIds.has(i.id) && i.newName.trim() !== "" && i.newName !== i.originalName)
+        .map((i) => ({ id: i.id, type: i.type, newName: i.newName.trim() }));
+
+      if (renames.length > 0) {
+        await onBulkRenameItems(renames);
+      }
+    }
+    setShowBulkRenameModal(false);
   };
 
   // Helper to check if a category is descendant
@@ -450,6 +645,15 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                 <FilePlus size={13} className="text-accent" />
                 <span>+ {t("NEW DATASET", "新規セット")}</span>
               </button>
+              <button
+                type="button"
+                onClick={handleOpenBulkRenameModal}
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-panel-bg border border-panel-border hover:border-accent text-text-secondary hover:text-text-primary transition-colors"
+                title={t("Batch rename folders and datasets", "フォルダー・セット名の一括編集・置換・連番付与")}
+              >
+                <Edit3 size={13} className="text-accent" />
+                <span>{t("BULK RENAME", "一括リネーム")}</span>
+              </button>
               {activeCategoryId && totalCurrentFolderImages > 0 && (
                 <button
                   type="button"
@@ -548,8 +752,23 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
               )}
             </div>
 
-            {/* Action Buttons: Move to... & DELETE */}
+            {/* Action Buttons: Rename, Move to... & DELETE */}
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={totalSelected === 0}
+                onClick={handleOpenBulkRenameModal}
+                className={cn(
+                  "flex items-center gap-1.5 px-3.5 py-1.5 rounded-xs font-bold border transition-all shadow-xs",
+                  totalSelected > 0
+                    ? "bg-panel-bg border-accent/60 text-accent hover:bg-accent/15 hover:border-accent cursor-pointer"
+                    : "bg-panel-bg/40 border-panel-border/40 text-text-muted opacity-40 cursor-not-allowed"
+                )}
+              >
+                <Edit3 size={14} />
+                <span>{t("RENAME", "一括リネーム")}</span>
+              </button>
+
               <button
                 type="button"
                 disabled={totalSelected === 0}
@@ -1291,6 +1510,435 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                     >
                       <Trash2 size={14} />
                       <span>{t("CONFIRM DELETE", "一括削除実行")}</span>
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* BULK RENAME MODAL */}
+          <AnimatePresence>
+            {showBulkRenameModal && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-4 backdrop-blur-sm"
+              >
+                <div className="bg-panel-bg border border-accent/60 p-5 font-mono w-[760px] max-w-[96vw] h-[640px] max-h-[92vh] flex flex-col shadow-2xl rounded-xs">
+                  {/* Header */}
+                  <div className="flex items-center justify-between pb-3 border-b border-panel-border/60 mb-3 shrink-0">
+                    <div className="flex items-center gap-2">
+                      <Edit3 size={18} className="text-accent shrink-0" />
+                      <div>
+                        <h2 className="text-text-primary text-sm font-bold tracking-wider uppercase">
+                          {t("BATCH RENAME FOLDERS & DATASETS", "フォルダー・データセット名の一括編集")}
+                        </h2>
+                        <p className="text-[10px] text-text-muted">
+                          {t(
+                            `Target: ${getBulkRenameItemsList().length} Item(s)`,
+                            `対象項目: 合計 ${getBulkRenameItemsList().length}件`
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowBulkRenameModal(false)}
+                      className="p-1 text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  {/* Target Scope Switcher */}
+                  <div className="flex items-center gap-1 bg-root-bg/90 p-1 border border-panel-border rounded-xs mb-3 text-[11px] font-mono shrink-0">
+                    <span className="text-text-muted px-1 font-bold shrink-0 uppercase text-[10px] hidden sm:inline">{t("SCOPE:", "対象範囲:")}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleTargetScopeChange("all_datasets")}
+                      className={cn(
+                        "px-2 py-1 rounded-xs transition-all font-bold cursor-pointer text-xs flex-1 text-center whitespace-nowrap",
+                        targetScope === "all_datasets"
+                          ? "bg-accent/20 text-accent border border-accent/50 shadow-xs"
+                          : "text-text-secondary hover:text-text-primary border border-transparent"
+                      )}
+                    >
+                      {t("ALL DATASETS", "全リスト")} ({datasets.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTargetScopeChange("all_categories")}
+                      className={cn(
+                        "px-2 py-1 rounded-xs transition-all font-bold cursor-pointer text-xs flex-1 text-center whitespace-nowrap",
+                        targetScope === "all_categories"
+                          ? "bg-accent/20 text-accent border border-accent/50 shadow-xs"
+                          : "text-text-secondary hover:text-text-primary border border-transparent"
+                      )}
+                    >
+                      {t("ALL FOLDERS", "全フォルダー")} ({categories.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTargetScopeChange("all_items")}
+                      className={cn(
+                        "px-2 py-1 rounded-xs transition-all font-bold cursor-pointer text-xs flex-1 text-center whitespace-nowrap",
+                        targetScope === "all_items"
+                          ? "bg-accent/20 text-accent border border-accent/50 shadow-xs"
+                          : "text-text-secondary hover:text-text-primary border border-transparent"
+                      )}
+                    >
+                      {t("ALL ITEMS", "全項目")} ({categories.length + datasets.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTargetScopeChange("selected")}
+                      className={cn(
+                        "px-2 py-1 rounded-xs transition-all font-bold cursor-pointer text-xs flex-1 text-center whitespace-nowrap",
+                        targetScope === "selected"
+                          ? "bg-accent/20 text-accent border border-accent/50 shadow-xs"
+                          : "text-text-secondary hover:text-text-primary border border-transparent"
+                      )}
+                    >
+                      {t("CURRENT VIEW", "現在の階層")} ({currentSubcategories.length + currentDatasets.length})
+                    </button>
+                  </div>
+
+                  {/* Mode Tab Switcher */}
+                  <div className="flex items-center gap-1 bg-root-bg p-1 border border-panel-border rounded-xs mb-3 text-xs shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setBulkRenameTab("quick")}
+                      className={cn(
+                        "flex-1 py-1.5 px-2 flex items-center justify-center gap-1.5 rounded-xs font-bold transition-all cursor-pointer",
+                        bulkRenameTab === "quick"
+                          ? "bg-accent text-accent-text shadow-xs"
+                          : "text-text-secondary hover:text-text-primary"
+                      )}
+                    >
+                      <Type size={13} />
+                      <span>{t("QUICK LIST EDIT", "リスト直接修正")}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBulkRenameTab("replace")}
+                      className={cn(
+                        "flex-1 py-1.5 px-2 flex items-center justify-center gap-1.5 rounded-xs font-bold transition-all cursor-pointer",
+                        bulkRenameTab === "replace"
+                          ? "bg-accent text-accent-text shadow-xs"
+                          : "text-text-secondary hover:text-text-primary"
+                      )}
+                    >
+                      <Replace size={13} />
+                      <span>{t("TEXT REPLACE", "文字列一括置換")}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBulkRenameTab("prefix")}
+                      className={cn(
+                        "flex-1 py-1.5 px-2 flex items-center justify-center gap-1.5 rounded-xs font-bold transition-all cursor-pointer",
+                        bulkRenameTab === "prefix"
+                          ? "bg-accent text-accent-text shadow-xs"
+                          : "text-text-secondary hover:text-text-primary"
+                      )}
+                    >
+                      <Hash size={13} />
+                      <span>{t("PREFIX / SUFFIX / NUMBERING", "前後記号・連番")}</span>
+                    </button>
+                  </div>
+
+                  {/* Controls based on selected Tab (Fixed height) */}
+                  <div className="mb-3 bg-root-bg/60 p-3 border border-panel-border rounded-xs text-xs h-[105px] shrink-0 flex flex-col justify-center overflow-y-auto">
+                    {bulkRenameTab === "quick" && (
+                      <div className="flex items-center justify-center h-full text-center px-4">
+                        <p className="text-xs text-text-secondary leading-relaxed font-mono">
+                          {t(
+                            "💡 Edit each item name individually below. Changes apply to checked items.",
+                            "💡 以下のリストで名称を1件ずつ直接編集できます。チェック（☑）が入っている項目のみに名前の変更が反映されます。"
+                          )}
+                        </p>
+                      </div>
+                    )}
+
+                    {bulkRenameTab === "replace" && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-auto font-mono">
+                        <div>
+                          <label className="block text-[10px] text-text-muted mb-1 font-bold uppercase">
+                            {t("SEARCH TEXT (置換前の文字)", "置換前（検索）文字列")}
+                          </label>
+                          <input
+                            type="text"
+                            value={replaceSearch}
+                            onChange={(e) => setReplaceSearch(e.target.value)}
+                            placeholder={t("e.g. 2024", "例: 2024 や [旧]")}
+                            className="w-full bg-panel-bg border border-panel-border text-text-primary px-2.5 py-1.5 text-xs rounded-xs focus:outline-none focus:border-accent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-text-muted mb-1 font-bold uppercase">
+                            {t("REPLACE WITH (置換後の文字)", "置換後（新しい）文字列")}
+                          </label>
+                          <input
+                            type="text"
+                            value={replaceWith}
+                            onChange={(e) => setReplaceWith(e.target.value)}
+                            placeholder={t("e.g. 2025", "例: 2025 や [新]")}
+                            className="w-full bg-panel-bg border border-panel-border text-text-primary px-2.5 py-1.5 text-xs rounded-xs focus:outline-none focus:border-accent"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {bulkRenameTab === "prefix" && (
+                      <div className="space-y-2 my-auto font-mono">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <div>
+                            <label className="block text-[10px] text-text-muted mb-0.5 font-bold uppercase">
+                              {t("PREFIX (先頭に付与)", "前に追加する文字")}
+                            </label>
+                            <input
+                              type="text"
+                              value={prefixInput}
+                              onChange={(e) => setPrefixInput(e.target.value)}
+                              placeholder={t("e.g. [WORK] ", "例: 【重要】 や 01_")}
+                              className="w-full bg-panel-bg border border-panel-border text-text-primary px-2 py-1 text-xs rounded-xs focus:outline-none focus:border-accent"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-text-muted mb-0.5 font-bold uppercase">
+                              {t("SUFFIX (末尾に付与)", "後ろに追加する文字")}
+                            </label>
+                            <input
+                              type="text"
+                              value={suffixInput}
+                              onChange={(e) => setSuffixInput(e.target.value)}
+                              placeholder={t("e.g. _DONE", "例: _完了 や _2025")}
+                              className="w-full bg-panel-bg border border-panel-border text-text-primary px-2 py-1 text-xs rounded-xs focus:outline-none focus:border-accent"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Sequential Numbering Option */}
+                        <div className="pt-1.5 border-t border-panel-border/40 flex flex-wrap items-center justify-between gap-2">
+                          <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={enableNumbering}
+                              onChange={(e) => setEnableNumbering(e.target.checked)}
+                              className="accent-accent cursor-pointer"
+                            />
+                            <span className="font-bold text-[11px] text-text-primary">
+                              {t("Enable Sequential Numbers", "連番の自動付与")}
+                            </span>
+                          </label>
+
+                          {enableNumbering && (
+                            <div className="flex items-center gap-2 font-mono text-[10px]">
+                              <div className="flex items-center gap-1">
+                                <span className="text-text-muted">{t("Start:", "開始:")}</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={numberStart}
+                                  onChange={(e) => setNumberStart(Math.max(1, parseInt(e.target.value) || 1))}
+                                  className="w-10 bg-panel-bg border border-panel-border text-text-primary px-1 py-0.5 text-center focus:outline-none focus:border-accent"
+                                />
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <span className="text-text-muted">{t("Digits:", "桁数:")}</span>
+                                <select
+                                  value={numberDigits}
+                                  onChange={(e) => setNumberDigits(parseInt(e.target.value))}
+                                  className="bg-panel-bg border border-panel-border text-text-primary px-1 py-0.5 focus:outline-none focus:border-accent"
+                                >
+                                  <option value={1}>1桁</option>
+                                  <option value={2}>2桁(01)</option>
+                                  <option value={3}>3桁(001)</option>
+                                </select>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <span className="text-text-muted">{t("Pos:", "位置:")}</span>
+                                <select
+                                  value={numberPosition}
+                                  onChange={(e) => setNumberPosition(e.target.value as "prefix" | "suffix")}
+                                  className="bg-panel-bg border border-panel-border text-text-primary px-1 py-0.5 focus:outline-none focus:border-accent"
+                                >
+                                  <option value="prefix">{t("Prefix", "先頭")}</option>
+                                  <option value="suffix">{t("Suffix", "末尾")}</option>
+                                </select>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Realtime Preview Table */}
+                  {(() => {
+                    const visibleItems = getBulkRenameItemsList();
+                    const selectedCount = visibleItems.filter((i) => checkedRenameIds.has(i.id)).length;
+                    const changedCount = visibleItems.filter((i) => checkedRenameIds.has(i.id) && i.newName !== i.originalName && i.newName.trim() !== "").length;
+                    const isAllVisibleChecked = visibleItems.length > 0 && visibleItems.every((i) => checkedRenameIds.has(i.id));
+
+                    return (
+                      <>
+                        <div className="text-[11px] font-bold uppercase text-text-muted mb-1.5 flex items-center justify-between px-1 shrink-0">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => toggleSelectAllRename(visibleItems)}
+                              className="flex items-center gap-1 text-[11px] text-text-secondary hover:text-text-primary cursor-pointer font-mono"
+                              title={t("Toggle select all visible items", "全選択/全解除")}
+                            >
+                              {isAllVisibleChecked ? (
+                                <CheckSquare size={14} className="text-accent" />
+                              ) : (
+                                <Square size={14} className="text-text-muted" />
+                              )}
+                              <span>{t("ALL", "全選択")}</span>
+                            </button>
+                            <span className="text-panel-border">|</span>
+                            <span>{t("PREVIEW & SELECTION", "対象選択＆結果確認")}</span>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            {/* Search Filter Box */}
+                            <div className="flex items-center gap-1.5 bg-root-bg border border-panel-border px-2 py-0.5 rounded-xs w-44">
+                              <Search size={11} className="text-text-muted shrink-0" />
+                              <input
+                                type="text"
+                                value={filterSearch}
+                                onChange={(e) => setFilterSearch(e.target.value)}
+                                placeholder={t("Filter items...", "項目名で絞り込み...")}
+                                className="bg-transparent text-text-primary text-[10px] w-full outline-none font-mono"
+                              />
+                              {filterSearch && (
+                                <button type="button" onClick={() => setFilterSearch("")} className="text-text-muted hover:text-text-primary cursor-pointer">
+                                  <X size={10} />
+                                </button>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-text-muted font-bold">
+                              選択: <span className="text-text-primary">{selectedCount}/{visibleItems.length}</span>件
+                              {changedCount > 0 && (
+                                <span className="text-accent ml-1.5">({changedCount}件変更予定)</span>
+                              )}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto border border-panel-border bg-root-bg p-2.5 flex flex-col gap-1.5 mb-3 min-h-[180px] scrollbar-dark">
+                          {visibleItems.length === 0 ? (
+                            <div className="py-8 text-center text-xs text-text-muted font-mono">
+                              {t("No matching items found.", "該当する項目がありません。")}
+                            </div>
+                          ) : (
+                            visibleItems.map((item) => {
+                              const isChecked = checkedRenameIds.has(item.id);
+                              const isChanged = isChecked && item.newName !== item.originalName && item.newName.trim() !== "";
+                              return (
+                                <div
+                                  key={item.id}
+                                  className={cn(
+                                    "flex items-center gap-2 p-1.5 border rounded-xs transition-all",
+                                    !isChecked
+                                      ? "opacity-50 bg-panel-bg/20 border-panel-border/20"
+                                      : isChanged
+                                      ? "bg-accent/10 border-accent/40 shadow-xs"
+                                      : "bg-panel-bg/60 border-panel-border/40"
+                                  )}
+                                >
+                                  {/* Checkbox */}
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleItemRenameCheck(item.id)}
+                                    className="p-0.5 shrink-0 cursor-pointer"
+                                  >
+                                    {isChecked ? (
+                                      <CheckSquare size={16} className="text-accent shrink-0" />
+                                    ) : (
+                                      <Square size={16} className="text-text-muted hover:text-text-primary shrink-0" />
+                                    )}
+                                  </button>
+
+                                  {/* Type Badge & Icon */}
+                                  <span className="text-[9px] px-1 py-0.2 rounded bg-panel-bg border border-panel-border text-text-muted font-bold shrink-0 flex items-center gap-1">
+                                    {item.type === "category" ? (
+                                      <>
+                                        <Folder size={11} className="text-folder-icon shrink-0" />
+                                        <span>フォルダ</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Layers size={11} className="text-accent shrink-0" />
+                                        <span>リスト</span>
+                                      </>
+                                    )}
+                                  </span>
+
+                                  {bulkRenameTab === "quick" ? (
+                                    <div className="flex items-center gap-2 w-full">
+                                      <span className={cn("text-xs font-mono truncate w-1/3 shrink-0", isChecked ? "text-text-muted" : "text-text-muted/60")} title={item.originalName}>
+                                        {item.originalName}
+                                      </span>
+                                      <ArrowRight size={12} className="text-text-muted shrink-0" />
+                                      <input
+                                        type="text"
+                                        disabled={!isChecked}
+                                        value={quickNames[item.id] ?? item.originalName}
+                                        onChange={(e) =>
+                                          setQuickNames((prev) => ({ ...prev, [item.id]: e.target.value }))
+                                        }
+                                        className="flex-1 bg-panel-bg border border-panel-border text-text-primary px-2 py-1 text-xs font-mono focus:outline-none focus:border-accent rounded-xs disabled:opacity-50"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-2 w-full text-xs font-mono truncate">
+                                      <span className={cn("truncate w-1/3 shrink-0", isChecked ? "text-text-muted" : "text-text-muted/60")} title={item.originalName}>
+                                        {item.originalName}
+                                      </span>
+                                      <ArrowRight size={12} className="text-text-muted shrink-0" />
+                                      <span
+                                        className={cn(
+                                          "truncate flex-1 font-mono",
+                                          !isChecked
+                                            ? "text-text-muted/60 line-through"
+                                            : isChanged
+                                            ? "text-accent font-bold"
+                                            : "text-text-primary"
+                                        )}
+                                      >
+                                        {item.newName}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
+
+                  {/* Actions */}
+                  <div className="flex justify-end gap-3 pt-2 border-t border-panel-border/60">
+                    <button
+                      type="button"
+                      onClick={() => setShowBulkRenameModal(false)}
+                      className="px-4 py-2 text-xs font-mono font-bold text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+                    >
+                      {t("CANCEL", "キャンセル")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={executeBulkRename}
+                      className="px-5 py-2 text-xs font-mono font-bold bg-accent hover:bg-accent/90 text-accent-text border border-accent shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Check size={14} />
+                      <span>{t("APPLY RENAME", "一括変更を実行")}</span>
                     </button>
                   </div>
                 </div>

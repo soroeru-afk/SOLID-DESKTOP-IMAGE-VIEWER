@@ -1764,6 +1764,8 @@ Images imported: ${importedImages}`);
     e.stopPropagation();
     setDatasetNameInput(oldName);
     setEditingDatasetId(id);
+    const ds = datasets.find((d) => d.id === id);
+    setTargetCategoryIdForNewDataset(ds?.categoryId || null);
     setShowNewDatasetModal(true);
   };
 
@@ -1774,6 +1776,7 @@ Images imported: ${importedImages}`);
         editingDatasetId,
         datasetNameInput.trim().toUpperCase(),
       );
+      await updateDatasetCategory(editingDatasetId, targetCategoryIdForNewDataset || null);
     } else {
       const ds = await createDataset(datasetNameInput.trim().toUpperCase());
       if (targetCategoryIdForNewDataset) {
@@ -1787,7 +1790,7 @@ Images imported: ${importedImages}`);
   };
 
   const handleOpenNewCategoryModal = (parentId: string | null = null) => {
-    setNewCategoryParentId(parentId);
+    setNewCategoryParentId(parentId !== null ? parentId : activeCategoryId);
     setEditingCategoryId(null);
     setCategoryNameInput("");
     setShowNewCategoryModal(true);
@@ -1797,6 +1800,7 @@ Images imported: ${importedImages}`);
     e.stopPropagation();
     setEditingCategoryId(cat.id);
     setCategoryNameInput(cat.name);
+    setNewCategoryParentId(cat.parentId || null);
     setShowNewCategoryModal(true);
   };
 
@@ -1804,8 +1808,9 @@ Images imported: ${importedImages}`);
     if (!categoryNameInput.trim()) return;
     if (editingCategoryId) {
       await renameCategory(editingCategoryId, categoryNameInput.trim().toUpperCase());
+      await updateCategoryParent(editingCategoryId, newCategoryParentId || null);
     } else {
-      const newCat = await createCategory(categoryNameInput.trim().toUpperCase(), newCategoryParentId);
+      const newCat = await createCategory(categoryNameInput.trim().toUpperCase(), newCategoryParentId || null);
       if (newCategoryParentId) {
         setExpandedCategoryIds((prev) => new Set([...prev, newCategoryParentId]));
       }
@@ -1891,6 +1896,30 @@ Images imported: ${importedImages}`);
     } catch (err) {
       console.error("Failed bulk move", err);
       showNotification(language === "JP" ? "一括移動に失敗しました" : "Failed bulk move");
+    }
+  };
+
+  const handleBulkRenameItems = async (
+    renames: { id: string; type: "category" | "dataset"; newName: string }[]
+  ) => {
+    try {
+      for (const item of renames) {
+        if (!item.newName.trim()) continue;
+        if (item.type === "category") {
+          await renameCategory(item.id, item.newName.trim());
+        } else {
+          await renameDataset(item.id, item.newName.trim());
+        }
+      }
+      await loadDatasets();
+      showNotification(
+        language === "JP"
+          ? `${renames.length}件の名称を一括更新しました`
+          : `Renamed ${renames.length} item(s)`
+      );
+    } catch (err) {
+      console.error("Failed bulk rename", err);
+      showNotification(language === "JP" ? "一括変更に失敗しました" : "Failed bulk rename");
     }
   };
 
@@ -4950,6 +4979,7 @@ Images imported: ${importedImages}`);
                           }}
                           onBulkDeleteItems={handleBulkDeleteItems}
                           onBulkMoveItems={handleBulkMoveItems}
+                          onBulkRenameItems={handleBulkRenameItems}
                           t={t}
                         />
                       );
@@ -5933,31 +5963,69 @@ Images imported: ${importedImages}`);
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
           >
-            <div className="bg-panel-bg border border-panel-border p-6 font-mono w-[400px]">
-              <h2 className="text-text-primary mb-4 uppercase">
-                {editingDatasetId ? "RENAME DATASET" : "NEW DATASET"}
+            <div className="bg-panel-bg border border-panel-border p-6 font-mono w-[440px] shadow-2xl">
+              <h2 className="text-text-primary mb-4 uppercase flex items-center gap-2 font-bold text-sm">
+                <Layers size={18} className="text-accent" />
+                {editingDatasetId ? t("RENAME DATASET", "データセット名の変更") : t("NEW DATASET", "新規データセットの作成")}
               </h2>
-              <input
-                autoFocus
-                type="text"
-                value={datasetNameInput}
-                onChange={(e) => setDatasetNameInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && submitDatasetForm()}
-                className="w-full bg-root-bg border border-panel-border text-text-primary px-3 py-2 mb-6 outline-none focus:border-accent"
-                placeholder="ENTER NAME..."
-              />
+
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-[10px] text-text-muted mb-1 font-bold uppercase">
+                    {t("DATASET NAME", "データセット名")}
+                  </label>
+                  <input
+                    autoFocus
+                    type="text"
+                    value={datasetNameInput}
+                    onChange={(e) => setDatasetNameInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && submitDatasetForm()}
+                    className="w-full bg-root-bg border border-panel-border text-text-primary px-3 py-2 text-xs font-mono outline-none focus:border-accent"
+                    placeholder={t("ENTER DATASET NAME...", "データセット名を入力...")}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-text-muted mb-1 font-bold uppercase">
+                    {t("FOLDER LOCATION", "作成先（所属フォルダー）の選択")}
+                  </label>
+                  <select
+                    value={targetCategoryIdForNewDataset || ""}
+                    onChange={(e) => setTargetCategoryIdForNewDataset(e.target.value || null)}
+                    className="w-full bg-root-bg border border-panel-border text-text-primary px-3 py-2 text-xs font-mono outline-none focus:border-accent cursor-pointer"
+                  >
+                    <option value="">📁 {t("IMAGE DATA (ROOT LEVEL)", "IMAGE DATA (ルート / トップ階層)")}</option>
+                    {(() => {
+                      const renderCategoryOptions = (parentId: string | null = null, depth: number = 0): React.ReactNode => {
+                        const subCats = categories.filter((c) => (c.parentId || null) === parentId);
+                        return subCats.map((cat) => (
+                          <React.Fragment key={cat.id}>
+                            <option value={cat.id}>
+                              {depth === 0 ? "📁 " : `${"  ".repeat(depth)}└─ 📁 `}{cat.name}
+                            </option>
+                            {renderCategoryOptions(cat.id, depth + 1)}
+                          </React.Fragment>
+                        ));
+                      };
+
+                      return renderCategoryOptions(null, 0);
+                    })()}
+                  </select>
+                </div>
+              </div>
+
               <div className="flex justify-end gap-3">
                 <SolidButton
                   onClick={() => setShowNewDatasetModal(false)}
                   className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
                 >
-                  CANCEL
+                  {t("CANCEL", "キャンセル")}
                 </SolidButton>
                 <SolidButton
                   onClick={submitDatasetForm}
                   className="text-accent hover:text-accent"
                 >
-                  CONFIRM
+                  {t("CONFIRM", "確定")}
                 </SolidButton>
               </div>
             </div>
@@ -5974,20 +6042,69 @@ Images imported: ${importedImages}`);
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
           >
-            <div className="bg-panel-bg border border-panel-border p-6 font-mono w-[400px]">
-              <h2 className="text-text-primary mb-4 uppercase flex items-center gap-2">
+            <div className="bg-panel-bg border border-panel-border p-6 font-mono w-[440px] shadow-2xl">
+              <h2 className="text-text-primary mb-4 uppercase flex items-center gap-2 font-bold text-sm">
                 <Folder size={18} className="text-accent" />
-                {editingCategoryId ? t("RENAME CATEGORY", "カテゴリー名変更") : t("NEW CATEGORY", "新規カテゴリー作成")}
+                {editingCategoryId ? t("RENAME CATEGORY", "フォルダー名の変更") : t("NEW CATEGORY", "新規フォルダーの作成")}
               </h2>
-              <input
-                autoFocus
-                type="text"
-                value={categoryNameInput}
-                onChange={(e) => setCategoryNameInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && submitCategoryForm()}
-                className="w-full bg-root-bg border border-panel-border text-text-primary px-3 py-2 mb-6 outline-none focus:border-accent"
-                placeholder={t("ENTER CATEGORY NAME...", "カテゴリー名を入力...")}
-              />
+
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-[10px] text-text-muted mb-1 font-bold uppercase">
+                    {t("FOLDER NAME", "フォルダー名")}
+                  </label>
+                  <input
+                    autoFocus
+                    type="text"
+                    value={categoryNameInput}
+                    onChange={(e) => setCategoryNameInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && submitCategoryForm()}
+                    className="w-full bg-root-bg border border-panel-border text-text-primary px-3 py-2 text-xs font-mono outline-none focus:border-accent"
+                    placeholder={t("ENTER CATEGORY NAME...", "フォルダー名を入力...")}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-text-muted mb-1 font-bold uppercase">
+                    {t("LOCATION / PARENT FOLDER", "作成先（親フォルダー）の選択")}
+                  </label>
+                  <select
+                    value={newCategoryParentId || ""}
+                    onChange={(e) => setNewCategoryParentId(e.target.value || null)}
+                    className="w-full bg-root-bg border border-panel-border text-text-primary px-3 py-2 text-xs font-mono outline-none focus:border-accent cursor-pointer"
+                  >
+                    <option value="">📁 {t("IMAGE DATA (ROOT LEVEL)", "IMAGE DATA (ルート / トップ階層)")}</option>
+                    {(() => {
+                      const isDescendant = (catId: string, potentialChildId: string): boolean => {
+                        if (catId === potentialChildId) return true;
+                        const children = categories.filter((c) => c.parentId === potentialChildId);
+                        for (const ch of children) {
+                          if (isDescendant(catId, ch.id)) return true;
+                        }
+                        return false;
+                      };
+
+                      const renderCategoryOptions = (parentId: string | null = null, depth: number = 0): React.ReactNode => {
+                        const subCats = categories.filter((c) => (c.parentId || null) === parentId);
+                        return subCats.map((cat) => {
+                          const isSelfOrChild = editingCategoryId && isDescendant(cat.id, editingCategoryId);
+                          return (
+                            <React.Fragment key={cat.id}>
+                              <option value={cat.id} disabled={!!isSelfOrChild}>
+                                {depth === 0 ? "📁 " : `${"  ".repeat(depth)}└─ 📁 `}{cat.name}
+                              </option>
+                              {renderCategoryOptions(cat.id, depth + 1)}
+                            </React.Fragment>
+                          );
+                        });
+                      };
+
+                      return renderCategoryOptions(null, 0);
+                    })()}
+                  </select>
+                </div>
+              </div>
+
               <div className="flex justify-end gap-3">
                 <SolidButton
                   onClick={() => setShowNewCategoryModal(false)}
