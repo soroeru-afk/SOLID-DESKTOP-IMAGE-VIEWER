@@ -76,7 +76,7 @@ export async function initDB() {
         imgStore.createIndex('by-dataset', 'datasetId');
       }
       // v3 adds autoBg to ImageRecord, no schema changes needed
-      // v12 adds categories store (previously labeled v4 by AI Studio)
+      // v4 adds categories store
       if (oldVersion < 12) {
         if (!db.objectStoreNames.contains(STORE_NAME_CATEGORIES)) {
           const catStore = db.createObjectStore(STORE_NAME_CATEGORIES, { keyPath: 'id' });

@@ -997,6 +997,21 @@ export default function App() {
   // Apply Theme
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
+    
+    // Dynamic theme-color meta tag
+    let metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    if (!metaThemeColor) {
+      metaThemeColor = document.createElement("meta");
+      metaThemeColor.setAttribute("name", "theme-color");
+      document.head.appendChild(metaThemeColor);
+    }
+    let color = "#0B0C0D"; // default for BLACK
+    if (theme === "TRUE_BLACK") color = "#000000";
+    else if (theme === "LIGHT") color = "#e2e8f0";
+    else if (theme === "PAPER") color = "#f4ebe1";
+    else if (theme === "NAVY") color = "#0F172A";
+    else if (theme === "RED") color = "#450a0a";
+    metaThemeColor.setAttribute("content", color);
   }, [theme]);
 
   // Load from DB on mount
@@ -1805,6 +1820,66 @@ Images imported: ${importedImages}`);
     setShowDeleteCategoryModal(false);
     setCategoryToDelete(null);
     await loadDatasets();
+  };
+
+  const handleBulkDeleteItems = async (categoryIds: string[], datasetIds: string[]) => {
+    try {
+      for (const catId of categoryIds) {
+        await deleteCategory(catId);
+      }
+      for (const dsId of datasetIds) {
+        await deleteDataset(dsId);
+      }
+      if (activeCategoryId && categoryIds.includes(activeCategoryId)) {
+        setActiveCategoryId(null);
+        setIsCategoryImagesView(false);
+      }
+      if (activeDatasetId && datasetIds.includes(activeDatasetId)) {
+        setActiveDatasetId(null);
+      }
+      await loadDatasets();
+      const total = categoryIds.length + datasetIds.length;
+      showNotification(
+        language === "JP"
+          ? `${total}件の項目を削除しました`
+          : `Deleted ${total} item(s)`
+      );
+    } catch (err) {
+      console.error("Failed bulk deletion", err);
+      showNotification(language === "JP" ? "一括削除に失敗しました" : "Failed bulk deletion");
+    }
+  };
+
+  const handleBulkMoveItems = async (
+    categoryIds: string[],
+    datasetIds: string[],
+    targetCategoryId: string | null
+  ) => {
+    try {
+      for (const catId of categoryIds) {
+        if (catId !== targetCategoryId) {
+          await updateCategoryParent(catId, targetCategoryId);
+        }
+      }
+      for (const dsId of datasetIds) {
+        await updateDatasetCategory(dsId, targetCategoryId);
+      }
+      if (targetCategoryId) {
+        setExpandedCategoryIds((prev) => new Set([...prev, targetCategoryId]));
+      }
+      await loadDatasets();
+      const total = categoryIds.length + datasetIds.length;
+      const parentCat = targetCategoryId ? categories.find((c) => c.id === targetCategoryId) : null;
+      const destName = parentCat ? parentCat.name : "ROOT";
+      showNotification(
+        language === "JP"
+          ? `${total}件の項目を「${destName}」へ移動しました`
+          : `Moved ${total} item(s) to "${destName}"`
+      );
+    } catch (err) {
+      console.error("Failed bulk move", err);
+      showNotification(language === "JP" ? "一括移動に失敗しました" : "Failed bulk move");
+    }
   };
 
   const handleMoveDatasetToCategory = async (datasetId: string, targetCategoryId: string | null) => {
@@ -4794,6 +4869,8 @@ Images imported: ${importedImages}`);
                             setColorCategoryModalTarget(cat);
                             setColorCategoryInput(cat.color || themeFolderColors[theme] || "#fbbf24");
                           }}
+                          onBulkDeleteItems={handleBulkDeleteItems}
+                          onBulkMoveItems={handleBulkMoveItems}
                           t={t}
                         />
                       );
