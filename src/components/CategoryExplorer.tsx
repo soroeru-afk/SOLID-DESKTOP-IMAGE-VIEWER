@@ -27,6 +27,7 @@ import {
   Replace,
   FileText,
   Search,
+  Folders,
 } from "lucide-react";
 import { CategoryRecord, DatasetRecord } from "../lib/db";
 import { cn } from "../lib/utils";
@@ -122,10 +123,13 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
   const [replaceWith, setReplaceWith] = useState("");
   const [prefixInput, setPrefixInput] = useState("");
   const [suffixInput, setSuffixInput] = useState("");
+  const [trimStart, setTrimStart] = useState<number>(0);
+  const [trimEnd, setTrimEnd] = useState<number>(0);
   const [enableNumbering, setEnableNumbering] = useState(false);
   const [numberStart, setNumberStart] = useState(1);
   const [numberDigits, setNumberDigits] = useState(2);
   const [numberPosition, setNumberPosition] = useState<"prefix" | "suffix">("prefix");
+  const [numberOrder, setNumberOrder] = useState<"asc" | "desc">("asc");
 
   // Get current active category
   const currentCategory = activeCategoryId
@@ -133,7 +137,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
     : null;
 
   // Calculate breadcrumbs
-  const breadcrumbs: { id: string | null; name: string }[] = [{ id: null, name: "IMAGE DATA" }];
+  const breadcrumbs: { id: string | null; name: string }[] = [{ id: null, name: "ALL IMAGE DATA" }];
   if (currentCategory) {
     const chain: CategoryRecord[] = [];
     let cur: CategoryRecord | undefined = currentCategory;
@@ -295,11 +299,14 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
     setReplaceWith("");
     setPrefixInput("");
     setSuffixInput("");
+    setTrimStart(0);
+    setTrimEnd(0);
     setFilterSearch("");
     setEnableNumbering(false);
     setNumberStart(1);
     setNumberDigits(2);
     setNumberPosition("prefix");
+    setNumberOrder("asc");
     setBulkRenameTab("quick");
     setTargetScope("all_items");
 
@@ -337,9 +344,6 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
   };
 
   const getBulkRenameItemsList = () => {
-    const list: { id: string; type: "category" | "dataset"; originalName: string; newName: string }[] = [];
-    let numberIndex = 0;
-
     let targetCatIds: string[] = [];
     let targetDsIds: string[] = [];
 
@@ -358,66 +362,72 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
       targetDsIds = currentDatasets.map((d) => d.id);
     }
 
+    const rawList: { id: string; type: "category" | "dataset"; originalName: string }[] = [];
+
     targetCatIds.forEach((id: string) => {
       const cat = categories.find((c) => c.id === id);
       if (!cat) return;
       if (filterSearch && !cat.name.toLowerCase().includes(filterSearch.toLowerCase())) return;
-
-      let newName = cat.name;
-
-      if (bulkRenameTab === "quick") {
-        newName = quickNames[id] ?? cat.name;
-      } else if (bulkRenameTab === "replace") {
-        if (replaceSearch) {
-          newName = cat.name.split(replaceSearch).join(replaceWith);
-        }
-      } else if (bulkRenameTab === "prefix") {
-        let name = cat.name;
-        if (prefixInput) name = `${prefixInput}${name}`;
-        if (suffixInput) name = `${name}${suffixInput}`;
-        if (enableNumbering) {
-          const numStr = String(numberStart + numberIndex).padStart(numberDigits, "0");
-          if (numberPosition === "prefix") name = `${numStr}_${name}`;
-          else name = `${name}_${numStr}`;
-        }
-        newName = name;
-      }
-
-      list.push({ id, type: "category", originalName: cat.name, newName });
-      if (checkedRenameIds.has(id)) {
-        numberIndex++;
-      }
+      rawList.push({ id, type: "category", originalName: cat.name });
     });
+
 
     targetDsIds.forEach((id: string) => {
       const ds = datasets.find((d) => d.id === id);
       if (!ds) return;
       if (filterSearch && !ds.name.toLowerCase().includes(filterSearch.toLowerCase())) return;
+      rawList.push({ id, type: "dataset", originalName: ds.name });
+    });
 
-      let newName = ds.name;
+    const checkedItems = rawList.filter((item) => checkedRenameIds.has(item.id));
+    const totalChecked = checkedItems.length;
+
+    let checkedCounter = 0;
+    const list: { id: string; type: "category" | "dataset"; originalName: string; newName: string }[] = [];
+
+    rawList.forEach((item) => {
+      let newName = item.originalName;
 
       if (bulkRenameTab === "quick") {
-        newName = quickNames[id] ?? ds.name;
+        newName = quickNames[item.id] ?? item.originalName;
       } else if (bulkRenameTab === "replace") {
         if (replaceSearch) {
-          newName = ds.name.split(replaceSearch).join(replaceWith);
+          newName = item.originalName.split(replaceSearch).join(replaceWith);
         }
       } else if (bulkRenameTab === "prefix") {
-        let name = ds.name;
+        let name = item.originalName;
+
+        // 1. Trim characters from Start / End
+        if (trimStart > 0 && name.length > 0) {
+          name = name.slice(Math.min(trimStart, name.length));
+        }
+        if (trimEnd > 0 && name.length > 0) {
+          name = name.slice(0, Math.max(0, name.length - trimEnd));
+        }
+
+        // 2. Add Prefix / Suffix
         if (prefixInput) name = `${prefixInput}${name}`;
-        if (suffixInput) name = `${name}${suffixInput}`;
-        if (enableNumbering) {
-          const numStr = String(numberStart + numberIndex).padStart(numberDigits, "0");
+        if (suffixInput) name = `${suffixInput}${name}`;
+
+        // 3. Add Numbering with Ascending / Descending order
+        if (enableNumbering && checkedRenameIds.has(item.id)) {
+          const numVal = numberOrder === "asc"
+            ? numberStart + checkedCounter
+            : numberStart + (totalChecked - 1 - checkedCounter);
+          const numStr = String(numVal).padStart(numberDigits, "0");
+
           if (numberPosition === "prefix") name = `${numStr}_${name}`;
           else name = `${name}_${numStr}`;
         }
+
         newName = name;
       }
 
-      list.push({ id, type: "dataset", originalName: ds.name, newName });
-      if (checkedRenameIds.has(id)) {
-        numberIndex++;
+      if (checkedRenameIds.has(item.id)) {
+        checkedCounter++;
       }
+
+      list.push({ id: item.id, type: item.type, originalName: item.originalName, newName });
     });
 
     return list;
@@ -615,7 +625,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                           : undefined
                       }
                     >
-                      {idx === 0 ? <Layers size={13} /> : <Folder size={13} />}
+                      {idx === 0 ? <Folders size={13} className="-translate-y-[1px]" /> : <Folder size={13} />}
                       <span>{crumb.name}</span>
                     </button>
                   </React.Fragment>
@@ -1526,7 +1536,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                 exit={{ opacity: 0 }}
                 className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-4 backdrop-blur-sm"
               >
-                <div className="bg-panel-bg border border-accent/60 p-5 font-mono w-[760px] max-w-[96vw] h-[640px] max-h-[92vh] flex flex-col shadow-2xl rounded-xs">
+                <div className="bg-panel-bg border border-accent/60 p-5 font-mono w-[780px] max-w-[96vw] h-[840px] max-h-[96vh] flex flex-col shadow-2xl rounded-xs">
                   {/* Header */}
                   <div className="flex items-center justify-between pb-3 border-b border-panel-border/60 mb-3 shrink-0">
                     <div className="flex items-center gap-2">
@@ -1648,8 +1658,8 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                     </button>
                   </div>
 
-                  {/* Controls based on selected Tab (Fixed height) */}
-                  <div className="mb-3 bg-root-bg/60 p-3 border border-panel-border rounded-xs text-xs h-[105px] shrink-0 flex flex-col justify-center overflow-y-auto">
+                  {/* Controls based on selected Tab */}
+                  <div className="mb-3 bg-root-bg/60 p-3.5 border border-panel-border rounded-xs text-xs shrink-0 flex flex-col justify-center">
                     {bulkRenameTab === "quick" && (
                       <div className="flex items-center justify-center h-full text-center px-4">
                         <p className="text-xs text-text-secondary leading-relaxed font-mono">
@@ -1691,10 +1701,10 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                     )}
 
                     {bulkRenameTab === "prefix" && (
-                      <div className="space-y-2 my-auto font-mono">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div className="space-y-2 font-mono text-xs">
+                        <div className="grid grid-cols-2 gap-2.5">
                           <div>
-                            <label className="block text-[10px] text-text-muted mb-0.5 font-bold uppercase">
+                            <label className="block text-[10px] text-text-muted mb-1 font-bold uppercase">
                               {t("PREFIX (先頭に付与)", "前に追加する文字")}
                             </label>
                             <input
@@ -1702,11 +1712,11 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                               value={prefixInput}
                               onChange={(e) => setPrefixInput(e.target.value)}
                               placeholder={t("e.g. [WORK] ", "例: 【重要】 や 01_")}
-                              className="w-full bg-panel-bg border border-panel-border text-text-primary px-2 py-1 text-xs rounded-xs focus:outline-none focus:border-accent"
+                              className="w-full bg-panel-bg border border-panel-border text-text-primary px-2.5 py-1 text-xs rounded-xs focus:outline-none focus:border-accent"
                             />
                           </div>
                           <div>
-                            <label className="block text-[10px] text-text-muted mb-0.5 font-bold uppercase">
+                            <label className="block text-[10px] text-text-muted mb-1 font-bold uppercase">
                               {t("SUFFIX (末尾に付与)", "後ろに追加する文字")}
                             </label>
                             <input
@@ -1714,13 +1724,45 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                               value={suffixInput}
                               onChange={(e) => setSuffixInput(e.target.value)}
                               placeholder={t("e.g. _DONE", "例: _完了 や _2025")}
-                              className="w-full bg-panel-bg border border-panel-border text-text-primary px-2 py-1 text-xs rounded-xs focus:outline-none focus:border-accent"
+                              className="w-full bg-panel-bg border border-panel-border text-text-primary px-2.5 py-1 text-xs rounded-xs focus:outline-none focus:border-accent"
                             />
                           </div>
                         </div>
 
+                        {/* Character Trim Controls */}
+                        <div className="grid grid-cols-2 gap-2 bg-panel-bg/40 p-2 rounded-xs border border-panel-border/30">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-text-muted whitespace-nowrap">
+                              {t("TRIM START:", "先頭削除:")}
+                            </span>
+                            <input
+                              type="number"
+                              min={0}
+                              max={99}
+                              value={trimStart}
+                              onChange={(e) => setTrimStart(Math.max(0, parseInt(e.target.value) || 0))}
+                              className="w-12 bg-panel-bg border border-panel-border text-text-primary px-1 py-0.5 text-xs text-center focus:outline-none focus:border-accent"
+                            />
+                            <span className="text-[10px] text-text-muted">{t("chars", "文字")}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-text-muted whitespace-nowrap">
+                              {t("TRIM END:", "末尾削除:")}
+                            </span>
+                            <input
+                              type="number"
+                              min={0}
+                              max={99}
+                              value={trimEnd}
+                              onChange={(e) => setTrimEnd(Math.max(0, parseInt(e.target.value) || 0))}
+                              className="w-12 bg-panel-bg border border-panel-border text-text-primary px-1 py-0.5 text-xs text-center focus:outline-none focus:border-accent"
+                            />
+                            <span className="text-[10px] text-text-muted">{t("chars", "文字")}</span>
+                          </div>
+                        </div>
+
                         {/* Sequential Numbering Option */}
-                        <div className="pt-1.5 border-t border-panel-border/40 flex flex-wrap items-center justify-between gap-2">
+                        <div className="pt-1 border-t border-panel-border/40 flex flex-wrap items-center justify-between gap-1.5">
                           <label className="flex items-center gap-1.5 cursor-pointer select-none">
                             <input
                               type="checkbox"
@@ -1742,7 +1784,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                                   min={1}
                                   value={numberStart}
                                   onChange={(e) => setNumberStart(Math.max(1, parseInt(e.target.value) || 1))}
-                                  className="w-10 bg-panel-bg border border-panel-border text-text-primary px-1 py-0.5 text-center focus:outline-none focus:border-accent"
+                                  className="w-9 bg-panel-bg border border-panel-border text-text-primary px-1 py-0.5 text-center focus:outline-none focus:border-accent"
                                 />
                               </div>
                               <div className="flex items-center gap-1">
@@ -1766,6 +1808,17 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                                 >
                                   <option value="prefix">{t("Prefix", "先頭")}</option>
                                   <option value="suffix">{t("Suffix", "末尾")}</option>
+                                </select>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <span className="text-text-muted">{t("Order:", "順序:")}</span>
+                                <select
+                                  value={numberOrder}
+                                  onChange={(e) => setNumberOrder(e.target.value as "asc" | "desc")}
+                                  className="bg-panel-bg border border-panel-border text-text-primary px-1 py-0.5 focus:outline-none focus:border-accent"
+                                >
+                                  <option value="asc">{t("Asc (1→N)", "昇順 (1→N)")}</option>
+                                  <option value="desc">{t("Desc (N→1)", "降順 (N→1)")}</option>
                                 </select>
                               </div>
                             </div>

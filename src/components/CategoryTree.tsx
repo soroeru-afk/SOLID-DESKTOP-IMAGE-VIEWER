@@ -14,6 +14,7 @@ import {
   FolderPlus,
   FolderInput,
   Palette,
+  Folders,
 } from "lucide-react";
 import { FolderIconComponent } from "./FolderIcon";
 import { CategoryRecord, DatasetRecord } from "../lib/db";
@@ -264,7 +265,7 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
           onDragOver={(e) => handleDragOver(e, cat.id)}
           onDragLeave={(e) => handleDragLeave(e, cat.id)}
           onDrop={(e) => handleCategoryNodeDrop(e, cat)}
-          style={{ paddingLeft: `${Math.max(6, depth * 14 + 6)}px` }}
+          style={{ paddingLeft: `${Math.max(8, depth * 22 + 8)}px` }}
           className={cn(
             "flex items-center justify-between pr-2 py-1 font-mono cursor-pointer border transition-all group min-h-[30px] overflow-hidden shrink-0",
             textClass,
@@ -402,7 +403,7 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
             {/* Empty state hint */}
             {subCategories.length === 0 && categoryDatasets.length === 0 && (
               <div
-                style={{ paddingLeft: `${(depth + 1) * 14 + 20}px` }}
+                style={{ paddingLeft: `${(depth + 1) * 22 + 20}px` }}
                 className="py-1 text-[10px] font-mono text-text-muted/60 italic"
               >
                 {t("(empty folder)", "(空のフォルダー)")}
@@ -442,7 +443,7 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
         onDragLeave={(e) => handleDragLeave(e, ds.id)}
         onDrop={(e) => handleDatasetItemDrop(e, ds)}
         onClick={() => onSelectDataset(ds.id)}
-        style={{ paddingLeft: `${Math.max(6, depth * 14 + 6)}px` }}
+        style={{ paddingLeft: `${Math.max(8, depth * 22 + 8)}px` }}
         className={cn(
           "flex items-center justify-between pr-2 py-1 font-mono cursor-pointer border transition-colors group min-h-[30px] overflow-hidden shrink-0",
           textClass,
@@ -457,6 +458,15 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
           <GripVertical
             size={13}
             className="shrink-0 opacity-40 group-hover:opacity-100 text-accent/80 transition-opacity cursor-grab active:cursor-grabbing"
+          />
+
+          {/* Dataset Icon Badge */}
+          <Layers
+            size={13}
+            className={cn(
+              "shrink-0 transition-colors -translate-y-[1px]",
+              isSelected ? "text-accent" : "text-text-muted/70 group-hover:text-accent"
+            )}
           />
 
           {ds.isPinned && (
@@ -573,15 +583,16 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
         )}
       >
         <span className="truncate flex-1 min-w-0 pr-2 flex items-center gap-2">
-          <Layers
+          <Folders
             size={14}
-            className={
+            className={cn(
+              "shrink-0 -translate-y-[1px]",
               activeDatasetId === null && activeCategoryId === null
                 ? "text-accent"
                 : "text-text-muted"
-            }
+            )}
           />
-          <span className="tracking-wide">IMAGE DATA</span>
+          <span className="tracking-wide font-bold">ALL IMAGE DATA</span>
         </span>
         <div className="flex items-center gap-1.5">
           <span className="text-text-muted text-[10px] shrink-0 font-mono">

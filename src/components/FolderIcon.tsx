@@ -52,7 +52,7 @@ export const FolderIconComponent: React.FC<FolderIconProps> = ({
   style,
 }) => {
   const BaseFolder = isOpen ? FolderOpen : Folder;
-  const iconProps = { size, className: cn("shrink-0", className), style };
+  const iconProps = { size, className: cn("shrink-0 -translate-y-[1px]", className), style };
 
   if (!iconType || iconType === "folder") {
     return <BaseFolder {...iconProps} />;
@@ -87,7 +87,7 @@ export const FolderIconComponent: React.FC<FolderIconProps> = ({
   if (!badge) return <BaseFolder {...iconProps} />;
 
   return (
-    <div className={cn("relative inline-flex items-center justify-center shrink-0 select-none", className)} style={style}>
+    <div className={cn("relative inline-flex items-center justify-center shrink-0 select-none -translate-y-[1px]", className)} style={style}>
       <BaseFolder size={size} />
       <span className="absolute -top-1 -right-1 bg-panel-bg rounded-full p-[0.5px] border border-panel-border/80 shadow-xs flex items-center justify-center pointer-events-none">
         {badge}

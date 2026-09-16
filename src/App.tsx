@@ -59,6 +59,7 @@ import {
   Terminal,
   Settings,
   Sliders,
+  Folders,
 } from "lucide-react";
 import {
   ImageRecord,
@@ -3820,7 +3821,7 @@ Images imported: ${importedImages}`);
                       setSearchInput("");
                     }}
                   >
-                    <option value="" className="bg-white text-black">IMAGE DATA ({totalImagesCount})</option>
+                    <option value="" className="bg-white text-black">ALL IMAGE DATA ({totalImagesCount})</option>
                     {/* Unclassified datasets */}
                     {datasets.filter((d) => !d.categoryId).length > 0 && (
                       <optgroup label="── ROOT / UNCLASSIFIED ──">
@@ -5994,7 +5995,7 @@ Images imported: ${importedImages}`);
                     onChange={(e) => setTargetCategoryIdForNewDataset(e.target.value || null)}
                     className="w-full bg-root-bg border border-panel-border text-text-primary px-3 py-2 text-xs font-mono outline-none focus:border-accent cursor-pointer"
                   >
-                    <option value="">📁 {t("IMAGE DATA (ROOT LEVEL)", "IMAGE DATA (ルート / トップ階層)")}</option>
+                    <option value="">📁 {t("ALL IMAGE DATA (ROOT LEVEL)", "ALL IMAGE DATA (ルート / トップ階層)")}</option>
                     {(() => {
                       const renderCategoryOptions = (parentId: string | null = null, depth: number = 0): React.ReactNode => {
                         const subCats = categories.filter((c) => (c.parentId || null) === parentId);
@@ -6073,7 +6074,7 @@ Images imported: ${importedImages}`);
                     onChange={(e) => setNewCategoryParentId(e.target.value || null)}
                     className="w-full bg-root-bg border border-panel-border text-text-primary px-3 py-2 text-xs font-mono outline-none focus:border-accent cursor-pointer"
                   >
-                    <option value="">📁 {t("IMAGE DATA (ROOT LEVEL)", "IMAGE DATA (ルート / トップ階層)")}</option>
+                    <option value="">📁 {t("ALL IMAGE DATA (ROOT LEVEL)", "ALL IMAGE DATA (ルート / トップ階層)")}</option>
                     {(() => {
                       const isDescendant = (catId: string, potentialChildId: string): boolean => {
                         if (catId === potentialChildId) return true;
@@ -6199,8 +6200,8 @@ Images imported: ${importedImages}`);
                   className="w-full text-left px-3 py-2 text-xs font-mono flex items-center justify-between border border-panel-border/50 hover:border-accent hover:bg-accent/15 transition-colors group text-text-primary"
                 >
                   <div className="flex items-center gap-2">
-                    <Layers size={14} className="text-accent" />
-                    <span className="font-bold">{t("IMAGE DATA (ROOT / UNCLASSIFIED)", "IMAGE DATA (ルート / 未分類)")}</span>
+                    <Folders size={14} className="text-accent -translate-y-[1px]" />
+                    <span className="font-bold">{t("ALL IMAGE DATA (ROOT / UNCLASSIFIED)", "ALL IMAGE DATA (ルート / 未分類)")}</span>
                   </div>
                   <span className="text-[10px] text-accent opacity-0 group-hover:opacity-100 font-bold">
                     {t("SELECT →", "選択 →")}
