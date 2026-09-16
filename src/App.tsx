@@ -12,7 +12,7 @@ import {
   ZoomIn,
   ZoomOut,
   Folder,
-  FolderOpen, FolderPlus,
+  FolderOpen,
   LayoutGrid,
   List,
   ScatterChart,
@@ -54,10 +54,16 @@ import {
   AlertTriangle,
   Bookmark,
   Pin,
+  FolderPlus,
+  Layers,
+  Terminal,
+  Settings,
+  Sliders,
 } from "lucide-react";
 import {
   ImageRecord,
   DatasetRecord,
+  CategoryRecord,
   getAllDatasets,
   createDataset,
   deleteDataset,
@@ -80,8 +86,20 @@ import {
   getImageCountByDataset,
   updateDatasetDate,
   updateImagesOrder,
+  getAllCategories,
+  createCategory,
+  renameCategory,
+  updateCategoryParent,
+  deleteCategory,
+  updateCategoryColor,
+  updateCategoryCoverPosition,
+  updateCategoriesOrder,
+  updateDatasetsOrder,
+  updateDatasetCategory,
 } from "./lib/db";
 import { Panel, SolidButton } from "./components/ui";
+import { CategoryTree } from "./components/CategoryTree";
+import { CategoryExplorer } from "./components/CategoryExplorer";
 import { cn } from "./lib/utils";
 import { ReactSortable } from "react-sortablejs";
 
@@ -239,6 +257,51 @@ export default function App() {
   const [datasetCounts, setDatasetCounts] = useState<Record<string, number>>(
     {},
   );
+  const [categories, setCategories] = useState<CategoryRecord[]>([]);
+  const [expandedCategoryIds, setExpandedCategoryIds] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem("app_expandedCategoryIds");
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(() => {
+    const saved = localStorage.getItem("app_activeCategoryId");
+    return saved || null;
+  });
+  const [isCategoryImagesView, setIsCategoryImagesView] = useState(false);
+
+  // Category Modals and DnD
+  const [showNewCategoryModal, setShowNewCategoryModal] = useState(false);
+  const [categoryNameInput, setCategoryNameInput] = useState("");
+  const [newCategoryParentId, setNewCategoryParentId] = useState<string | null>(null);
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [showDeleteCategoryModal, setShowDeleteCategoryModal] = useState(false);
+  const [categoryToDelete, setCategoryToDelete] = useState<CategoryRecord | null>(null);
+  const [dragOverCategoryId, setDragOverCategoryId] = useState<string | null>(null);
+  const [draggedDatasetId, setDraggedDatasetId] = useState<string | null>(null);
+  const [targetCategoryIdForNewDataset, setTargetCategoryIdForNewDataset] = useState<string | null>(null);
+
+  // Move Modal State (For Category and Dataset move selection)
+  const [showMoveItemModal, setShowMoveItemModal] = useState(false);
+  const [itemToMove, setItemToMove] = useState<{
+    type: "category" | "dataset";
+    item: CategoryRecord | DatasetRecord;
+  } | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem("app_expandedCategoryIds", JSON.stringify(Array.from(expandedCategoryIds)));
+  }, [expandedCategoryIds]);
+
+  useEffect(() => {
+    if (activeCategoryId) {
+      localStorage.setItem("app_activeCategoryId", activeCategoryId);
+    } else {
+      localStorage.removeItem("app_activeCategoryId");
+    }
+  }, [activeCategoryId]);
+
   const [activeDatasetId, setActiveDatasetId] = useState<string | null>(() => {
     const saved = localStorage.getItem("app_activeDatasetId");
     if (saved === "all") return null;
@@ -821,6 +884,54 @@ export default function App() {
     const saved = localStorage.getItem("isTrackInfoCollapsed");
     return saved ? saved === "true" : true;
   });
+  const [bottomPanelTab, setBottomPanelTab] = useState<"command" | "settings">(() => {
+    return (localStorage.getItem("bottomPanelTab") as "command" | "settings") || "command";
+  });
+  type AppTheme = "NAVY" | "BLACK" | "TRUE_BLACK" | "RED" | "LIGHT" | "PAPER";
+  const DEFAULT_THEME_FOLDER_COLORS: Record<AppTheme, string> = {
+    NAVY: "#fbbf24",
+    LIGHT: "#d97706",
+    PAPER: "#d94f26",
+    BLACK: "#fbbf24",
+    TRUE_BLACK: "#fbbf24",
+    RED: "#f87171",
+  };
+  const [themeFolderColors, setThemeFolderColors] = useState<Record<AppTheme, string>>(() => {
+    const saved = localStorage.getItem("theme_folder_colors");
+    if (saved) {
+      try {
+        return {
+          NAVY: "#fbbf24",
+          LIGHT: "#d97706",
+          PAPER: "#d94f26",
+          BLACK: "#fbbf24",
+          TRUE_BLACK: "#fbbf24",
+          RED: "#f87171",
+          ...JSON.parse(saved),
+        };
+      } catch (e) {}
+    }
+    return {
+      NAVY: "#fbbf24",
+      LIGHT: "#d97706",
+      PAPER: "#d94f26",
+      BLACK: "#fbbf24",
+      TRUE_BLACK: "#fbbf24",
+      RED: "#f87171",
+    };
+  });
+  const [colorCategoryModalTarget, setColorCategoryModalTarget] = useState<CategoryRecord | null>(null);
+  const [colorCategoryInput, setColorCategoryInput] = useState<string>("#fbbf24");
+  const [mainBgColorOverride, setMainBgColorOverride] = useState<string>(() => {
+    return localStorage.getItem("main_bg_color_override") || "default";
+  });
+  const [coverOpacity, setCoverOpacity] = useState<number>(() => {
+    const saved = localStorage.getItem("cover_opacity");
+    return saved ? parseInt(saved, 10) : 30;
+  });
+  const [coverBlur, setCoverBlur] = useState<boolean>(() => {
+    return localStorage.getItem("cover_blur") === "true"; // Default is false (clear)
+  });
 
   useEffect(() => {
     localStorage.setItem("sidebarOrder", JSON.stringify(sidebarOrder));
@@ -834,6 +945,41 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("isTrackInfoCollapsed", String(isTrackInfoCollapsed));
   }, [isTrackInfoCollapsed]);
+  useEffect(() => {
+    localStorage.setItem("bottomPanelTab", bottomPanelTab);
+  }, [bottomPanelTab]);
+
+  useEffect(() => {
+    const curColor = themeFolderColors[theme] || DEFAULT_THEME_FOLDER_COLORS[theme] || "#fbbf24";
+    document.documentElement.style.setProperty("--folder-icon-color", curColor);
+    localStorage.setItem("theme_folder_colors", JSON.stringify(themeFolderColors));
+  }, [theme, themeFolderColors]);
+
+  useEffect(() => {
+    if (mainBgColorOverride && mainBgColorOverride !== "default") {
+      document.documentElement.style.setProperty("--color-root-bg", mainBgColorOverride);
+    } else {
+      document.documentElement.style.removeProperty("--color-root-bg");
+    }
+    localStorage.setItem("main_bg_color_override", mainBgColorOverride);
+  }, [mainBgColorOverride]);
+
+  useEffect(() => {
+    const baseOp = coverOpacity / 100;
+    const hoverOp = Math.min(1, baseOp + 0.15);
+    document.documentElement.style.setProperty("--cover-base-op", String(baseOp));
+    document.documentElement.style.setProperty("--cover-hover-op", String(hoverOp));
+    localStorage.setItem("cover_opacity", String(coverOpacity));
+  }, [coverOpacity]);
+
+  useEffect(() => {
+    if (coverBlur) {
+      document.documentElement.style.setProperty("--cover-blur-filter", "blur(1.5px)");
+    } else {
+      document.documentElement.style.setProperty("--cover-blur-filter", "none");
+    }
+    localStorage.setItem("cover_blur", String(coverBlur));
+  }, [coverBlur]);
 
   useEffect(() => {
     if (!scatterContainerRef.current) return;
@@ -851,22 +997,6 @@ export default function App() {
   // Apply Theme
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
-    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
-    let color = "#0B0C0D"; // default for BLACK
-    if (theme === "TRUE_BLACK") color = "#000000";
-    else if (theme === "LIGHT") color = "#e2e8f0";
-    else if (theme === "PAPER") color = "#f5f5f0";
-    else if (theme === "RED") color = "#0d0404";
-    else if (theme === "NAVY") color = "#06090e";
-    
-    if (metaThemeColor) {
-      metaThemeColor.setAttribute("content", color);
-    } else {
-      const meta = document.createElement("meta");
-      meta.name = "theme-color";
-      meta.content = color;
-      document.head.appendChild(meta);
-    }
   }, [theme]);
 
   // Load from DB on mount
@@ -878,11 +1008,14 @@ export default function App() {
 
   useEffect(() => {
     if (activeDatasetId) {
+      setIsCategoryImagesView(false);
       loadImages(activeDatasetId);
+    } else if (activeCategoryId && isCategoryImagesView) {
+      loadImagesForCategory(activeCategoryId);
     } else {
       setImages([]);
     }
-  }, [activeDatasetId]);
+  }, [activeDatasetId, activeCategoryId, isCategoryImagesView]);
 
   // Load preview thumbnails for datasets when activeDatasetId === null (HOME screen)
   useEffect(() => {
@@ -984,6 +1117,34 @@ export default function App() {
     }
   };
 
+  const handleCycleCategoryCoverPosition = async (categoryId: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    try {
+      const currentCat = categories.find((c) => c.id === categoryId);
+      const currentPos = currentCat?.coverImagePosition || "top";
+      const nextPos: "top" | "center" | "bottom" =
+        currentPos === "top" ? "center" : currentPos === "center" ? "bottom" : "top";
+
+      await updateCategoryCoverPosition(categoryId, nextPos);
+      setCategories((prev) =>
+        prev.map((c) => (c.id === categoryId ? { ...c, coverImagePosition: nextPos } : c))
+      );
+
+      const posLabel =
+        nextPos === "top"
+          ? t("TOP (HEAD)", "上部寄り")
+          : nextPos === "center"
+          ? t("CENTER", "中央")
+          : t("BOTTOM", "下部寄り");
+      showNotification(t(`FOLDER COVER POSITION: ${posLabel}`, `フォルダーカバー表示位置: ${posLabel}`));
+    } catch (err) {
+      console.error("Failed to cycle category cover position", err);
+    }
+  };
+
   const handleTogglePinDataset = async (datasetId: string, e?: React.MouseEvent) => {
     if (e) {
       e.stopPropagation();
@@ -1082,10 +1243,117 @@ export default function App() {
     return columns;
   }, [sortedImages, viewMode, containerWidth, itemScale, gridGap]);
 
+  const getCategoryDepth = (catId: string): number => {
+    const cat = categories.find((c) => c.id === catId);
+    if (!cat || !cat.parentId) return 0;
+    const parent = categories.find((c) => c.id === cat.parentId);
+    if (!parent || !parent.parentId) return 1;
+    return 2;
+  };
+
+  const getAllDatasetIdsInCategory = (catId: string): string[] => {
+    const childCatIds = categories.filter((c) => c.parentId === catId).map((c) => c.id);
+    const grandChildCatIds = categories
+      .filter((c) => c.parentId && childCatIds.includes(c.parentId))
+      .map((c) => c.id);
+    const allCatIds = [catId, ...childCatIds, ...grandChildCatIds];
+    return datasets
+      .filter((ds) => ds.categoryId && allCatIds.includes(ds.categoryId))
+      .map((ds) => ds.id);
+  };
+
+  const getCategoryTotalImagesCount = (catId: string): number => {
+    const dsIds = getAllDatasetIdsInCategory(catId);
+    return dsIds.reduce((sum, id) => sum + (datasetCounts[id] || 0), 0);
+  };
+
+  const getCategoryDirectDatasets = (catId: string | null): DatasetRecord[] => {
+    if (!catId) {
+      return datasets.filter((ds) => !ds.categoryId);
+    }
+    return datasets.filter((ds) => ds.categoryId === catId);
+  };
+
+  const getCategoryDirectSubcategories = (catId: string | null): CategoryRecord[] => {
+    if (!catId) {
+      return categories.filter((c) => !c.parentId);
+    }
+    return categories.filter((c) => c.parentId === catId);
+  };
+
+  const getCategoryBreadcrumbs = (catId: string | null): CategoryRecord[] => {
+    if (!catId) return [];
+    const crumbs: CategoryRecord[] = [];
+    let currentId: string | null | undefined = catId;
+    while (currentId) {
+      const cat = categories.find((c) => c.id === currentId);
+      if (!cat) break;
+      crumbs.unshift(cat);
+      currentId = cat.parentId;
+    }
+    return crumbs;
+  };
+
+  const getCategoryCoverPreviewUrl = (catId: string): string | null => {
+    const dsIds = getAllDatasetIdsInCategory(catId);
+    for (const id of dsIds) {
+      if (datasetPreviewUrls[id]) return datasetPreviewUrls[id];
+    }
+    return null;
+  };
+
+  const loadImagesForCategory = async (catId: string) => {
+    setActiveCategoryId(catId);
+    setActiveDatasetId(null);
+    setIsCategoryImagesView(true);
+    setIsLoading(true);
+    try {
+      const dsIds = getAllDatasetIdsInCategory(catId);
+      const allDbImages: ImageRecord[] = [];
+      for (const id of dsIds) {
+        const imgs = await getImagesByDataset(id);
+        allDbImages.push(...imgs);
+      }
+
+      images.forEach((img) => URL.revokeObjectURL(img.url));
+
+      const loaded = await Promise.all(
+        allDbImages.map(async (img) => {
+          let { autoBg, width, height } = img;
+          if (!autoBg || !width || !height) {
+            const meta = await analyzeImageBlob(img.data);
+            autoBg = autoBg || meta.bg;
+            width = width || meta.width;
+            height = height || meta.height;
+            storeImages([{ ...img, autoBg, width, height }]).catch(console.error);
+          }
+          return {
+            ...img,
+            url: URL.createObjectURL(img.data),
+            randomX: Math.random() * 80 - 40,
+            randomY: Math.random() * 80 - 40,
+            randomRotation: Math.random() * 30 - 15,
+            autoBg,
+            width,
+            height,
+          };
+        })
+      );
+      setImages(loaded);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const loadDatasets = async () => {
     setIsLoading(true);
     try {
       let dsList = await getAllDatasets();
+      const catList = await getAllCategories();
+      setCategories(catList);
+
       if (dsList.length === 0) {
         // Create initial default dataset
         const ds = await createDataset("DEFAULT DATASET");
@@ -1099,16 +1367,12 @@ export default function App() {
       }
       setDatasetCounts(counts);
 
-      // totalImagesCount is now calculated via useEffect
-
-      if (dsList.length > 0 && !activeDatasetId) {
-        setActiveDatasetId(dsList[0].id);
-      } else if (
+      if (
         activeDatasetId &&
         activeDatasetId !== "all" &&
         !dsList.find((d) => d.id === activeDatasetId)
       ) {
-        setActiveDatasetId(dsList.length > 0 ? dsList[0].id : null);
+        setActiveDatasetId(null);
       }
     } catch (e) {
       console.error(e);
@@ -1458,9 +1722,10 @@ Images imported: ${importedImages}`);
     }
   };
 
-  const handleAddDatasetClick = () => {
+  const handleAddDatasetClick = (targetCatId: string | null = null) => {
     setDatasetNameInput("");
     setEditingDatasetId(null);
+    setTargetCategoryIdForNewDataset(targetCatId !== null ? targetCatId : activeCategoryId);
     setShowNewDatasetModal(true);
   };
 
@@ -1484,10 +1749,192 @@ Images imported: ${importedImages}`);
       );
     } else {
       const ds = await createDataset(datasetNameInput.trim().toUpperCase());
+      if (targetCategoryIdForNewDataset) {
+        await updateDatasetCategory(ds.id, targetCategoryIdForNewDataset);
+      }
       setActiveDatasetId(ds.id);
     }
     setShowNewDatasetModal(false);
+    setTargetCategoryIdForNewDataset(null);
     await loadDatasets();
+  };
+
+  const handleOpenNewCategoryModal = (parentId: string | null = null) => {
+    setNewCategoryParentId(parentId);
+    setEditingCategoryId(null);
+    setCategoryNameInput("");
+    setShowNewCategoryModal(true);
+  };
+
+  const handleOpenRenameCategoryModal = (e: React.MouseEvent, cat: CategoryRecord) => {
+    e.stopPropagation();
+    setEditingCategoryId(cat.id);
+    setCategoryNameInput(cat.name);
+    setShowNewCategoryModal(true);
+  };
+
+  const submitCategoryForm = async () => {
+    if (!categoryNameInput.trim()) return;
+    if (editingCategoryId) {
+      await renameCategory(editingCategoryId, categoryNameInput.trim().toUpperCase());
+    } else {
+      const newCat = await createCategory(categoryNameInput.trim().toUpperCase(), newCategoryParentId);
+      if (newCategoryParentId) {
+        setExpandedCategoryIds((prev) => new Set([...prev, newCategoryParentId]));
+      }
+    }
+    setShowNewCategoryModal(false);
+    setEditingCategoryId(null);
+    setCategoryNameInput("");
+    await loadDatasets();
+  };
+
+  const handleDeleteCategoryClick = (e: React.MouseEvent, cat: CategoryRecord) => {
+    e.stopPropagation();
+    setCategoryToDelete(cat);
+    setShowDeleteCategoryModal(true);
+  };
+
+  const confirmDeleteCategory = async () => {
+    if (!categoryToDelete) return;
+    await deleteCategory(categoryToDelete.id);
+    if (activeCategoryId === categoryToDelete.id) {
+      setActiveCategoryId(categoryToDelete.parentId || null);
+      setIsCategoryImagesView(false);
+    }
+    setShowDeleteCategoryModal(false);
+    setCategoryToDelete(null);
+    await loadDatasets();
+  };
+
+  const handleMoveDatasetToCategory = async (datasetId: string, targetCategoryId: string | null) => {
+    await updateDatasetCategory(datasetId, targetCategoryId);
+    if (targetCategoryId) {
+      setExpandedCategoryIds((prev) => new Set([...prev, targetCategoryId]));
+    }
+    await loadDatasets();
+    const ds = datasets.find((d) => d.id === datasetId);
+    const parentCat = targetCategoryId ? categories.find((c) => c.id === targetCategoryId) : null;
+    showNotification(
+      language === "JP"
+        ? (targetCategoryId
+            ? `「${ds?.name || "セット"}」を「${parentCat?.name || "フォルダー"}」へ移動しました`
+            : `「${ds?.name || "セット"}」をルート（未分類）へ移動しました`)
+        : (targetCategoryId
+            ? `Moved "${ds?.name || "Dataset"}" to "${parentCat?.name || "Folder"}"`
+            : `Moved "${ds?.name || "Dataset"}" to Root`)
+    );
+  };
+
+  const handleMoveCategoryParent = async (categoryId: string, newParentId: string | null) => {
+    if (categoryId === newParentId) return;
+    await updateCategoryParent(categoryId, newParentId);
+    if (newParentId) {
+      setExpandedCategoryIds((prev) => new Set([...prev, newParentId]));
+    }
+    await loadDatasets();
+    const cat = categories.find((c) => c.id === categoryId);
+    const parentCat = newParentId ? categories.find((c) => c.id === newParentId) : null;
+    showNotification(
+      language === "JP"
+        ? (newParentId
+            ? `「${cat?.name || "フォルダー"}」を「${parentCat?.name || "フォルダー"}」の中へ移動しました`
+            : `「${cat?.name || "フォルダー"}」をルート最上位へ移動しました`)
+        : (newParentId
+            ? `Moved folder "${cat?.name || "Folder"}" into "${parentCat?.name || "Folder"}"`
+            : `Moved folder "${cat?.name || "Folder"}" to Root`)
+    );
+  };
+
+  const handleReorderDatasetItems = async (
+    draggedDatasetId: string,
+    targetDatasetId: string | null,
+    targetCategoryId: string | null
+  ) => {
+    const listInCat = datasets.filter(
+      (d) => (d.categoryId || null) === (targetCategoryId || null)
+    );
+    const draggedDs = datasets.find((d) => d.id === draggedDatasetId);
+    if (!draggedDs) return;
+
+    const filtered = listInCat.filter((d) => d.id !== draggedDatasetId);
+
+    let insertIdx = filtered.length;
+    if (targetDatasetId) {
+      const idx = filtered.findIndex((d) => d.id === targetDatasetId);
+      if (idx !== -1) insertIdx = idx;
+    }
+
+    const updatedDs = { ...draggedDs, categoryId: targetCategoryId || undefined };
+    filtered.splice(insertIdx, 0, updatedDs);
+
+    const updates = filtered.map((d, index) => ({
+      id: d.id,
+      orderIndex: index,
+    }));
+
+    await updateDatasetsOrder(updates);
+    if (draggedDs.categoryId !== (targetCategoryId || undefined)) {
+      await updateDatasetCategory(draggedDatasetId, targetCategoryId);
+    }
+    await loadDatasets();
+  };
+
+  const handleReorderCategories = async (
+    draggedCategoryId: string,
+    targetCategoryId: string | null,
+    targetParentId: string | null
+  ) => {
+    const listInParent = categories.filter(
+      (c) => (c.parentId || null) === (targetParentId || null)
+    );
+    const draggedCat = categories.find((c) => c.id === draggedCategoryId);
+    if (!draggedCat) return;
+
+    const filtered = listInParent.filter((c) => c.id !== draggedCategoryId);
+
+    let insertIdx = filtered.length;
+    if (targetCategoryId) {
+      const idx = filtered.findIndex((c) => c.id === targetCategoryId);
+      if (idx !== -1) insertIdx = idx;
+    }
+
+    const updatedCat = { ...draggedCat, parentId: targetParentId || null };
+    filtered.splice(insertIdx, 0, updatedCat);
+
+    const updates = filtered.map((c, index) => ({
+      id: c.id,
+      orderIndex: index,
+    }));
+
+    await updateCategoriesOrder(updates);
+    if (draggedCat.parentId !== (targetParentId || null)) {
+      await updateCategoryParent(draggedCategoryId, targetParentId);
+    }
+    await loadDatasets();
+  };
+
+  const handleRequestMoveDatasetModal = (dataset: DatasetRecord) => {
+    setItemToMove({ type: "dataset", item: dataset });
+    setShowMoveItemModal(true);
+  };
+
+  const handleRequestMoveCategoryModal = (category: CategoryRecord) => {
+    setItemToMove({ type: "category", item: category });
+    setShowMoveItemModal(true);
+  };
+
+  const handleToggleCategoryExpand = (catId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setExpandedCategoryIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(catId)) {
+        next.delete(catId);
+      } else {
+        next.add(catId);
+      }
+      return next;
+    });
   };
 
   const handleRenameFileClick = (
@@ -3169,122 +3616,51 @@ Images imported: ${importedImages}`);
 
             <div className="pt-3 border-t border-panel-border overflow-y-scroll flex flex-col gap-1 min-h-[80px] flex-1 scrollbar-dark pr-1">
               {datasetViewMode === "list" ? (
-                <>
-                  <div
-                    onClick={() => {
-                      setActiveDatasetId(null);
-                      setSearchQuery("");
-                      setSearchInput("");
-                    }}
-                    className={cn(
-                      "flex items-center justify-between px-3 py-2 text-xs font-mono cursor-pointer border transition-colors group min-h-[32px] overflow-hidden shrink-0",
-                      activeDatasetId === null
-                        ? "bg-accent/10 border-accent/50 text-accent"
-                        : "border-transparent text-text-secondary hover:bg-panel-border hover:text-text-primary",
-                    )}
-                  >
-                    <span className="truncate flex-1 min-w-0 pr-2 flex items-center gap-2">
-                      <Square size={12} className={activeDatasetId === null ? "fill-accent" : "fill-none"} />
-                      IMAGE DATA
-                    </span>
-                    <span className="text-text-muted text-[10px] shrink-0 font-mono">
-                      ({totalImagesCount})
-                    </span>
-                  </div>
-                  <Reorder.Group axis="y" values={datasets} onReorder={handleReorderDatasets} className="flex flex-col gap-1 w-full min-h-0 relative">
-                    {datasets.map((ds) => (
-                      <Reorder.Item
-                        key={ds.id}
-                        value={ds}
-                        layout="position"
-                        style={{ width: "100%" }}
-                        onClick={() => {
-                          setActiveDatasetId(ds.id);
-                          setSearchQuery("");
-                          setSearchInput("");
-                        }}
-                        className={cn(
-                          "flex items-center px-3 py-2 text-xs font-mono cursor-grab active:cursor-grabbing border transition-colors group min-h-[32px] overflow-hidden shrink-0",
-                          activeDatasetId === ds.id
-                            ? "bg-accent/10 border-accent/50 text-accent"
-                            : "border-transparent text-text-secondary hover:bg-panel-border hover:text-text-primary",
-                        )}
-                      >
-                        <GripVertical size={14} className="shrink-0 mr-2 opacity-30 group-hover:opacity-100 transition-opacity" />
-                        <span className="truncate flex-1 min-w-0 pr-2 pointer-events-none flex items-center gap-1.5">
-                          {ds.isPinned && (
-                            <button
-                              type="button"
-                              onClick={(e) => handleTogglePinDataset(ds.id, e)}
-                              className="pointer-events-auto p-0.5 -ml-0.5 rounded text-accent hover:opacity-75 transition-opacity"
-                              title={t("UNPIN FROM TOP", "ピン留め解除")}
-                            >
-                              <Pin size={11} className="fill-accent shrink-0 rotate-45" />
-                            </button>
-                          )}
-                          <span className="truncate">{ds.name}</span>
-                          <span className="text-text-muted text-[10px] shrink-0">
-                            ({datasetCounts[ds.id] || 0})
-                          </span>
-                        </span>
-                        <div className="flex gap-2 shrink-0 bg-transparent items-center">
-                          {!ds.isPinned && (
-                            <button
-                              onClick={(e) => handleTogglePinDataset(ds.id, e)}
-                              className="transition-opacity p-0.5 rounded opacity-0 group-hover:opacity-50 hover:!opacity-100 text-text-muted hover:text-text-primary"
-                              title={t("PIN TO TOP", "最上部にピン留め固定")}
-                            >
-                              <Pin size={13} />
-                            </button>
-                          )}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setFavoriteDatasetId(prev => prev === ds.id ? null : ds.id);
-                            }}
-                            className={cn(
-                              "transition-opacity",
-                              favoriteDatasetId === ds.id ? "text-yellow-400 opacity-100" : "opacity-0 group-hover:opacity-50 hover:!opacity-100"
-                            )}
-                            title="FAVORITE DATASET"
-                          >
-                            <Star size={14} fill={favoriteDatasetId === ds.id ? "currentColor" : "none"} />
-                          </button>
-                          {activeDatasetId === ds.id && (
-                            <>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleExportDatasets([ds.id]);
-                                }}
-                                className="hover:text-accent opacity-50 hover:opacity-100 transition-opacity"
-                                title="EXPORT THIS DATASET"
-                              >
-                                <Download size={14} />
-                              </button>
-                              <button
-                                onClick={(e) =>
-                                  handleRenameDatasetClick(e, ds.id, ds.name)
-                                }
-                                className="hover:text-amber-500 opacity-50 hover:opacity-100 transition-opacity"
-                                title="RENAME DATASET"
-                              >
-                                [E]
-                              </button>
-                              <button
-                                onClick={(e) => handleDeleteDataset(e, ds.id)}
-                                className="hover:text-red-500 opacity-50 hover:opacity-100 transition-opacity"
-                                title="DELETE DATASET"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </Reorder.Item>
-                    ))}
-                  </Reorder.Group>
-                </>
+                <CategoryTree
+                  categories={categories}
+                  datasets={datasets}
+                  datasetCounts={datasetCounts}
+                  activeDatasetId={activeDatasetId}
+                  activeCategoryId={activeCategoryId}
+                  expandedCategoryIds={expandedCategoryIds}
+                  favoriteDatasetId={favoriteDatasetId}
+                  onSelectDataset={(id) => {
+                    setActiveDatasetId(id);
+                    setSearchQuery("");
+                    setSearchInput("");
+                  }}
+                  onSelectCategory={(id) => {
+                    setActiveCategoryId(id);
+                    setActiveDatasetId(null);
+                    setIsCategoryImagesView(false);
+                    setSearchQuery("");
+                    setSearchInput("");
+                  }}
+                  onToggleExpand={handleToggleCategoryExpand}
+                  onTogglePinDataset={handleTogglePinDataset}
+                  onToggleFavorite={(id, e) => {
+                    e.stopPropagation();
+                    setFavoriteDatasetId((prev) => (prev === id ? null : id));
+                  }}
+                  onExportDataset={(id) => handleExportDatasets([id])}
+                  onRenameDataset={handleRenameDatasetClick}
+                  onDeleteDataset={handleDeleteDataset}
+                  onAddCategory={handleOpenNewCategoryModal}
+                  onAddDataset={(catId) => handleAddDatasetClick(catId)}
+                  onRenameCategory={handleOpenRenameCategoryModal}
+                  onDeleteCategory={handleDeleteCategoryClick}
+                  onMoveDatasetToCategory={handleMoveDatasetToCategory}
+                  onMoveCategoryParent={handleMoveCategoryParent}
+                  onReorderDatasets={handleReorderDatasetItems}
+                  onReorderCategories={handleReorderCategories}
+                  onRequestMoveDatasetModal={handleRequestMoveDatasetModal}
+                  onRequestMoveCategoryModal={handleRequestMoveCategoryModal}
+                  onRequestColorCategoryModal={(cat) => {
+                    setColorCategoryModalTarget(cat);
+                    setColorCategoryInput(cat.color || themeFolderColors[theme] || "#fbbf24");
+                  }}
+                  t={t}
+                />
               ) : (
                 <div className="flex flex-col gap-3 h-full">
                   <select
@@ -3298,11 +3674,35 @@ Images imported: ${importedImages}`);
                     }}
                   >
                     <option value="" className="bg-white text-black">IMAGE DATA ({totalImagesCount})</option>
-                    {datasets.map((ds) => (
-                      <option key={ds.id} value={ds.id} className="bg-white text-black">
-                        {ds.isPinned ? "📌 " : ""}{ds.name} ({datasetCounts[ds.id] || 0})
-                      </option>
-                    ))}
+                    {/* Unclassified datasets */}
+                    {datasets.filter((d) => !d.categoryId).length > 0 && (
+                      <optgroup label="── ROOT / UNCLASSIFIED ──">
+                        {datasets
+                          .filter((d) => !d.categoryId)
+                          .map((ds) => (
+                            <option key={ds.id} value={ds.id} className="bg-white text-black">
+                              {ds.isPinned ? "📌 " : ""}{ds.name} ({datasetCounts[ds.id] || 0})
+                            </option>
+                          ))}
+                      </optgroup>
+                    )}
+                    {/* Categorized datasets */}
+                    {categories.map((cat) => {
+                      const catDs = datasets.filter((d) => d.categoryId === cat.id);
+                      if (catDs.length === 0) return null;
+                      const catBreadcrumbs = getCategoryBreadcrumbs(cat.id)
+                        .map((c) => c.name)
+                        .join(" > ");
+                      return (
+                        <optgroup key={cat.id} label={`📁 ${catBreadcrumbs}`}>
+                          {catDs.map((ds) => (
+                            <option key={ds.id} value={ds.id} className="bg-white text-black">
+                              {ds.isPinned ? "📌 " : ""}{ds.name} ({datasetCounts[ds.id] || 0})
+                            </option>
+                          ))}
+                        </optgroup>
+                      );
+                    })}
                   </select>
                   {activeDatasetId && (
                     <div className="flex justify-between items-center px-1">
@@ -3417,7 +3817,57 @@ Images imported: ${importedImages}`);
                 return (
                   <Panel
                     key="commandInfo"
-                    title={t("03 COMMAND INFO", "03 コマンド一覧")}
+                    title={
+                      <div className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isTrackInfoCollapsed) {
+                              setIsTrackInfoCollapsed(false);
+                              setBottomPanelTab("command");
+                            } else if (bottomPanelTab === "command") {
+                              setIsTrackInfoCollapsed(true);
+                            } else {
+                              setBottomPanelTab("command");
+                            }
+                          }}
+                          className={cn(
+                            "px-2 py-0.5 transition-all flex items-center gap-1 border rounded-xs",
+                            !isTrackInfoCollapsed && bottomPanelTab === "command"
+                              ? "bg-accent text-accent-text font-bold border-accent shadow-xs"
+                              : "border-transparent text-text-secondary hover:text-text-primary hover:bg-white/5"
+                          )}
+                        >
+                          <Terminal size={11} />
+                          <span>{t("03 COMMAND", "03 コマンド一覧")}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isTrackInfoCollapsed) {
+                              setIsTrackInfoCollapsed(false);
+                              setBottomPanelTab("settings");
+                            } else if (bottomPanelTab === "settings") {
+                              setIsTrackInfoCollapsed(true);
+                            } else {
+                              setBottomPanelTab("settings");
+                            }
+                          }}
+                          className={cn(
+                            "px-2 py-0.5 transition-all flex items-center gap-1 border rounded-xs",
+                            !isTrackInfoCollapsed && bottomPanelTab === "settings"
+                              ? "bg-accent text-accent-text font-bold border-accent shadow-xs"
+                              : "border-transparent text-text-secondary hover:text-text-primary hover:bg-white/5"
+                          )}
+                        >
+                          <Settings size={11} />
+                          <span>{t("SETTING", "設定")}</span>
+                        </button>
+                      </div>
+                    }
                     className={cn(
                       "shrink-0 flex flex-col items-center min-w-0 w-full transition-all duration-300",
                       isTrackInfoCollapsed ? "h-[34px]" : "h-[320px]",
@@ -3435,168 +3885,447 @@ Images imported: ${importedImages}`);
                   >
                     {!isTrackInfoCollapsed && (
                       <div className="flex flex-col gap-3 h-full w-full min-w-0 overflow-y-auto pr-1 select-none text-[11px]">
-                        {/* 一覧画面 (LIST / GRID) */}
-                        <div className="flex flex-col gap-1.5">
-                          <span className="font-mono text-[9px] text-text-muted tracking-wider uppercase font-bold border-b border-panel-border pb-0.5">
-                            {t("GRID / LIST MODE", "一覧画面")}
-                          </span>
-                          <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1.5 items-center">
-                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                              Space
-                            </kbd>
-                            <span className="text-text-secondary truncate">
-                              {t("Auto Scroll Play / Stop", "自動スクロール 開始/停止")}
-                            </span>
+                        {bottomPanelTab === "command" ? (
+                          <>
+                            {/* 一覧画面 (LIST / GRID) */}
+                            <div className="flex flex-col gap-1.5">
+                              <span className="font-mono text-[9px] text-text-muted tracking-wider uppercase font-bold border-b border-panel-border pb-0.5">
+                                {t("GRID / LIST MODE", "一覧画面")}
+                              </span>
+                              <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1.5 items-center">
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  Space
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Auto Scroll Play / Stop", "自動スクロール 開始/停止")}
+                                </span>
 
-                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                              ↑ / ↓
-                            </kbd>
-                            <span className="text-text-secondary truncate">
-                              {t("Auto Scroll / Change Dir", "自動スクロール / 向き切替")}
-                            </span>
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  ↑ / ↓
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Auto Scroll / Change Dir", "自動スクロール / 向き切替")}
+                                </span>
 
-                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                              T
-                            </kbd>
-                            <span className="text-text-secondary truncate">
-                              {t("Scroll Speed (1x - 4x)", "スクロール速度切替 (1x〜4x)")}
-                            </span>
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  T
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Scroll Speed (1x - 4x)", "スクロール速度切替 (1x〜4x)")}
+                                </span>
 
-                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                              ← / →
-                            </kbd>
-                            <span className="text-text-secondary truncate">
-                              {t("Select Prev / Next Image", "前 / 次の画像選択")}
-                            </span>
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  ← / →
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Select Prev / Next Image", "前 / 次の画像選択")}
+                                </span>
 
-                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                              Shift + ↑/↓
-                            </kbd>
-                            <span className="text-text-secondary truncate">
-                              {t("Switch Dataset", "データセット切替")}
-                            </span>
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  Shift + ↑/↓
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Switch Dataset", "データセット切替")}
+                                </span>
 
-                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                              Enter
-                            </kbd>
-                            <span className="text-text-secondary truncate">
-                              {t("Open Fullscreen", "全画面で開く")}
-                            </span>
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  Enter
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Open Fullscreen", "全画面で開く")}
+                                </span>
 
-                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                              P
-                            </kbd>
-                            <span className="text-text-secondary truncate">
-                              {t("Portrait Rotate", "画面向き回転 (縦/横)")}
-                            </span>
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  P
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Portrait Rotate", "画面向き回転 (縦/横)")}
+                                </span>
 
-                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                              F
-                            </kbd>
-                            <span className="text-text-secondary truncate">
-                              {t("Browser Fullscreen", "ブラウザ全画面切替")}
-                            </span>
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  F
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Browser Fullscreen", "ブラウザ全画面切替")}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* 全画面モード (FULLSCREEN & SLIDESHOW) */}
+                            <div className="flex flex-col gap-1.5 mt-1">
+                              <span className="font-mono text-[9px] text-text-muted tracking-wider uppercase font-bold border-b border-panel-border pb-0.5">
+                                {t("FULLSCREEN & SLIDESHOW", "全画面 & スライドショー")}
+                              </span>
+                              <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1.5 items-center">
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  Space
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Play / Stop Slideshow", "スライドショー 再生/停止")}
+                                </span>
+
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  S
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Direction (FWD / REV)", "再生方向切替 (順/逆)")}
+                                </span>
+
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  T
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Interval (1s - 10s)", "スライド秒数切替 (1s〜10s)")}
+                                </span>
+
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  Z
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Zoom to Fill / Reset", "画面フィット (ズーム切替)")}
+                                </span>
+
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  C
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Set as List Cover", "カバー画像設定/解除")}
+                                </span>
+
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  R
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Rotate Image (+90°)", "画像を90°回転")}
+                                </span>
+
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  H
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Flip Horizontal", "左右反転")}
+                                </span>
+
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  U
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Toggle UI Display", "操作UIの表示/非表示")}
+                                </span>
+
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  + / -
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Zoom In / Out", "ズーム拡大 / 縮小")}
+                                </span>
+
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  ← / →
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Prev / Next Image", "前 / 次の画像")}
+                                </span>
+
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  Shift + ←/→
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Switch Dataset", "データセット切替")}
+                                </span>
+
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  Delete
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Hide (Secret)", "一時非表示 (シークレット)")}
+                                </span>
+
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  Esc / BS
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Close Fullscreen", "全画面を閉じる")}
+                                </span>
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="flex flex-col gap-4 text-[11px]">
+                            {/* 1. COLOR THEME SETTING */}
+                            <div className="flex flex-col gap-2">
+                              <div className="flex items-center gap-1.5 font-mono text-[10px] text-text-muted tracking-wider uppercase font-bold border-b border-panel-border pb-1">
+                                <Palette size={12} className="text-accent" />
+                                <span>{t("THEME COLOR", "テーマカラー")}</span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-1.5 font-mono text-[10px]">
+                                {[
+                                  { id: "NAVY", label: "NAVY (ネイビー)", bg: "#06090e", panel: "#0b111a", accent: "#3b82f6" },
+                                  { id: "LIGHT", label: "LIGHT (ライト)", bg: "#e2e8f0", panel: "#f8fafc", accent: "#0f172a" },
+                                  { id: "PAPER", label: "PAPER (セピア)", bg: "#f5f5f0", panel: "#ffffff", accent: "#d94f26" },
+                                  { id: "BLACK", label: "BLACK (ブラック)", bg: "#0B0C0D", panel: "#14161A", accent: "#e2e5e9" },
+                                  { id: "TRUE_BLACK", label: "TRUE BLACK (有機EL)", bg: "#000000", panel: "#0a0a0a", accent: "#ffffff" },
+                                  { id: "RED", label: "RED (レッド)", bg: "#0d0404", panel: "#170707", accent: "#d33c3c" },
+                                ].map((thm) => (
+                                  <button
+                                    key={thm.id}
+                                    type="button"
+                                    onClick={() => setTheme(thm.id as any)}
+                                    className={cn(
+                                      "flex items-center justify-between p-1.5 border transition-all text-left",
+                                      theme === thm.id
+                                        ? "border-accent bg-accent/10 text-text-primary font-bold ring-1 ring-accent"
+                                        : "border-panel-border hover:border-text-muted text-text-secondary hover:text-text-primary bg-panel-bg"
+                                    )}
+                                  >
+                                    <span className="truncate pr-1">{thm.label}</span>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <div className="w-2.5 h-2.5 rounded-full border border-white/20" style={{ backgroundColor: thm.panel }} title={t("Panel Color", "パネル色")} />
+                                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: thm.accent }} title={t("Accent Color", "アクセント色")} />
+                                      <div
+                                        className="w-2.5 h-2.5 rounded-full border border-white/20 ring-1 ring-black/30"
+                                        style={{ backgroundColor: themeFolderColors[thm.id as AppTheme] || DEFAULT_THEME_FOLDER_COLORS[thm.id as AppTheme] }}
+                                        title={t("Folder Color", "フォルダー色")}
+                                      />
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* 2. COVER OPACITY SETTING */}
+                            <div className="flex flex-col gap-2">
+                              <div className="flex items-center justify-between font-mono text-[10px] text-text-muted tracking-wider uppercase font-bold border-b border-panel-border pb-1">
+                                <div className="flex items-center gap-1.5">
+                                  <Sliders size={12} className="text-accent" />
+                                  <span>{t("COVER OPACITY", "カバー不透明度 (濃さ)")}</span>
+                                </div>
+                                <span className="text-accent font-bold font-mono text-[11px] tabular-nums">
+                                  {coverOpacity}%
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-2 pt-0.5">
+                                <input
+                                  type="range"
+                                  min="10"
+                                  max="100"
+                                  step="5"
+                                  value={coverOpacity}
+                                  onChange={(e) => setCoverOpacity(parseInt(e.target.value, 10))}
+                                  className="w-full h-1.5 bg-btn-bg border border-btn-border rounded-lg appearance-none cursor-pointer accent-accent"
+                                />
+                              </div>
+
+                              <div className="flex items-center gap-1 font-mono text-[9px] pt-0.5">
+                                {[
+                                  { label: "15%", val: 15 },
+                                  { label: "30% (標準)", val: 30 },
+                                  { label: "50%", val: 50 },
+                                  { label: "70%", val: 70 },
+                                  { label: "90%", val: 90 },
+                                ].map((preset) => (
+                                  <button
+                                    key={preset.val}
+                                    type="button"
+                                    onClick={() => setCoverOpacity(preset.val)}
+                                    className={cn(
+                                      "px-1.5 py-0.5 border transition-all text-[9px]",
+                                      coverOpacity === preset.val
+                                        ? "border-accent bg-accent/20 text-accent font-bold"
+                                        : "border-panel-border text-text-muted hover:text-text-primary bg-panel-bg"
+                                    )}
+                                  >
+                                    {preset.label}
+                                  </button>
+                                ))}
+                              </div>
+
+                              <div className="flex items-center justify-between text-[10px] pt-1">
+                                <span className="text-text-muted font-mono">{t("COVER BLUR", "カバー背景のぼかし")}</span>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setCoverBlur(false)}
+                                    className={cn(
+                                      "px-2 py-0.5 border text-[9px] font-mono transition-all",
+                                      !coverBlur
+                                        ? "border-accent bg-accent/20 text-accent font-bold"
+                                        : "border-panel-border text-text-muted hover:text-text-primary bg-panel-bg"
+                                    )}
+                                  >
+                                    OFF (クッキリ)
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setCoverBlur(true)}
+                                    className={cn(
+                                      "px-2 py-0.5 border text-[9px] font-mono transition-all",
+                                      coverBlur
+                                        ? "border-accent bg-accent/20 text-accent font-bold"
+                                        : "border-panel-border text-text-muted hover:text-text-primary bg-panel-bg"
+                                    )}
+                                  >
+                                    ON (ぼかし)
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* 3. FOLDER ICON COLOR */}
+                            <div className="flex flex-col gap-2">
+                              <div className="flex items-center justify-between font-mono text-[10px] text-text-muted tracking-wider uppercase font-bold border-b border-panel-border pb-1">
+                                <div className="flex items-center gap-1.5">
+                                  <Folder size={12} className="text-folder-icon" />
+                                  <span>{t("FOLDER ICON COLOR", "フォルダーアイコン色")} ({theme})</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setThemeFolderColors((prev) => ({
+                                      ...prev,
+                                      [theme]: DEFAULT_THEME_FOLDER_COLORS[theme],
+                                    }));
+                                  }}
+                                  className={cn(
+                                    "px-1.5 py-0.5 text-[9px] border transition-colors",
+                                    themeFolderColors[theme] === DEFAULT_THEME_FOLDER_COLORS[theme]
+                                      ? "bg-accent/20 border-accent text-accent font-bold"
+                                      : "border-panel-border text-text-muted hover:text-text-primary"
+                                  )}
+                                >
+                                  {t("RESET", "標準色に戻す")}
+                                </button>
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {[
+                                  { name: "アンバー", hex: "#fbbf24" },
+                                  { name: "スカイ", hex: "#38bdf8" },
+                                  { name: "ブルー", hex: "#3b82f6" },
+                                  { name: "エメラルド", hex: "#10b981" },
+                                  { name: "ローズ", hex: "#f43f5e" },
+                                  { name: "パープル", hex: "#a855f7" },
+                                  { name: "シルバー", hex: "#9ca3af" },
+                                  { name: "ホワイト", hex: "#ffffff" },
+                                  { name: "シアン", hex: "#06b6d4" },
+                                  { name: "ピンク", hex: "#ec4899" },
+                                ].map((c) => {
+                                  const curColor = themeFolderColors[theme] || DEFAULT_THEME_FOLDER_COLORS[theme];
+                                  const isSelected = curColor.toLowerCase() === c.hex.toLowerCase();
+                                  return (
+                                    <button
+                                      key={c.hex}
+                                      type="button"
+                                      onClick={() => {
+                                        setThemeFolderColors((prev) => ({
+                                          ...prev,
+                                          [theme]: c.hex,
+                                        }));
+                                      }}
+                                      title={c.name}
+                                      className={cn(
+                                        "w-5 h-5 rounded-xs border transition-transform flex items-center justify-center shrink-0 hover:scale-110 cursor-pointer",
+                                        isSelected
+                                          ? "border-text-primary ring-2 ring-accent ring-offset-1 scale-105"
+                                          : "border-black/30"
+                                      )}
+                                      style={{ backgroundColor: c.hex }}
+                                    >
+                                      {isSelected && (
+                                        <Check size={10} className="text-black drop-shadow-xs" />
+                                      )}
+                                    </button>
+                                  );
+                                })}
+
+                                {/* Custom Color Input */}
+                                <label
+                                  className="flex items-center gap-1 px-1.5 py-0.5 border border-panel-border bg-panel-bg hover:border-accent text-[9px] font-mono cursor-pointer transition-colors"
+                                  title={t("Pick Custom Color", "カスタム色を選択")}
+                                >
+                                  <input
+                                    type="color"
+                                    value={themeFolderColors[theme] || DEFAULT_THEME_FOLDER_COLORS[theme]}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setThemeFolderColors((prev) => ({
+                                        ...prev,
+                                        [theme]: val,
+                                      }));
+                                    }}
+                                    className="w-3.5 h-3.5 cursor-pointer border-0 bg-transparent p-0"
+                                  />
+                                  <span>{t("CUSTOM", "カスタム")}</span>
+                                </label>
+                              </div>
+                            </div>
+
+                            {/* 4. MAIN SCREEN BG COLOR OVERRIDE */}
+                            <div className="flex flex-col gap-2">
+                              <div className="flex items-center justify-between font-mono text-[10px] text-text-muted tracking-wider uppercase font-bold border-b border-panel-border pb-1">
+                                <div className="flex items-center gap-1.5">
+                                  <MonitorSmartphone size={12} className="text-accent" />
+                                  <span>{t("MAIN SCREEN BG", "メイン画面背景色 (右カラム)")}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setMainBgColorOverride("default")}
+                                  className={cn(
+                                    "px-1.5 py-0.5 text-[9px] border transition-colors",
+                                    mainBgColorOverride === "default"
+                                      ? "bg-accent/20 border-accent text-accent font-bold"
+                                      : "border-panel-border text-text-muted hover:text-text-primary"
+                                  )}
+                                >
+                                  {t("THEME DEFAULT", "テーマ標準")}
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-1.5 font-mono text-[10px]">
+                                {[
+                                  { label: "白 (ホワイト)", hex: "#ffffff" },
+                                  { label: "オフホワイト", hex: "#f8fafc" },
+                                  { label: "ダークブラック", hex: "#0B0C0D" },
+                                  { label: "有機ELブラック", hex: "#000000" },
+                                ].map((bgOpt) => (
+                                  <button
+                                    key={bgOpt.hex}
+                                    type="button"
+                                    onClick={() => setMainBgColorOverride(bgOpt.hex)}
+                                    className={cn(
+                                      "flex items-center justify-between p-1.5 border transition-all text-left",
+                                      mainBgColorOverride === bgOpt.hex
+                                        ? "border-accent bg-accent/10 text-text-primary font-bold ring-1 ring-accent"
+                                        : "border-panel-border hover:border-text-muted text-text-secondary hover:text-text-primary bg-panel-bg"
+                                    )}
+                                  >
+                                    <span className="truncate pr-1">{bgOpt.label}</span>
+                                    <div
+                                      className="w-3 h-3 rounded-xs border border-white/20 shrink-0"
+                                      style={{ backgroundColor: bgOpt.hex }}
+                                    />
+                                  </button>
+                                ))}
+                              </div>
+
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <label
+                                  className="flex items-center gap-1 px-2 py-1 border border-panel-border bg-panel-bg hover:border-accent text-[10px] font-mono cursor-pointer transition-colors"
+                                  title={t("Pick Custom Main BG Color", "背景色のカスタム選択")}
+                                >
+                                  <input
+                                    type="color"
+                                    value={mainBgColorOverride !== "default" ? mainBgColorOverride : "#000000"}
+                                    onChange={(e) => setMainBgColorOverride(e.target.value)}
+                                    className="w-3.5 h-3.5 cursor-pointer border-0 bg-transparent p-0"
+                                  />
+                                  <span>{t("PICK CUSTOM BG COLOR", "カスタム色で指定")}</span>
+                                </label>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-
-                        {/* 全画面モード (FULLSCREEN & SLIDESHOW) */}
-                        <div className="flex flex-col gap-1.5 mt-1">
-                          <span className="font-mono text-[9px] text-text-muted tracking-wider uppercase font-bold border-b border-panel-border pb-0.5">
-                            {t("FULLSCREEN & SLIDESHOW", "全画面 & スライドショー")}
-                          </span>
-                          <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1.5 items-center">
-                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                              Space
-                            </kbd>
-                            <span className="text-text-secondary truncate">
-                              {t("Play / Stop Slideshow", "スライドショー 再生/停止")}
-                            </span>
-
-                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                              S
-                            </kbd>
-                            <span className="text-text-secondary truncate">
-                              {t("Direction (FWD / REV)", "再生方向切替 (順/逆)")}
-                            </span>
-
-                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                              T
-                            </kbd>
-                            <span className="text-text-secondary truncate">
-                              {t("Interval (1s - 10s)", "スライド秒数切替 (1s〜10s)")}
-                            </span>
-
-                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                              Z
-                            </kbd>
-                            <span className="text-text-secondary truncate">
-                              {t("Zoom to Fill / Reset", "画面フィット (ズーム切替)")}
-                            </span>
-
-                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                              C
-                            </kbd>
-                            <span className="text-text-secondary truncate">
-                              {t("Set as List Cover", "カバー画像設定/解除")}
-                            </span>
-
-                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                              R
-                            </kbd>
-                            <span className="text-text-secondary truncate">
-                              {t("Rotate Image (+90°)", "画像を90°回転")}
-                            </span>
-
-                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                              H
-                            </kbd>
-                            <span className="text-text-secondary truncate">
-                              {t("Flip Horizontal", "左右反転")}
-                            </span>
-
-                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                              U
-                            </kbd>
-                            <span className="text-text-secondary truncate">
-                              {t("Toggle UI Display", "操作UIの表示/非表示")}
-                            </span>
-
-                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                              + / -
-                            </kbd>
-                            <span className="text-text-secondary truncate">
-                              {t("Zoom In / Out", "ズーム拡大 / 縮小")}
-                            </span>
-
-                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                              ← / →
-                            </kbd>
-                            <span className="text-text-secondary truncate">
-                              {t("Prev / Next Image", "前 / 次の画像")}
-                            </span>
-
-                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                              Shift + ←/→
-                            </kbd>
-                            <span className="text-text-secondary truncate">
-                              {t("Switch Dataset", "データセット切替")}
-                            </span>
-
-                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                              Delete
-                            </kbd>
-                            <span className="text-text-secondary truncate">
-                              {t("Hide (Secret)", "一時非表示 (シークレット)")}
-                            </span>
-
-                            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                              Esc / BS
-                            </kbd>
-                            <span className="text-text-secondary truncate">
-                              {t("Close Fullscreen", "全画面を閉じる")}
-                            </span>
-                          </div>
-                        </div>
+                        )}
                       </div>
                     )}
                   </Panel>
@@ -4019,6 +4748,68 @@ Images imported: ${importedImages}`);
                   )}
                 >
                   {(() => {
+                    // 1. Home / Folder Explorer View
+                    if (activeDatasetId === null && !isCategoryImagesView) {
+                      return (
+                        <CategoryExplorer
+                          categories={categories}
+                          datasets={datasets}
+                          datasetCounts={datasetCounts}
+                          datasetPreviewUrls={datasetPreviewUrls}
+                          activeCategoryId={activeCategoryId}
+                          totalImagesCount={totalImagesCount}
+                          homeViewMode={homeViewMode}
+                          favoriteDatasetId={favoriteDatasetId}
+                          setHomeViewMode={setHomeViewMode}
+                          onSelectCategory={(catId) => {
+                            setActiveCategoryId(catId);
+                            setActiveDatasetId(null);
+                            setIsCategoryImagesView(false);
+                            setSearchQuery("");
+                            setSearchInput("");
+                          }}
+                          onSelectDataset={(dsId) => {
+                            setActiveDatasetId(dsId);
+                            setIsCategoryImagesView(false);
+                            setSearchQuery("");
+                            setSearchInput("");
+                          }}
+                          onViewCategoryImages={(catId) => {
+                            loadImagesForCategory(catId);
+                          }}
+                          onAddCategory={handleOpenNewCategoryModal}
+                          onAddDataset={(catId) => handleAddDatasetClick(catId)}
+                          onRenameCategory={handleOpenRenameCategoryModal}
+                          onDeleteCategory={handleDeleteCategoryClick}
+                          onTogglePinDataset={handleTogglePinDataset}
+                          onCycleCoverPosition={handleCycleCoverPosition}
+                          onCycleCategoryCoverPosition={handleCycleCategoryCoverPosition}
+                          onMoveDatasetToCategory={handleMoveDatasetToCategory}
+                          onMoveCategoryParent={handleMoveCategoryParent}
+                          onReorderDatasets={handleReorderDatasetItems}
+                          onReorderCategories={handleReorderCategories}
+                          onRequestMoveDatasetModal={handleRequestMoveDatasetModal}
+                          onRequestMoveCategoryModal={handleRequestMoveCategoryModal}
+                          onRequestColorCategoryModal={(cat) => {
+                            setColorCategoryModalTarget(cat);
+                            setColorCategoryInput(cat.color || themeFolderColors[theme] || "#fbbf24");
+                          }}
+                          t={t}
+                        />
+                      );
+                    }
+
+                    // 2. Empty State when in dataset/category image view
+                    if (sortedImages.length === 0 && !isLoading) {
+                      return (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center text-text-muted font-mono text-xs pointer-events-none">
+                          <ImageIcon size={48} className="mb-4 opacity-20" />
+                          NO DATA IN INDEX
+                        </div>
+                      );
+                    }
+
+                    // 3. Image Grid View (Dataset or Folder All-Images View)
                     const isSortable = !searchQuery.trim() && (viewMode === "grid-sq" || viewMode === "list" || viewMode === "grid-ma") && sortField === "custom";
                     const Container: any = isSortable ? ReactSortable : "div";
                     const containerProps = isSortable ? {
@@ -4030,9 +4821,53 @@ Images imported: ${importedImages}`);
                       delay: 150,
                       delayOnTouchOnly: true,
                     } : {};
-                    
+
                     return (
                       <>
+                        {/* Folder All-Images View Sticky Header */}
+                        {isCategoryImagesView && (
+                          <div className="sticky top-0 z-40 w-full mb-4 flex flex-wrap items-center justify-between gap-3 bg-panel-bg/95 backdrop-blur-md px-4 py-2.5 border border-panel-border shadow-md select-none">
+                            <div className="flex items-center gap-3 font-mono">
+                              <button
+                                type="button"
+                                onClick={() => setIsCategoryImagesView(false)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/20 hover:bg-accent text-accent hover:text-accent-text border border-accent text-xs font-bold transition-colors shadow-sm"
+                              >
+                                <ChevronLeft size={14} />
+                                <span>{t("BACK TO FOLDER", "フォルダーに戻る")}</span>
+                              </button>
+                              <div className="flex items-center gap-2 text-xs">
+                                <FolderOpen size={15} className="text-folder-icon" />
+                                <span className="text-text-secondary">{t("FOLDER: ", "フォルダー: ")}</span>
+                                <span className="font-bold text-text-primary">
+                                  {categories.find((c) => c.id === activeCategoryId)?.name || "FOLDER"}
+                                </span>
+                                <span className="text-accent bg-accent/15 px-2 py-0.5 rounded text-[11px] font-bold">
+                                  {sortedImages.length} {t("IMAGES", "枚")}
+                                </span>
+                              </div>
+                            </div>
+                            {/* Fast sub-dataset tabs */}
+                            <div className="flex items-center gap-1.5 overflow-x-auto max-w-[50%] scrollbar-none text-[11px] font-mono">
+                              {getCategoryDirectDatasets(activeCategoryId).map((ds) => (
+                                <button
+                                  key={ds.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveDatasetId(ds.id);
+                                    setIsCategoryImagesView(false);
+                                  }}
+                                  className="px-2 py-1 bg-panel-bg border border-panel-border/80 hover:border-accent text-text-secondary hover:text-text-primary transition-colors truncate"
+                                  title={ds.name}
+                                >
+                                  {ds.name} ({datasetCounts[ds.id] || 0})
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Search Results Header */}
                         {searchQuery.trim() && (
                           <div className="absolute top-4 left-0 w-full z-50 flex items-center justify-center pointer-events-none mb-6">
                             <div className="bg-panel-bg/70 backdrop-blur-md border border-panel-border/50 shadow-lg rounded-full px-6 py-2.5 flex items-center gap-3">
@@ -4046,439 +4881,146 @@ Images imported: ${importedImages}`);
                             </div>
                           </div>
                         )}
+
                         <Container
-                        {...containerProps}
-                        className={cn(
-                          "w-full h-auto",
-                          !searchQuery.trim() && viewMode === "grid-sq" &&
-                            "grid content-start justify-center",
-                          !searchQuery.trim() && viewMode === "grid-ma" && "flex items-start",
-                          (!searchQuery.trim() && viewMode === "list") && "flex flex-col",
-                        )}
-                        style={{
-                          ...(!searchQuery.trim() && viewMode === "grid-sq"
-                            ? {
-                                gridTemplateColumns: `repeat(auto-fill, minmax(${itemScale}px, 1fr))`,
-                                gap: `${gridGap}px`,
-                              }
-                            : {}),
-                          ...(!searchQuery.trim() && viewMode === "grid-ma"
-                            ? { gap: `${gridGap}px` }
-                            : {}),
-                          ...(!searchQuery.trim() && viewMode === "list" ? { gap: `${gridGap}px` } : {}),
-                        }}
-                      >
-                    {(() => {
+                          {...containerProps}
+                          className={cn(
+                            "w-full h-auto",
+                            !searchQuery.trim() && viewMode === "grid-sq" &&
+                              "grid content-start justify-center",
+                            !searchQuery.trim() && viewMode === "grid-ma" && "flex items-start",
+                            (!searchQuery.trim() && viewMode === "list") && "flex flex-col",
+                          )}
+                          style={{
+                            ...(!searchQuery.trim() && viewMode === "grid-sq"
+                              ? {
+                                  gridTemplateColumns: `repeat(auto-fill, minmax(${itemScale}px, 1fr))`,
+                                  gap: `${gridGap}px`,
+                                }
+                              : {}),
+                            ...(!searchQuery.trim() && viewMode === "grid-ma"
+                              ? { gap: `${gridGap}px` }
+                              : {}),
+                            ...(!searchQuery.trim() && viewMode === "list" ? { gap: `${gridGap}px` } : {}),
+                          }}
+                        >
+                          {(() => {
+                            if (searchQuery.trim() && viewMode !== "free") {
+                              const groupedImages: Record<string, typeof sortedImages> = {};
+                              sortedImages.forEach(img => {
+                                 if (!groupedImages[img.datasetId]) {
+                                    groupedImages[img.datasetId] = [];
+                                 }
+                                 groupedImages[img.datasetId].push(img);
+                              });
 
-                    if (searchQuery.trim() && viewMode !== "free") {
-                      const groupedImages: Record<string, typeof sortedImages> = {};
-                      sortedImages.forEach(img => {
-                         if (!groupedImages[img.datasetId]) {
-                            groupedImages[img.datasetId] = [];
-                         }
-                         groupedImages[img.datasetId].push(img);
-                      });
+                              return (
+                                <div className="flex flex-col w-full h-auto mt-16">
+                                  <div className="flex flex-col gap-8 w-full h-auto px-4 pb-8">
+                                  {Object.entries(groupedImages).map(([datasetId, imgs]) => {
+                                     const dataset = datasets.find(d => d.id === datasetId);
+                                     const datasetName = dataset ? dataset.name : "UNKNOWN";
 
-                      return (
-                        <div className="flex flex-col w-full h-auto mt-16">
-                          <div className="flex flex-col gap-8 w-full h-auto px-4 pb-8">
-                          {Object.entries(groupedImages).map(([datasetId, imgs]) => {
-                             const dataset = datasets.find(d => d.id === datasetId);
-                             const datasetName = dataset ? dataset.name : "UNKNOWN";
+                                     return (
+                                       <div key={datasetId} className="flex flex-col gap-2">
+                                         <div 
+                                           className="bg-panel-bg border border-panel-border px-4 py-2 font-mono text-accent text-sm tracking-widest font-bold border-l-2 border-l-accent uppercase flex items-center justify-between cursor-pointer hover:bg-black/10 transition-colors group"
+                                           onClick={() => {
+                                              setActiveDatasetId(datasetId);
+                                              setIsCategoryImagesView(false);
+                                              setSearchQuery("");
+                                              setSearchInput("");
+                                           }}
+                                           title={t("Click to open this dataset", "クリックしてこのデータセットを開く")}
+                                         >
+                                           <span className="group-hover:underline">{datasetName}</span>
+                                           <span className="text-xs text-text-muted group-hover:text-accent transition-colors">{imgs.length} IMAGES</span>
+                                         </div>
+                                         <div
+                                           className={cn(
+                                             "w-full h-auto",
+                                             viewMode === "grid-sq" && "grid content-start justify-center",
+                                             viewMode === "grid-ma" && "flex items-start",
+                                             viewMode === "list" && "flex flex-col",
+                                           )}
+                                           style={{
+                                              ...(viewMode === "grid-sq" ? { gridTemplateColumns: `repeat(auto-fill, minmax(${itemScale}px, 1fr))`, gap: `${gridGap}px` } : {}),
+                                              ...(viewMode === "grid-ma" ? { gap: `${gridGap}px` } : {}),
+                                              ...(viewMode === "list" ? { gap: `${gridGap}px` } : {}),
+                                           }}
+                                         >
+                                            {viewMode === "grid-ma" ? (
+                                                (() => {
+                                                  const colsCount = Math.max(1, Math.floor((containerWidth - 32 - 16 + gridGap) / (itemScale + gridGap)));
+                                                  const columns = Array.from({ length: colsCount }, () => [] as typeof sortedImages);
+                                                  imgs.forEach((img, index) => {
+                                                    columns[index % colsCount].push(img);
+                                                  });
+                                                  return columns.map((col, colIndex) => (
+                                                    <div key={colIndex} className="flex flex-col flex-1 min-w-0" style={{ gap: `${gridGap}px` }}>
+                                                      {col.map(img => {
+                                                        const globalIdx = sortedImages.findIndex(sim => sim.id === img.id);
+                                                        return renderImageCard(img, globalIdx, selectedImage?.id === img.id, isSelectionMode && selectedImageIds.has(img.id));
+                                                      })}
+                                                    </div>
+                                                  ));
+                                                })()
+                                            ) : (
+                                                imgs.map(img => {
+                                                   const globalIdx = sortedImages.findIndex(sim => sim.id === img.id);
+                                                   return renderImageCard(img, globalIdx, selectedImage?.id === img.id, isSelectionMode && selectedImageIds.has(img.id));
+                                                })
+                                            )}
+                                         </div>
+                                       </div>
+                                     );
+                                  })}
+                                  </div>
+                                </div>
+                              );
+                            }
 
-  return (
-                               <div key={datasetId} className="flex flex-col gap-2">
-                                 <div 
-                                   className="bg-panel-bg border border-panel-border px-4 py-2 font-mono text-accent text-sm tracking-widest font-bold border-l-2 border-l-accent uppercase flex items-center justify-between cursor-pointer hover:bg-black/10 transition-colors group"
-                                   onClick={() => {
-                                      setActiveDatasetId(datasetId);
-                                      setSearchQuery("");
-                                      setSearchInput("");
-                                   }}
-                                   title={t("Click to open this dataset", "クリックしてこのデータセットを開く")}
-                                 >
-                                   <span className="group-hover:underline">{datasetName}</span>
-                                   <span className="text-xs text-text-muted group-hover:text-accent transition-colors">{imgs.length} IMAGES</span>
-                                 </div>
-                                 <div
-                                   className={cn(
-                                     "w-full h-auto",
-                                     viewMode === "grid-sq" && "grid content-start justify-center",
-                                     viewMode === "grid-ma" && "flex items-start",
-                                     viewMode === "list" && "flex flex-col",
-                                   )}
-                                   style={{
-                                      ...(viewMode === "grid-sq" ? { gridTemplateColumns: `repeat(auto-fill, minmax(${itemScale}px, 1fr))`, gap: `${gridGap}px` } : {}),
-                                      ...(viewMode === "grid-ma" ? { gap: `${gridGap}px` } : {}),
-                                      ...(viewMode === "list" ? { gap: `${gridGap}px` } : {}),
-                                   }}
-                                 >
-                                    {viewMode === "grid-ma" ? (
-                                        (() => {
-                                          const colsCount = Math.max(1, Math.floor((containerWidth - 32 - 16 + gridGap) / (itemScale + gridGap)));
-                                          const columns = Array.from({ length: colsCount }, () => [] as typeof sortedImages);
-                                          imgs.forEach((img, index) => {
-                                            columns[index % colsCount].push(img);
-                                          });
-                                          return columns.map((col, colIndex) => (
-                                            <div key={colIndex} className="flex flex-col flex-1 min-w-0" style={{ gap: `${gridGap}px` }}>
-                                              {col.map(img => {
-                                                const globalIdx = sortedImages.findIndex(sim => sim.id === img.id);
-                                                return renderImageCard(img, globalIdx, selectedImage?.id === img.id, isSelectionMode && selectedImageIds.has(img.id));
-                                              })}
-                                            </div>
-                                          ));
-                                        })()
-                                    ) : (
-                                        imgs.map(img => {
-                                           const globalIdx = sortedImages.findIndex(sim => sim.id === img.id);
-                                           return renderImageCard(img, globalIdx, selectedImage?.id === img.id, isSelectionMode && selectedImageIds.has(img.id));
-                                        })
-                                    )}
-                                 </div>
-                               </div>
-                             );
-                          })}
-                          </div>
-                        </div>
-                      );
-                    }
+                            if (viewMode === "grid-ma") {
+                              return masonryColumns.map((col, colIdx) => (
+                                <div
+                                  key={colIdx}
+                                  className="flex flex-col flex-1 min-w-0"
+                                  style={{ gap: `${gridGap}px` }}
+                                >
+                                  {col.map((img) => {
+                                    const isSelected = selectedImage?.id === img.id;
+                                    const isMultiSelected =
+                                      isSelectionMode && selectedImageIds.has(img.id);
+                                    const globalIdx = sortedImages.findIndex(
+                                      (sim) => sim.id === img.id,
+                                    );
+                                    return renderImageCard(
+                                      img,
+                                      globalIdx,
+                                      isSelected,
+                                      isMultiSelected,
+                                    );
+                                  })}
+                                </div>
+                              ));
+                            }
 
-                      if (viewMode === "grid-ma") {
-                        return masonryColumns.map((col, colIdx) => (
-                          <div
-                            key={colIdx}
-                            className="flex flex-col flex-1 min-w-0"
-                            style={{ gap: `${gridGap}px` }}
-                          >
-                            {col.map((img) => {
+                            return sortedImages.map((img, i) => {
                               const isSelected = selectedImage?.id === img.id;
                               const isMultiSelected =
                                 isSelectionMode && selectedImageIds.has(img.id);
-                              const globalIdx = sortedImages.findIndex(
-                                (sim) => sim.id === img.id,
-                              );
                               return renderImageCard(
                                 img,
-                                globalIdx,
+                                i,
                                 isSelected,
                                 isMultiSelected,
                               );
-                            })}
-                          </div>
-                        ));
-                      }
-
-                      return sortedImages.map((img, i) => {
-                        const isSelected = selectedImage?.id === img.id;
-                        const isMultiSelected =
-                          isSelectionMode && selectedImageIds.has(img.id);
-                        return renderImageCard(
-                          img,
-                          i,
-                          isSelected,
-                          isMultiSelected,
-                        );
-                      });
-                    })()}
-                  </Container>
+                            });
+                          })()}
+                        </Container>
                       </>
                     );
                   })()}
-                  {activeDatasetId === null ? (
-                    <div className="absolute inset-0 flex flex-col overflow-hidden">
-                      {/* Background Watermark (Anchored and perfectly centered within main panel) */}
-                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none z-0 overflow-hidden">
-                        <div className="text-[10vw] font-black tracking-tight text-panel-border/25 leading-none text-center select-none">
-                          IMAGE<br />DATA
-                        </div>
-                      </div>
-
-                      {/* Foreground Content (Scrollable) */}
-                      <div className="relative z-10 w-full h-full overflow-y-auto p-6 sm:p-8 scrollbar-dark flex flex-col items-center justify-start">
-                        <div className="w-full max-w-6xl flex flex-col items-center">
-                          {/* Home Header Pill & View Mode Switcher */}
-                          <div className="flex flex-wrap items-center justify-center gap-3 mb-6 select-none">
-                            <div className="text-text-muted text-xs sm:text-sm tracking-widest uppercase font-mono bg-panel-bg/90 backdrop-blur-md px-5 py-2 rounded-full border border-panel-border shadow-sm flex items-center gap-2">
-                              <Folder size={14} className="text-accent" />
-                              <span>{t("SELECT A DATASET TO VIEW IMAGES", "リストを選択して画像を表示します")}</span>
-                              <span className="text-text-primary font-bold">({datasets.length} DATASETS / {totalImagesCount} IMAGES)</span>
-                            </div>
-
-                            {/* View Style Switcher Buttons */}
-                            <div className="flex items-center border border-panel-border bg-panel-bg/90 backdrop-blur-md p-1 rounded-full text-[10px] font-mono shadow-sm">
-                              <button
-                                type="button"
-                                onClick={() => setHomeViewMode("text")}
-                                className={cn(
-                                  "px-3 py-1 rounded-full transition-colors uppercase",
-                                  homeViewMode === "text"
-                                    ? "bg-accent text-white font-bold"
-                                    : "text-text-secondary hover:text-text-primary"
-                                )}
-                                title={t("Text only", "テキストのみ")}
-                              >
-                                {t("TEXT", "テキスト")}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setHomeViewMode("popup")}
-                                className={cn(
-                                  "px-3 py-1 rounded-full transition-colors uppercase",
-                                  homeViewMode === "popup"
-                                    ? "bg-accent text-white font-bold"
-                                    : "text-text-secondary hover:text-text-primary"
-                                )}
-                                title={t("Hover to preview thumbnail", "ホバーでサムネイルポップアップ")}
-                              >
-                                {t("POPUP", "ポップアップ")}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setHomeViewMode("card")}
-                                className={cn(
-                                  "px-3 py-1 rounded-full transition-colors uppercase",
-                                  homeViewMode === "card"
-                                    ? "bg-accent text-white font-bold"
-                                    : "text-text-secondary hover:text-text-primary"
-                                )}
-                                title={t("Top thumbnail card", "上部サムネイルカード")}
-                              >
-                                {t("CARD", "カード")}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setHomeViewMode("cover")}
-                                className={cn(
-                                  "px-3 py-1 rounded-full transition-colors uppercase",
-                                  homeViewMode === "cover"
-                                    ? "bg-accent text-white font-bold"
-                                    : "text-text-secondary hover:text-text-primary"
-                                )}
-                                title={t("Background cover art", "背景カバーアート")}
-                              >
-                                {t("COVER", "カバー")}
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Dataset Cards Grid */}
-                          {datasets.length === 0 ? (
-                            <div className="text-text-muted font-mono text-xs mt-12 bg-panel-bg/60 px-6 py-4 border border-panel-border rounded-sm">
-                              {t("NO DATASETS YET. CREATE ONE FROM THE SIDEBAR.", "データセットがありません。サイドバーから新規作成してください。")}
-                            </div>
-                          ) : (
-                            <div className={cn(
-                              "grid gap-3.5 w-full pb-12",
-                              homeViewMode === "card"
-                                ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-                                : "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
-                            )}>
-                              {datasets.map((ds) => {
-                                const count = datasetCounts[ds.id] || 0;
-                                const isFav = favoriteDatasetId === ds.id;
-                                const previewUrl = datasetPreviewUrls[ds.id];
-
-                                return (
-                                  <div
-                                    key={ds.id}
-                                    className="relative group"
-                                    onMouseEnter={(e) => {
-                                      setHoveredDatasetId(ds.id);
-                                      setPopupMousePos({ x: e.clientX, y: e.clientY });
-                                    }}
-                                    onMouseMove={(e) => {
-                                      setPopupMousePos({ x: e.clientX, y: e.clientY });
-                                    }}
-                                    onMouseLeave={() => setHoveredDatasetId(null)}
-                                  >
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setActiveDatasetId(ds.id);
-                                        setSearchQuery("");
-                                        setSearchInput("");
-                                      }}
-                                      className={cn(
-                                        "w-full h-full group flex flex-col justify-between transition-all text-left shadow-sm hover:shadow-md rounded-none text-text-primary overflow-hidden relative border",
-                                        "border-panel-border hover:border-accent/70",
-                                        homeViewMode === "card" ? "p-0 bg-panel-bg/90" : "p-3.5 bg-panel-bg/85 hover:bg-panel-bg backdrop-blur-md"
-                                      )}
-                                    >
-                                      {/* COVER MODE: Background Image with blur & subtle opacity */}
-                                      {homeViewMode === "cover" && previewUrl && (
-                                        <div
-                                          className="absolute inset-0 z-0 bg-cover pointer-events-none opacity-20 group-hover:opacity-35 transition-opacity duration-300 transform scale-105 group-hover:scale-100"
-                                          style={{
-                                            backgroundImage: `url(${previewUrl})`,
-                                            backgroundPosition: getCoverPositionStyle(ds.coverImagePosition),
-                                            filter: "blur(1px)",
-                                          }}
-                                        />
-                                      )}
-
-                                      {/* CARD MODE: Top Thumbnail Image */}
-                                      {homeViewMode === "card" && (
-                                        <div className="w-full aspect-[4/3] bg-black/20 overflow-hidden relative flex items-center justify-center border-b border-panel-border/60">
-                                          {previewUrl ? (
-                                            <img
-                                              src={previewUrl}
-                                              alt={ds.name}
-                                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                              style={{
-                                                objectPosition: getCoverPositionStyle(ds.coverImagePosition),
-                                              }}
-                                              referrerPolicy="no-referrer"
-                                            />
-                                          ) : (
-                                            <div className="flex flex-col items-center justify-center text-text-muted/40 font-mono text-[10px]">
-                                              <Folder size={24} className="mb-1 opacity-50" />
-                                              <span>EMPTY</span>
-                                            </div>
-                                          )}
-                                          <div className="absolute top-2 right-2 flex items-center gap-1 z-10">
-                                            {isFav && (
-                                              <div className="bg-black/60 p-1 rounded-full backdrop-blur-xs">
-                                                <Star size={12} className="text-yellow-400 fill-yellow-400" />
-                                              </div>
-                                            )}
-                                            {!ds.isPinned && (
-                                              <button
-                                                type="button"
-                                                onClick={(e) => handleTogglePinDataset(ds.id, e)}
-                                                className="p-1 rounded-full backdrop-blur-xs transition-opacity bg-black/60 text-white/70 hover:text-white opacity-0 group-hover:opacity-100"
-                                                title={t("PIN TO TOP", "最上部にピン留め固定")}
-                                              >
-                                                <Pin size={12} />
-                                              </button>
-                                            )}
-                                          </div>
-                                          {/* Position switch button (TOP / MID / BTM) on CARD thumbnail */}
-                                          {previewUrl && (
-                                            <button
-                                              type="button"
-                                              onClick={(e) => handleCycleCoverPosition(ds.id, e)}
-                                              className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 hover:bg-black text-white hover:text-accent font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-white/20 backdrop-blur-xs flex items-center gap-0.5 shadow-sm"
-                                              title={t("Cycle crop position: TOP -> CENTER -> BOTTOM", "トリミング位置切替: 上部 -> 中央 -> 下部")}
-                                            >
-                                              <span>POS:</span>
-                                              <span className="text-accent uppercase">
-                                                {ds.coverImagePosition === "center" ? "MID" : ds.coverImagePosition === "bottom" ? "BTM" : "TOP"}
-                                              </span>
-                                            </button>
-                                          )}
-                                        </div>
-                                      )}
-
-                                      {/* CARD CONTENT */}
-                                      <div className={cn("relative z-10 flex flex-col justify-between flex-1", homeViewMode === "card" ? "p-3" : "")}>
-                                          <div className="flex items-start justify-between gap-2 w-full mb-2">
-                                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                                              {homeViewMode !== "card" && (
-                                                <Folder size={16} className="text-accent shrink-0 group-hover:scale-110 transition-transform" />
-                                              )}
-                                              {ds.isPinned && (
-                                                <button
-                                                  type="button"
-                                                  onClick={(e) => handleTogglePinDataset(ds.id, e)}
-                                                  className="p-0.5 rounded text-accent hover:opacity-75 transition-opacity"
-                                                  title={t("UNPIN FROM TOP", "ピン留め解除")}
-                                                >
-                                                  <Pin size={11} className="fill-accent shrink-0 rotate-45" />
-                                                </button>
-                                              )}
-                                              <span className="font-mono text-xs font-semibold truncate group-hover:text-accent transition-colors">
-                                                {ds.name}
-                                              </span>
-                                            </div>
-                                            {homeViewMode !== "card" && (
-                                              <div className="flex items-center gap-1.5 shrink-0">
-                                                {!ds.isPinned && (
-                                                  <button
-                                                    type="button"
-                                                    onClick={(e) => handleTogglePinDataset(ds.id, e)}
-                                                    className="transition-opacity p-0.5 rounded opacity-0 group-hover:opacity-60 hover:!opacity-100 text-text-muted hover:text-text-primary"
-                                                    title={t("PIN TO TOP", "最上部にピン留め固定")}
-                                                  >
-                                                    <Pin size={13} />
-                                                  </button>
-                                                )}
-                                                {isFav && (
-                                                  <Star size={12} className="text-yellow-400 fill-yellow-400 shrink-0" />
-                                                )}
-                                              </div>
-                                            )}
-                                          </div>
-                                        <div className="flex items-center justify-between text-[11px] font-mono text-text-muted mt-1 pt-2 border-t border-panel-border/40">
-                                          <span>{count} {count === 1 ? "IMAGE" : "IMAGES"}</span>
-                                          <span className="text-[10px] text-accent opacity-0 group-hover:opacity-100 transition-opacity">
-                                            OPEN &rarr;
-                                          </span>
-                                        </div>
-                                      </div>
-                                    </button>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-
-                          {/* POPUP MODE: Mouse-Following Floating Thumbnail below cursor */}
-                          {homeViewMode === "popup" && hoveredDatasetId && datasetPreviewUrls[hoveredDatasetId] && (() => {
-                            const hoveredDs = datasets.find((d) => d.id === hoveredDatasetId);
-                            if (!hoveredDs) return null;
-                            const count = datasetCounts[hoveredDs.id] || 0;
-                            const previewUrl = datasetPreviewUrls[hoveredDs.id];
-                            const popupWidth = 190;
-                            const popupHeight = 175;
-
-                            let left = popupMousePos.x - popupWidth / 2;
-                            if (typeof window !== "undefined") {
-                              left = Math.min(window.innerWidth - popupWidth - 16, Math.max(16, left));
-                            }
-
-                            let top = popupMousePos.y + 18;
-                            if (typeof window !== "undefined" && top + popupHeight > window.innerHeight - 10) {
-                              top = Math.max(10, popupMousePos.y - popupHeight - 16);
-                            }
-
-                            return (
-                              <div
-                                className="fixed z-[100] pointer-events-none transition-transform duration-75 ease-out"
-                                style={{
-                                  left: `${left}px`,
-                                  top: `${top}px`,
-                                }}
-                              >
-                                <div className="p-1 bg-panel-bg/95 backdrop-blur-md border border-panel-border shadow-[0_12px_32px_rgba(0,0,0,0.6)] rounded-none w-[190px] overflow-hidden">
-                                  <div className="aspect-[4/3] w-full bg-black/40 overflow-hidden relative">
-                                    <img
-                                      src={previewUrl}
-                                      alt={hoveredDs.name}
-                                      className="w-full h-full object-cover"
-                                      style={{
-                                        objectPosition: getCoverPositionStyle(hoveredDs.coverImagePosition),
-                                      }}
-                                      referrerPolicy="no-referrer"
-                                    />
-                                  </div>
-                                  <div className="p-1.5 font-mono text-[10px] text-text-secondary truncate border-t border-panel-border/40 flex justify-between items-center bg-panel-bg">
-                                    <span className="truncate font-semibold text-text-primary">{hoveredDs.name}</span>
-                                    <span className="shrink-0 text-text-muted ml-1.5 font-normal">{count} imgs</span>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    </div>
-                  ) : sortedImages.length === 0 && !isLoading ? (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center text-text-muted font-mono text-xs pointer-events-none">
-                      <ImageIcon size={48} className="mb-4 opacity-20" />
-                      NO DATA IN INDEX
-                    </div>
-                  ) : null}
                 </motion.div>
               </AnimatePresence>
               {viewMode !== "free" && sortedImages.length > 0 && (
@@ -5267,6 +5809,221 @@ Images imported: ${importedImages}`);
         )}
       </AnimatePresence>
 
+      {/* New/Rename Category Modal */}
+      <AnimatePresence>
+        {showNewCategoryModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+          >
+            <div className="bg-panel-bg border border-panel-border p-6 font-mono w-[400px]">
+              <h2 className="text-text-primary mb-4 uppercase flex items-center gap-2">
+                <Folder size={18} className="text-accent" />
+                {editingCategoryId ? t("RENAME CATEGORY", "カテゴリー名変更") : t("NEW CATEGORY", "新規カテゴリー作成")}
+              </h2>
+              <input
+                autoFocus
+                type="text"
+                value={categoryNameInput}
+                onChange={(e) => setCategoryNameInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && submitCategoryForm()}
+                className="w-full bg-root-bg border border-panel-border text-text-primary px-3 py-2 mb-6 outline-none focus:border-accent"
+                placeholder={t("ENTER CATEGORY NAME...", "カテゴリー名を入力...")}
+              />
+              <div className="flex justify-end gap-3">
+                <SolidButton
+                  onClick={() => setShowNewCategoryModal(false)}
+                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
+                >
+                  {t("CANCEL", "キャンセル")}
+                </SolidButton>
+                <SolidButton
+                  onClick={submitCategoryForm}
+                  className="text-accent hover:text-accent"
+                >
+                  {t("CONFIRM", "確定")}
+                </SolidButton>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Category Confirmation Modal */}
+      <AnimatePresence>
+        {showDeleteCategoryModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+          >
+            <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[420px] shadow-[0_0_30px_rgba(239,68,68,0.2)]">
+              <h2 className="text-red-500 mb-4 flex items-center gap-2">
+                <Trash2 size={20} /> {t("DELETE CATEGORY", "カテゴリーの削除")}
+              </h2>
+              <p className="text-text-primary text-xs mb-6 leading-relaxed">
+                {t(
+                  "Are you sure you want to delete this category? Any datasets inside will be moved to the parent level.",
+                  "このカテゴリーを削除しますか？含まれるデータセットは親階層（またはルート）に移動されます。"
+                )}
+              </p>
+              <div className="flex justify-end gap-3">
+                <SolidButton
+                  onClick={() => setShowDeleteCategoryModal(false)}
+                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
+                >
+                  {t("CANCEL", "キャンセル")}
+                </SolidButton>
+                <button
+                  onClick={confirmDeleteCategory}
+                  className="px-4 py-2 border border-red-500 text-red-500 hover:bg-red-500/10 uppercase transition-colors outline-none"
+                >
+                  {t("DELETE", "削除")}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Move Target Selection Modal (For Folder or Dataset) */}
+      <AnimatePresence>
+        {showMoveItemModal && itemToMove && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+          >
+            <div className="bg-panel-bg border border-panel-border p-6 font-mono w-[460px] max-h-[85vh] flex flex-col shadow-2xl">
+              <h2 className="text-text-primary mb-2 uppercase flex items-center gap-2 text-sm font-bold">
+                <FolderOpen size={18} className="text-accent" />
+                {itemToMove.type === "category"
+                  ? t("MOVE FOLDER TO...", "フォルダーの移動先を選択")
+                  : t("MOVE DATASET TO...", "データセットの移動先フォルダーを選択")}
+              </h2>
+              <p className="text-xs text-text-muted mb-4">
+                {t("TARGET: ", "対象: ")}
+                <span className="text-text-primary font-bold">{itemToMove.item.name}</span>
+              </p>
+
+              <div className="flex-1 overflow-y-auto border border-panel-border bg-root-bg p-2 flex flex-col gap-1 mb-5 max-h-[320px] scrollbar-dark">
+                {/* Option 1: Root / Top level */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (itemToMove.type === "category") {
+                      handleMoveCategoryParent(itemToMove.item.id, null);
+                    } else {
+                      handleMoveDatasetToCategory(itemToMove.item.id, null);
+                    }
+                    setShowMoveItemModal(false);
+                    setItemToMove(null);
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs font-mono flex items-center justify-between border border-panel-border/50 hover:border-accent hover:bg-accent/15 transition-colors group text-text-primary"
+                >
+                  <div className="flex items-center gap-2">
+                    <Layers size={14} className="text-accent" />
+                    <span className="font-bold">{t("IMAGE DATA (ROOT / UNCLASSIFIED)", "IMAGE DATA (ルート / 未分類)")}</span>
+                  </div>
+                  <span className="text-[10px] text-accent opacity-0 group-hover:opacity-100 font-bold">
+                    {t("SELECT →", "選択 →")}
+                  </span>
+                </button>
+
+                {/* Option List: Category Tree Nodes */}
+                {(() => {
+                  // Recursive check for descendants if moving a category
+                  const isDescendantCat = (catId: string, potentialChildId: string): boolean => {
+                    if (catId === potentialChildId) return true;
+                    const children = categories.filter((c) => c.parentId === potentialChildId);
+                    for (const ch of children) {
+                      if (isDescendantCat(catId, ch.id)) return true;
+                    }
+                    return false;
+                  };
+
+                  const renderTreeOptions = (parentId: string | null, depth: number): React.ReactNode => {
+                    const subCats = categories.filter((c) => (c.parentId || null) === parentId);
+                    return subCats.map((cat) => {
+                      // Disabled if category itself or child of it (to prevent cycle)
+                      const isSelfOrChild =
+                        itemToMove.type === "category" &&
+                        (cat.id === itemToMove.item.id || isDescendantCat(cat.id, itemToMove.item.id));
+                      
+                      const isCurrentParent =
+                        itemToMove.type === "category"
+                          ? (itemToMove.item as CategoryRecord).parentId === cat.id
+                          : (itemToMove.item as DatasetRecord).categoryId === cat.id;
+
+                      return (
+                        <React.Fragment key={cat.id}>
+                          <button
+                            type="button"
+                            disabled={isSelfOrChild || isCurrentParent}
+                            onClick={() => {
+                              if (itemToMove.type === "category") {
+                                handleMoveCategoryParent(itemToMove.item.id, cat.id);
+                              } else {
+                                handleMoveDatasetToCategory(itemToMove.item.id, cat.id);
+                              }
+                              setShowMoveItemModal(false);
+                              setItemToMove(null);
+                            }}
+                            style={{ paddingLeft: `${Math.max(12, depth * 16 + 12)}px` }}
+                            className={cn(
+                              "w-full text-left pr-3 py-2 text-xs font-mono flex items-center justify-between border transition-colors group",
+                              isSelfOrChild
+                                ? "opacity-30 cursor-not-allowed border-transparent text-text-muted"
+                                : isCurrentParent
+                                ? "border-accent/40 bg-accent/10 text-accent cursor-default font-bold"
+                                : "border-panel-border/30 hover:border-accent hover:bg-accent/15 text-text-primary"
+                            )}
+                          >
+                            <div className="flex items-center gap-2 truncate min-w-0">
+                              <Folder size={14} className="text-folder-icon shrink-0" />
+                              <span className="truncate">{cat.name}</span>
+                              {isCurrentParent && (
+                                <span className="text-[9px] text-accent bg-accent/20 px-1 py-0.5 rounded font-mono shrink-0">
+                                  {t("CURRENT", "現在位置")}
+                                </span>
+                              )}
+                            </div>
+                            {!isSelfOrChild && !isCurrentParent && (
+                              <span className="text-[10px] text-accent opacity-0 group-hover:opacity-100 font-bold shrink-0">
+                                {t("MOVE HERE →", "ここへ移動 →")}
+                              </span>
+                            )}
+                          </button>
+                          {renderTreeOptions(cat.id, depth + 1)}
+                        </React.Fragment>
+                      );
+                    });
+                  };
+
+                  return renderTreeOptions(null, 0);
+                })()}
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <SolidButton
+                  onClick={() => {
+                    setShowMoveItemModal(false);
+                    setItemToMove(null);
+                  }}
+                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
+                >
+                  {t("CANCEL", "キャンセル")}
+                </SolidButton>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Rename File Modal */}
       <AnimatePresence>
         {showRenameFileModal && (
@@ -5580,7 +6337,114 @@ Images imported: ${importedImages}`);
         )}
       </AnimatePresence>
 
-      
+      {/* Category Color Modal */}
+      <AnimatePresence>
+        {colorCategoryModalTarget && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+          >
+            <div className="bg-panel-bg border border-accent/50 p-6 font-mono w-[420px] max-w-[90vw] shadow-[0_0_30px_rgba(59,130,246,0.2)]">
+              <h2 className="text-accent mb-2 flex items-center gap-2 text-sm uppercase font-bold">
+                <Palette size={18} /> {t("SET FOLDER COLOR", "フォルダーカラーの設定")}
+              </h2>
+              <p className="text-text-secondary text-xs mb-4">
+                {t(
+                  `Set custom icon color for folder "${colorCategoryModalTarget.name}":`,
+                  `フォルダー「${colorCategoryModalTarget.name}」の個別表示カラーを設定します：`
+                )}
+              </p>
+
+              <div className="flex flex-col gap-4 mb-6">
+                <div className="flex flex-wrap items-center gap-2">
+                  {[
+                    { name: "アンバー", hex: "#fbbf24" },
+                    { name: "スカイ", hex: "#38bdf8" },
+                    { name: "ブルー", hex: "#3b82f6" },
+                    { name: "エメラルド", hex: "#10b981" },
+                    { name: "ローズ", hex: "#f43f5e" },
+                    { name: "パープル", hex: "#a855f7" },
+                    { name: "シルバー", hex: "#9ca3af" },
+                    { name: "ホワイト", hex: "#ffffff" },
+                    { name: "シアン", hex: "#06b6d4" },
+                    { name: "ピンク", hex: "#ec4899" },
+                  ].map((c) => (
+                    <button
+                      key={c.hex}
+                      type="button"
+                      onClick={() => setColorCategoryInput(c.hex)}
+                      title={c.name}
+                      className={cn(
+                        "w-6 h-6 rounded border transition-transform flex items-center justify-center cursor-pointer hover:scale-110",
+                        colorCategoryInput.toLowerCase() === c.hex.toLowerCase()
+                          ? "border-text-primary ring-2 ring-accent ring-offset-1 scale-105"
+                          : "border-black/30"
+                      )}
+                      style={{ backgroundColor: c.hex }}
+                    >
+                      {colorCategoryInput.toLowerCase() === c.hex.toLowerCase() && (
+                        <Check size={12} className="text-black drop-shadow-xs" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-between border-t border-panel-border/60 pt-3">
+                  <label className="flex items-center gap-2 text-xs text-text-muted cursor-pointer">
+                    <span>{t("Custom Color", "カスタムカラー")}:</span>
+                    <input
+                      type="color"
+                      value={colorCategoryInput || "#fbbf24"}
+                      onChange={(e) => setColorCategoryInput(e.target.value)}
+                      className="w-6 h-6 border-0 bg-transparent cursor-pointer p-0"
+                    />
+                    <span className="font-mono text-[11px] text-text-primary uppercase">{colorCategoryInput || "THEME"}</span>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setColorCategoryInput("");
+                    }}
+                    className={cn(
+                      "px-2 py-1 text-[10px] border transition-colors",
+                      !colorCategoryInput
+                        ? "bg-accent/20 border-accent text-accent font-bold"
+                        : "border-panel-border text-text-muted hover:text-text-primary"
+                    )}
+                  >
+                    {t("Clear (Use Theme)", "標準に戻す")}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <SolidButton
+                  onClick={() => setColorCategoryModalTarget(null)}
+                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
+                >
+                  {t("CANCEL", "キャンセル")}
+                </SolidButton>
+                <SolidButton
+                  onClick={async () => {
+                    if (colorCategoryModalTarget) {
+                      await updateCategoryColor(colorCategoryModalTarget.id, colorCategoryInput || null);
+                      const updatedCats = await getAllCategories();
+                      setCategories(updatedCats);
+                      setColorCategoryModalTarget(null);
+                    }
+                  }}
+                  className="text-accent hover:text-accent border-accent/50"
+                >
+                  {t("SAVE COLOR", "カラーを保存")}
+                </SolidButton>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <footer className="flex justify-between text-[10px] font-mono text-text-muted uppercase tracking-widest shrink-0">
         <span>SYSTEM_READY_</span>

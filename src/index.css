@@ -29,6 +29,8 @@
     --text-dim: #6486af;
     --accent: #3b82f6;
     --accent-glow: rgba(59, 130, 246, 0.5);
+    --accent-text: #ffffff;
+    --folder-icon-color: #fbbf24;
 
     --btn-bg: #15202f;
     --btn-border: #293d5a;
@@ -57,6 +59,8 @@
     --text-dim: #64748b;
     --accent: #0f172a;
     --accent-glow: rgba(15, 23, 42, 0.2);
+    --accent-text: #ffffff;
+    --folder-icon-color: #d97706;
 
     --btn-bg: #f8fafc;
     --btn-border: #e2e8f0;
@@ -85,6 +89,8 @@
     --text-dim: #a3a39b;
     --accent: #d94f26;
     --accent-glow: rgba(217, 79, 38, 0.3);
+    --accent-text: #ffffff;
+    --folder-icon-color: #d94f26;
 
     --btn-bg: #ffffff;
     --btn-border: #e5e5dc;
@@ -113,6 +119,8 @@
     --text-dim: #5b6271;
     --accent: #e2e5e9;
     --accent-glow: rgba(226, 229, 233, 0.25);
+    --accent-text: #0B0C0D;
+    --folder-icon-color: #fbbf24;
 
     --btn-bg: #181B20;
     --btn-border: #2b313c;
@@ -141,6 +149,8 @@
     --text-dim: #525252;
     --accent: #e5e5e5;
     --accent-glow: rgba(255, 255, 255, 0.2);
+    --accent-text: #000000;
+    --folder-icon-color: #fbbf24;
 
     --btn-bg: #121212;
     --btn-border: #262626;
@@ -169,6 +179,8 @@
     --text-dim: #856363;
     --accent: #d33c3c;
     --accent-glow: rgba(211, 60, 60, 0.3);
+    --accent-text: #ffffff;
+    --folder-icon-color: #f87171;
 
     --btn-bg: #1a0808;
     --btn-border: #3b1515;
@@ -201,6 +213,8 @@
   --color-text-muted: var(--text-dim);
   --color-accent: var(--accent);
   --color-accent-glow: var(--accent-glow);
+  --color-accent-text: var(--accent-text);
+  --color-folder-icon: var(--folder-icon-color);
 
   --color-btn-bg: var(--btn-bg);
   --color-btn-border: var(--btn-border);

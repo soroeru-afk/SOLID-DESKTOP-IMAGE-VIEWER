@@ -1,13 +1,25 @@
 import { openDB, DBSchema } from 'idb';
 
+export interface CategoryRecord {
+  id: string;
+  name: string;
+  parentId?: string | null; // null for top-level, or id of parent category (up to 3 levels)
+  createdAt: number;
+  orderIndex?: number;
+  color?: string | null;
+  coverImagePosition?: "top" | "center" | "bottom";
+}
+
 export interface DatasetRecord {
   id: string;
   name: string;
   createdAt: number;
+  categoryId?: string | null; // category/folder ID (or null/undefined if uncategorized)
   isHidden?: boolean;
   isPinned?: boolean;
   coverImageId?: string;
   coverImagePosition?: "top" | "center" | "bottom";
+  orderIndex?: number;
 }
 
 export interface ImageRecord {
@@ -36,12 +48,18 @@ interface ImageViewerDB extends DBSchema {
     value: ImageRecord;
     indexes: { 'by-dataset': string };
   };
+  categories: {
+    key: string;
+    value: CategoryRecord;
+    indexes: { 'by-parent': string };
+  };
 }
 
 const DB_NAME = 'solid-image-viewer-db';
-const DB_VERSION = 10; // upgrade to version 10 to resolve VersionErrors
+const DB_VERSION = 11; // upgrade to version 4 for categories
 const STORE_NAME_IMAGES = 'images';
 const STORE_NAME_DATASETS = 'datasets';
+const STORE_NAME_CATEGORIES = 'categories';
 
 export async function initDB() {
   return openDB<ImageViewerDB>(DB_NAME, DB_VERSION, {
@@ -58,6 +76,13 @@ export async function initDB() {
         imgStore.createIndex('by-dataset', 'datasetId');
       }
       // v3 adds autoBg to ImageRecord, no schema changes needed
+      // v4 adds categories store
+      if (oldVersion < 4) {
+        if (!db.objectStoreNames.contains(STORE_NAME_CATEGORIES)) {
+          const catStore = db.createObjectStore(STORE_NAME_CATEGORIES, { keyPath: 'id' });
+          catStore.createIndex('by-parent', 'parentId');
+        }
+      }
     },
   });
 }
@@ -81,7 +106,12 @@ export async function getAllDatasets(): Promise<DatasetRecord[]> {
     // Pinned datasets always come first
     if (a.isPinned && !b.isPinned) return -1;
     if (!a.isPinned && b.isPinned) return 1;
-    // Within same pin status, sort by createdAt descending (newest / custom reorder on top)
+    if (a.orderIndex !== undefined && b.orderIndex !== undefined) {
+      return a.orderIndex - b.orderIndex;
+    }
+    if (a.orderIndex !== undefined) return -1;
+    if (b.orderIndex !== undefined) return 1;
+    // Within same pin status, sort by createdAt descending
     return b.createdAt - a.createdAt;
   });
 }
@@ -309,10 +339,158 @@ export async function updateImagesOrder(updates: {id: string, orderIndex: number
   await tx.done;
 }
 
+export async function updateDatasetCategory(datasetId: string, categoryId: string | null) {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME_DATASETS, 'readwrite');
+  const store = tx.objectStore(STORE_NAME_DATASETS);
+  const ds = await store.get(datasetId);
+  if (ds) {
+    ds.categoryId = categoryId || undefined;
+    await store.put(ds);
+  }
+  await tx.done;
+}
+
+// Category APIs
+export async function createCategory(name: string, parentId?: string | null): Promise<CategoryRecord> {
+  const db = await initDB();
+  const cat: CategoryRecord = {
+    id: crypto.randomUUID(),
+    name,
+    parentId: parentId || null,
+    createdAt: Date.now(),
+  };
+  await db.put(STORE_NAME_CATEGORIES, cat);
+  return cat;
+}
+
+export async function getAllCategories(): Promise<CategoryRecord[]> {
+  const db = await initDB();
+  const categories = await db.getAll(STORE_NAME_CATEGORIES);
+  return categories.sort((a, b) => {
+    if (a.orderIndex !== undefined && b.orderIndex !== undefined) {
+      return a.orderIndex - b.orderIndex;
+    }
+    return a.createdAt - b.createdAt;
+  });
+}
+
+export async function renameCategory(id: string, newName: string) {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME_CATEGORIES, 'readwrite');
+  const store = tx.objectStore(STORE_NAME_CATEGORIES);
+  const cat = await store.get(id);
+  if (cat) {
+    cat.name = newName;
+    await store.put(cat);
+  }
+  await tx.done;
+}
+
+export async function updateCategoryParent(id: string, parentId: string | null) {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME_CATEGORIES, 'readwrite');
+  const store = tx.objectStore(STORE_NAME_CATEGORIES);
+  const cat = await store.get(id);
+  if (cat) {
+    cat.parentId = parentId || null;
+    await store.put(cat);
+  }
+  await tx.done;
+}
+
+export async function updateCategoryColor(id: string, color: string | null) {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME_CATEGORIES, 'readwrite');
+  const store = tx.objectStore(STORE_NAME_CATEGORIES);
+  const cat = await store.get(id);
+  if (cat) {
+    if (color) {
+      cat.color = color;
+    } else {
+      delete cat.color;
+    }
+    await store.put(cat);
+  }
+  await tx.done;
+}
+
+export async function updateCategoryCoverPosition(id: string, position: "top" | "center" | "bottom") {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME_CATEGORIES, 'readwrite');
+  const store = tx.objectStore(STORE_NAME_CATEGORIES);
+  const cat = await store.get(id);
+  if (cat) {
+    cat.coverImagePosition = position;
+    await store.put(cat);
+  }
+  await tx.done;
+}
+
+export async function deleteCategory(id: string) {
+  const db = await initDB();
+  const tx = db.transaction([STORE_NAME_CATEGORIES, STORE_NAME_DATASETS], 'readwrite');
+  const catStore = tx.objectStore(STORE_NAME_CATEGORIES);
+  const dsStore = tx.objectStore(STORE_NAME_DATASETS);
+
+  const targetCat = await catStore.get(id);
+  const parentId = targetCat?.parentId || null;
+
+  // Move direct subcategories to this category's parent (or null)
+  const allCats = await catStore.getAll();
+  for (const cat of allCats) {
+    if (cat.parentId === id) {
+      cat.parentId = parentId;
+      await catStore.put(cat);
+    }
+  }
+
+  // Move datasets in this category to this category's parent (or null)
+  const allDatasets = await dsStore.getAll();
+  for (const ds of allDatasets) {
+    if (ds.categoryId === id) {
+      ds.categoryId = parentId || undefined;
+      await dsStore.put(ds);
+    }
+  }
+
+  await catStore.delete(id);
+  await tx.done;
+}
+
+export async function updateDatasetsOrder(updates: { id: string; orderIndex: number }[]) {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME_DATASETS, 'readwrite');
+  const store = tx.objectStore(STORE_NAME_DATASETS);
+  for (const { id, orderIndex } of updates) {
+    const ds = await store.get(id);
+    if (ds) {
+      ds.orderIndex = orderIndex;
+      await store.put(ds);
+    }
+  }
+  await tx.done;
+}
+
+export async function updateCategoriesOrder(updates: { id: string; orderIndex: number }[]) {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME_CATEGORIES, 'readwrite');
+  const store = tx.objectStore(STORE_NAME_CATEGORIES);
+  for (const { id, orderIndex } of updates) {
+    const cat = await store.get(id);
+    if (cat) {
+      cat.orderIndex = orderIndex;
+      await store.put(cat);
+    }
+  }
+  await tx.done;
+}
+
 export async function clearAll() {
   const db = await initDB();
-  const tx = db.transaction([STORE_NAME_DATASETS, STORE_NAME_IMAGES], 'readwrite');
+  const tx = db.transaction([STORE_NAME_DATASETS, STORE_NAME_IMAGES, STORE_NAME_CATEGORIES], 'readwrite');
   await tx.objectStore(STORE_NAME_DATASETS).clear();
   await tx.objectStore(STORE_NAME_IMAGES).clear();
+  await tx.objectStore(STORE_NAME_CATEGORIES).clear();
   await tx.done;
 }
