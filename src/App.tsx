@@ -55,6 +55,7 @@ import {
   Bookmark,
   Pin,
   FolderPlus,
+  FilePlus,
   Layers,
   Terminal,
   Settings,
@@ -4607,7 +4608,6 @@ Images imported: ${importedImages}`);
                 </div>
               </>
             }
-            contentClassName="p-0 transition-colors duration-300 relative"
             headerRight={
               isSelectionMode ? (
                 <div className="flex items-center gap-4">
@@ -4906,10 +4906,187 @@ Images imported: ${importedImages}`);
               )
             }
             className="flex-1 relative overflow-hidden"
+            contentClassName="p-0 overflow-hidden flex flex-col flex-1 relative"
           >
+            {/* Top Fixed Opaque Breadcrumb Bar for ALL Views (Folder Explorer, Category Images, and Dataset) */}
+            {(() => {
+              const isExplorer = activeDatasetId === null && !isCategoryImagesView;
+              const currentDataset = activeDatasetId ? datasets.find((d) => d.id === activeDatasetId) : null;
+              const currentCatId = isCategoryImagesView ? activeCategoryId : (currentDataset?.categoryId || activeCategoryId || null);
+              const breadcrumbs = getCategoryBreadcrumbs(currentCatId);
+              const currentDepth = breadcrumbs.length;
+              const canCreateSubcategory = currentDepth < 2;
+
+              return (
+                <div className="w-full bg-panel-bg border-b border-panel-border px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs font-mono shrink-0 select-none z-30 shadow-xs">
+                  {/* Breadcrumbs matching CategoryExplorer / Dataset view style exactly */}
+                  <div className="flex items-center flex-wrap gap-1.5">
+                    {/* Root Crumb */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveDatasetId(null);
+                        setActiveCategoryId(null);
+                        setIsCategoryImagesView(false);
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.dataTransfer.dropEffect = "move";
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const catId = e.dataTransfer.getData("application/x-category-id");
+                        const dsId = e.dataTransfer.getData("application/x-dataset-id");
+                        if (catId) handleMoveCategoryParent(catId, null);
+                        else if (dsId) handleMoveDatasetToCategory(dsId, null);
+                      }}
+                      className={cn(
+                        "flex items-center gap-1.5 px-2.5 py-1 rounded transition-all tracking-wide border cursor-pointer",
+                        breadcrumbs.length === 0 && !currentDataset && !isCategoryImagesView
+                          ? "bg-accent/15 text-accent font-bold border-accent/40 shadow-xs"
+                          : "border-transparent text-text-secondary hover:text-text-primary hover:bg-panel-border/50"
+                      )}
+                      title={t("Return to All Image Data (Root)", "ルート一覧に戻る")}
+                    >
+                      <Folders size={13} className="text-accent -translate-y-[1px]" />
+                      <span>ALL IMAGE DATA</span>
+                    </button>
+
+                    {/* Category Chain */}
+                    {breadcrumbs.map((cat, idx) => {
+                      const isCurrentActiveFolder = !currentDataset && !isCategoryImagesView && cat.id === activeCategoryId;
+                      return (
+                        <React.Fragment key={cat.id}>
+                          <ChevronRight size={14} className="text-text-muted" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveDatasetId(null);
+                              setActiveCategoryId(cat.id);
+                              setIsCategoryImagesView(false);
+                            }}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              e.dataTransfer.dropEffect = "move";
+                            }}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const catId = e.dataTransfer.getData("application/x-category-id");
+                              const dsId = e.dataTransfer.getData("application/x-dataset-id");
+                              if (catId && catId !== cat.id) handleMoveCategoryParent(catId, cat.id);
+                              else if (dsId) handleMoveDatasetToCategory(dsId, cat.id);
+                            }}
+                            className={cn(
+                              "flex items-center gap-1.5 px-2.5 py-1 rounded transition-all tracking-wide border cursor-pointer",
+                              isCurrentActiveFolder
+                                ? "bg-accent/15 text-accent font-bold border-accent/40 shadow-xs"
+                                : "border-transparent text-text-secondary hover:text-text-primary hover:bg-panel-border/50"
+                            )}
+                            title={cat.name}
+                          >
+                            <FolderIconComponent
+                              iconType={cat.icon}
+                              isOpen={false}
+                              size={13}
+                              className="shrink-0 -translate-y-[1px]"
+                              style={{ color: cat.color || undefined }}
+                            />
+                            <span>{cat.name}</span>
+                          </button>
+                        </React.Fragment>
+                      );
+                    })}
+
+                    {/* Active Dataset Crumb */}
+                    {currentDataset && (
+                      <>
+                        <ChevronRight size={14} className="text-text-muted" />
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-accent/15 text-accent font-bold border border-accent/40 shadow-xs">
+                          <Layers size={13} className="shrink-0 text-accent -translate-y-[1px]" />
+                          <span className="truncate max-w-[220px] sm:max-w-[360px]">{currentDataset.name}</span>
+                          <span className="text-[10px] opacity-80 font-normal ml-1 font-mono">
+                            ({sortedImages.length} {t("IMAGES", "枚")})
+                          </span>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Active Folder All-Images View Crumb */}
+                    {isCategoryImagesView && (
+                      <>
+                        <ChevronRight size={14} className="text-text-muted" />
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-accent/15 text-accent font-bold border border-accent/40 shadow-xs">
+                          <span className="text-[11px] font-mono">
+                            {t("FOLDER ALL IMAGES", "フォルダ内全画像")}: {sortedImages.length} {t("IMAGES", "枚")}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Right Actions Bar */}
+                  <div className="flex items-center gap-2 font-mono text-[10px]">
+                    {isExplorer ? (
+                      <>
+                        {canCreateSubcategory && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenNewCategoryModal(activeCategoryId)}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-panel-bg border border-panel-border hover:border-accent text-text-secondary hover:text-text-primary transition-colors cursor-pointer rounded-[2px]"
+                            title={t("Create new folder in current location", "この階層に新規フォルダーを作成")}
+                          >
+                            <FolderPlus size={13} className="text-folder-icon" />
+                            <span>+ {t("NEW FOLDER", "新規フォルダー")}</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleAddDatasetClick(activeCategoryId)}
+                          className="flex items-center gap-1 px-2.5 py-1 bg-panel-bg border border-panel-border hover:border-accent text-text-secondary hover:text-text-primary transition-colors cursor-pointer rounded-[2px]"
+                          title={t("Create new dataset in current location", "この階層に新規データセットを作成")}
+                        >
+                          <FilePlus size={13} className="text-accent" />
+                          <span>+ {t("NEW DATASET", "新規セット")}</span>
+                        </button>
+                        {activeCategoryId && getCategoryTotalImagesCount(activeCategoryId) > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => loadImagesForCategory(activeCategoryId)}
+                            className="flex items-center gap-1 px-3 py-1 bg-accent text-accent-text font-bold hover:bg-accent/90 transition-colors shadow-xs cursor-pointer rounded-[2px]"
+                            title={t("View all images across all datasets in this folder", "このフォルダー内の全画像を表示")}
+                          >
+                            <Eye size={13} />
+                            <span>{t("VIEW ALL IMAGES", "全画像を表示")} ({getCategoryTotalImagesCount(activeCategoryId)})</span>
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      /* Back to Explorer Quick Action Button */
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveDatasetId(null);
+                          setIsCategoryImagesView(false);
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1 bg-panel-bg border border-panel-border/80 hover:border-accent hover:bg-accent/15 text-text-secondary hover:text-accent text-[11px] font-bold transition-all rounded shrink-0 shadow-2xs cursor-pointer"
+                        title={t("Back to Folder Explorer", "フォルダー一覧に戻る")}
+                      >
+                        <ChevronLeft size={13} />
+                        <span>{t("BACK TO EXPLORER", "一覧に戻る")}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
             <div
               ref={scatterContainerRef}
-              className={cn("w-full h-full relative")}
+              className={cn("w-full flex-1 relative overflow-hidden")}
               onClickCapture={(e) => {
                 if (autoScrollDirRef.current !== null) {
                   const target = e.target as HTMLElement;
@@ -5019,49 +5196,6 @@ Images imported: ${importedImages}`);
 
                     return (
                       <>
-                        {/* Folder All-Images View Sticky Header */}
-                        {isCategoryImagesView && (
-                          <div className="sticky top-0 z-40 w-full mb-4 flex flex-wrap items-center justify-between gap-3 bg-panel-bg/95 backdrop-blur-md px-4 py-2.5 border border-panel-border shadow-md select-none">
-                            <div className="flex items-center gap-3 font-mono">
-                              <button
-                                type="button"
-                                onClick={() => setIsCategoryImagesView(false)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/20 hover:bg-accent text-accent hover:text-accent-text border border-accent text-xs font-bold transition-colors shadow-sm"
-                              >
-                                <ChevronLeft size={14} />
-                                <span>{t("BACK TO FOLDER", "フォルダーに戻る")}</span>
-                              </button>
-                              <div className="flex items-center gap-2 text-xs">
-                                <FolderOpen size={15} className="text-folder-icon" />
-                                <span className="text-text-secondary">{t("FOLDER: ", "フォルダー: ")}</span>
-                                <span className="font-bold text-text-primary">
-                                  {categories.find((c) => c.id === activeCategoryId)?.name || "FOLDER"}
-                                </span>
-                                <span className="text-accent bg-accent/15 px-2 py-0.5 rounded text-[11px] font-bold">
-                                  {sortedImages.length} {t("IMAGES", "枚")}
-                                </span>
-                              </div>
-                            </div>
-                            {/* Fast sub-dataset tabs */}
-                            <div className="flex items-center gap-1.5 overflow-x-auto max-w-[50%] scrollbar-none text-[11px] font-mono">
-                              {getCategoryDirectDatasets(activeCategoryId).map((ds) => (
-                                <button
-                                  key={ds.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setActiveDatasetId(ds.id);
-                                    setIsCategoryImagesView(false);
-                                  }}
-                                  className="px-2 py-1 bg-panel-bg border border-panel-border/80 hover:border-accent text-text-secondary hover:text-text-primary transition-colors truncate"
-                                  title={ds.name}
-                                >
-                                  {ds.name} ({datasetCounts[ds.id] || 0})
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
                         {/* Search Results Header */}
                         {searchQuery.trim() && (
                           <div className="absolute top-4 left-0 w-full z-50 flex items-center justify-center pointer-events-none mb-6">

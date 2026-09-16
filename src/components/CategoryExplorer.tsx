@@ -687,93 +687,9 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
       </div>
 
       {/* Foreground Content */}
-      <div className="relative z-10 w-full h-full overflow-y-auto p-6 sm:p-8 scrollbar-dark flex flex-col items-center justify-start">
-        <div className="w-full max-w-6xl flex flex-col items-center">
-          {/* Top Breadcrumb & Actions Bar */}
-          <div className="w-full flex flex-wrap items-center justify-between gap-3 mb-6 bg-panel-bg/90 backdrop-blur-md px-4 py-2.5 border border-panel-border shadow-sm">
-            {/* Breadcrumb path (Droppable targets!) */}
-            <div className="flex items-center flex-wrap gap-1.5 text-xs font-mono">
-              {breadcrumbs.map((crumb, idx) => {
-                const isLast = idx === breadcrumbs.length - 1;
-                const isBreadcrumbDragOver = dragOverTargetKey === (crumb.id || "root-crumb");
-
-                return (
-                  <React.Fragment key={crumb.id || "root"}>
-                    {idx > 0 && <ChevronRight size={14} className="text-text-muted" />}
-                    <button
-                      type="button"
-                      onClick={() => onSelectCategory(crumb.id)}
-                      onDragOver={(e) => handleFolderDragOver(e, crumb.id)}
-                      onDragLeave={(e) => handleFolderDragLeave(e, crumb.id)}
-                      onDrop={(e) => handleFolderDrop(e, crumb.id)}
-                      className={cn(
-                        "flex items-center gap-1.5 px-2.5 py-1 rounded transition-all tracking-wide border",
-                        isBreadcrumbDragOver
-                          ? "bg-accent text-accent-text font-bold border-accent scale-105 shadow-md animate-pulse"
-                          : isLast
-                          ? "bg-accent/15 text-accent font-bold border-accent/40"
-                          : "border-transparent text-text-secondary hover:text-text-primary hover:bg-panel-border/50"
-                      )}
-                      title={
-                        activeDragItem
-                          ? t(`Drop to move into "${crumb.name}"`, `ドラッグして「${crumb.name}」へ移動`)
-                          : undefined
-                      }
-                    >
-                      {idx === 0 ? <Folders size={13} className="-translate-y-[1px]" /> : <Folder size={13} />}
-                      <span>{crumb.name}</span>
-                    </button>
-                  </React.Fragment>
-                );
-              })}
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex items-center gap-2 font-mono text-[10px]">
-              {canCreateSubcategory && (
-                <button
-                  type="button"
-                  onClick={() => onAddCategory(activeCategoryId)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 bg-panel-bg border border-panel-border hover:border-accent text-text-secondary hover:text-text-primary transition-colors"
-                  title={t("Create new folder in current location", "この階層に新規フォルダーを作成")}
-                >
-                  <FolderPlus size={13} className="text-folder-icon" />
-                  <span>+ {t("NEW FOLDER", "新規フォルダー")}</span>
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => onAddDataset(activeCategoryId)}
-                className="flex items-center gap-1 px-2.5 py-1.5 bg-panel-bg border border-panel-border hover:border-accent text-text-secondary hover:text-text-primary transition-colors"
-                title={t("Create new dataset in current location", "この階層に新規データセットを作成")}
-              >
-                <FilePlus size={13} className="text-accent" />
-                <span>+ {t("NEW DATASET", "新規セット")}</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleOpenBulkRenameModal}
-                className="flex items-center gap-1 px-2.5 py-1.5 bg-panel-bg border border-panel-border hover:border-accent text-text-secondary hover:text-text-primary transition-colors"
-                title={t("Batch rename folders and datasets", "フォルダー・セット名の一括編集・置換・連番付与")}
-              >
-                <Edit3 size={13} className="text-accent" />
-                <span>{t("BULK RENAME", "一括リネーム")}</span>
-              </button>
-              {activeCategoryId && totalCurrentFolderImages > 0 && (
-                <button
-                  type="button"
-                  onClick={() => onViewCategoryImages(activeCategoryId)}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-accent text-accent-text font-bold hover:bg-accent/90 transition-colors shadow-sm"
-                  title={t("View all images across all datasets in this folder", "このフォルダー内の全画像を表示")}
-                >
-                  <Eye size={13} />
-                  <span>{t("VIEW ALL IMAGES", "全画像を表示")} ({totalCurrentFolderImages})</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* View Style Switcher Buttons & DnD Hint */}
+      <div className="relative z-10 w-full h-full overflow-y-auto p-4 sm:p-6 lg:p-8 scrollbar-dark flex flex-col items-center justify-start">
+        <div className="w-full max-w-[1700px] flex flex-col items-center">
+          {/* View Style Switcher Buttons & Overview Bar */}
           <div className="flex flex-wrap items-center justify-between w-full gap-3 mb-6 select-none">
             <div className="text-text-muted text-xs tracking-widest uppercase font-mono bg-panel-bg/90 backdrop-blur-md px-4 py-1.5 border border-panel-border shadow-sm flex items-center gap-2">
               <Folder size={13} className="text-accent" />
@@ -796,7 +712,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                     type="button"
                     onClick={() => setHomeViewMode(mode)}
                     className={cn(
-                      "px-3 py-1 transition-colors uppercase font-mono",
+                      "px-3 py-1 transition-colors uppercase font-mono cursor-pointer",
                       homeViewMode === mode
                         ? "bg-accent text-accent-text font-bold"
                         : "text-text-secondary hover:text-text-primary"
@@ -967,10 +883,8 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                 className={cn(
                   "w-full",
                   homeViewMode === "list"
-                    ? "flex flex-col gap-1.5"
-                    : homeViewMode === "card"
-                    ? "grid gap-3.5 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-                    : "grid gap-3.5 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
+                    ? "flex flex-col gap-2"
+                    : "grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4"
                 )}
               >
                 {currentSubcategories.map((cat) => {
@@ -1140,19 +1054,19 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                           }
                         }}
                         className={cn(
-                          "w-full h-full flex flex-col justify-between transition-all text-left shadow-sm hover:shadow-md text-text-primary overflow-hidden relative border",
+                          "w-full h-full flex flex-col justify-between transition-all text-left shadow-sm hover:shadow-md text-text-primary overflow-hidden relative border rounded-[3px]",
                           isFolderDragOver
                             ? "border-accent bg-accent/20"
                             : "border-panel-border hover:border-amber-400/80",
                           homeViewMode === "card"
                             ? "p-0 bg-panel-bg/90"
-                            : "p-3.5 bg-panel-bg/85 hover:bg-panel-bg backdrop-blur-md"
+                            : "p-4 min-h-[105px] sm:min-h-[110px] bg-panel-bg/85 hover:bg-panel-bg backdrop-blur-md"
                         )}
                       >
                         {/* COVER MODE */}
                         {homeViewMode === "cover" && coverUrl && (
                           <div
-                            className="absolute inset-0 z-0 bg-cover pointer-events-none opacity-[var(--cover-base-op,0.3)] group-hover:opacity-[var(--cover-hover-op,0.45)] transition-opacity duration-300 transform scale-105 group-hover:scale-100"
+                            className="absolute inset-0 z-0 bg-cover pointer-events-none opacity-[var(--cover-base-op,0.32)] group-hover:opacity-[var(--cover-hover-op,0.48)] transition-opacity duration-300 transform scale-105 group-hover:scale-100"
                             style={{
                               backgroundImage: `url(${coverUrl})`,
                               backgroundPosition: getCoverPositionStyle(cat.coverImagePosition),
@@ -1161,9 +1075,28 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                           />
                         )}
 
+                        {/* COVER MODE POS BUTTON */}
+                        {homeViewMode === "cover" && coverUrl && onCycleCategoryCoverPosition && (
+                          <button
+                            type="button"
+                            onClick={(e) => onCycleCategoryCoverPosition(cat.id, e)}
+                            className="absolute top-2 right-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity bg-panel-bg/90 hover:bg-panel-bg text-text-secondary hover:text-accent font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-panel-border backdrop-blur-xs flex items-center gap-0.5 shadow-xs cursor-pointer"
+                            title={t("Cycle crop position", "トリミング位置切替")}
+                          >
+                            <span>POS:</span>
+                            <span className="text-accent uppercase">
+                              {cat.coverImagePosition === "center"
+                                ? "MID"
+                                : cat.coverImagePosition === "bottom"
+                                ? "BTM"
+                                : "TOP"}
+                            </span>
+                          </button>
+                        )}
+
                         {/* CARD MODE */}
                         {homeViewMode === "card" && (
-                          <div className="w-full aspect-[4/3] bg-black/20 overflow-hidden relative flex items-center justify-center border-b border-panel-border/60">
+                          <div className="w-full aspect-[16/11] sm:aspect-[16/11] max-h-[225px] sm:max-h-[240px] bg-black/20 overflow-hidden relative flex items-center justify-center border-b border-panel-border/60">
                             {coverUrl ? (
                               <img
                                 src={coverUrl}
@@ -1240,7 +1173,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                                   style={{ color: cat.color || undefined }}
                                 />
                               )}
-                              <span className="font-mono text-xs font-bold truncate text-text-primary group-hover:text-folder-icon transition-colors">
+                              <span className="font-mono text-sm font-bold truncate text-text-primary group-hover:text-folder-icon transition-colors">
                                 {cat.name}
                               </span>
                             </div>
@@ -1335,10 +1268,8 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                 className={cn(
                   "w-full pb-12",
                   homeViewMode === "list"
-                    ? "flex flex-col gap-1.5"
-                    : homeViewMode === "card"
-                    ? "grid gap-3.5 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-                    : "grid gap-3.5 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
+                    ? "flex flex-col gap-2"
+                    : "grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4"
                 )}
               >
                 {currentDatasets.map((ds) => {
@@ -1495,17 +1426,17 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                           }
                         }}
                         className={cn(
-                          "w-full h-full flex flex-col justify-between transition-all text-left shadow-sm hover:shadow-md text-text-primary overflow-hidden relative border",
+                          "w-full h-full flex flex-col justify-between transition-all text-left shadow-sm hover:shadow-md text-text-primary overflow-hidden relative border rounded-[3px]",
                           "border-panel-border hover:border-accent/70",
                           homeViewMode === "card"
                             ? "p-0 bg-panel-bg/90"
-                            : "p-3.5 bg-panel-bg/85 hover:bg-panel-bg backdrop-blur-md"
+                            : "p-4 min-h-[105px] sm:min-h-[110px] bg-panel-bg/85 hover:bg-panel-bg backdrop-blur-md"
                         )}
                       >
                         {/* COVER MODE */}
                         {homeViewMode === "cover" && previewUrl && (
                           <div
-                            className="absolute inset-0 z-0 bg-cover pointer-events-none opacity-[var(--cover-base-op,0.3)] group-hover:opacity-[var(--cover-hover-op,0.45)] transition-opacity duration-300 transform scale-105 group-hover:scale-100"
+                            className="absolute inset-0 z-0 bg-cover pointer-events-none opacity-[var(--cover-base-op,0.32)] group-hover:opacity-[var(--cover-hover-op,0.48)] transition-opacity duration-300 transform scale-105 group-hover:scale-100"
                             style={{
                               backgroundImage: `url(${previewUrl})`,
                               backgroundPosition: getCoverPositionStyle(ds.coverImagePosition),
@@ -1514,9 +1445,28 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                           />
                         )}
 
+                        {/* COVER MODE POS BUTTON */}
+                        {homeViewMode === "cover" && previewUrl && (
+                          <button
+                            type="button"
+                            onClick={(e) => onCycleCoverPosition(ds.id, e)}
+                            className="absolute top-2 right-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity bg-panel-bg/90 hover:bg-panel-bg text-text-secondary hover:text-accent font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-panel-border backdrop-blur-xs flex items-center gap-0.5 shadow-xs cursor-pointer"
+                            title={t("Cycle crop position", "トリミング位置切替")}
+                          >
+                            <span>POS:</span>
+                            <span className="text-accent uppercase">
+                              {ds.coverImagePosition === "center"
+                                ? "MID"
+                                : ds.coverImagePosition === "bottom"
+                                ? "BTM"
+                                : "TOP"}
+                            </span>
+                          </button>
+                        )}
+
                         {/* CARD MODE */}
                         {homeViewMode === "card" && (
-                          <div className="w-full aspect-[4/3] bg-black/20 overflow-hidden relative flex items-center justify-center border-b border-panel-border/60">
+                          <div className="w-full aspect-[16/11] sm:aspect-[16/11] max-h-[225px] sm:max-h-[240px] bg-black/20 overflow-hidden relative flex items-center justify-center border-b border-panel-border/60">
                             {previewUrl ? (
                               <img
                                 src={previewUrl}
@@ -1602,7 +1552,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                                   <Pin size={11} className="fill-accent rotate-45" />
                                 </button>
                               )}
-                              <span className="font-mono text-xs font-semibold truncate group-hover:text-accent transition-colors">
+                              <span className="font-mono text-sm font-bold truncate group-hover:text-accent transition-colors">
                                 {ds.name}
                               </span>
                             </div>
