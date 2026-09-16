@@ -56,7 +56,7 @@ interface ImageViewerDB extends DBSchema {
 }
 
 const DB_NAME = 'solid-image-viewer-db';
-const DB_VERSION = 11; // upgrade to version 4 for categories
+const DB_VERSION = 12; // upgrade to version 4 for categories
 const STORE_NAME_IMAGES = 'images';
 const STORE_NAME_DATASETS = 'datasets';
 const STORE_NAME_CATEGORIES = 'categories';
@@ -76,8 +76,8 @@ export async function initDB() {
         imgStore.createIndex('by-dataset', 'datasetId');
       }
       // v3 adds autoBg to ImageRecord, no schema changes needed
-      // v4 adds categories store
-      if (oldVersion < 4) {
+      // v12 adds categories store (previously labeled v4 by AI Studio)
+      if (oldVersion < 12) {
         if (!db.objectStoreNames.contains(STORE_NAME_CATEGORIES)) {
           const catStore = db.createObjectStore(STORE_NAME_CATEGORIES, { keyPath: 'id' });
           catStore.createIndex('by-parent', 'parentId');
