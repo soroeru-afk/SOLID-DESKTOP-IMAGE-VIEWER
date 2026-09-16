@@ -15,6 +15,7 @@ import {
   FolderInput,
   Palette,
 } from "lucide-react";
+import { FolderIconComponent } from "./FolderIcon";
 import { CategoryRecord, DatasetRecord } from "../lib/db";
 import { cn } from "../lib/utils";
 
@@ -26,6 +27,7 @@ interface CategoryTreeProps {
   activeCategoryId: string | null;
   expandedCategoryIds: Set<string>;
   favoriteDatasetId: string | null;
+  sidebarFontSize?: "xs" | "sm" | "base" | "lg" | "xl";
   onSelectDataset: (id: string) => void;
   onSelectCategory: (id: string | null) => void;
   onToggleExpand: (id: string, e?: React.MouseEvent) => void;
@@ -56,6 +58,7 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
   activeCategoryId,
   expandedCategoryIds,
   favoriteDatasetId,
+  sidebarFontSize = "sm",
   onSelectDataset,
   onSelectCategory,
   onToggleExpand,
@@ -237,19 +240,34 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
     const totalImgCount = getCategoryTotalCount(cat.id);
     const canHaveSubcategory = depth < 2; // Max 3 levels: 0, 1, 2
 
+    const textClass =
+      sidebarFontSize === "xs"
+        ? "text-[10px]"
+        : sidebarFontSize === "sm"
+        ? "text-[11px]"
+        : sidebarFontSize === "base"
+        ? "text-[12px]"
+        : sidebarFontSize === "lg"
+        ? "text-[14px]"
+        : "text-[16px]";
+
     return (
       <div key={cat.id} className="flex flex-col w-full select-none">
         <div
           draggable
           onDragStart={(e) => handleCategoryDragStart(e, cat.id)}
           onDragEnd={handleDragEnd}
-          onClick={() => onSelectCategory(cat.id)}
+          onClick={(e) => {
+            onSelectCategory(cat.id);
+            onToggleExpand(cat.id, e);
+          }}
           onDragOver={(e) => handleDragOver(e, cat.id)}
           onDragLeave={(e) => handleDragLeave(e, cat.id)}
           onDrop={(e) => handleCategoryNodeDrop(e, cat)}
           style={{ paddingLeft: `${Math.max(6, depth * 14 + 6)}px` }}
           className={cn(
-            "flex items-center justify-between pr-2 py-1 text-xs font-mono cursor-pointer border transition-all group min-h-[30px] overflow-hidden shrink-0",
+            "flex items-center justify-between pr-2 py-1 font-mono cursor-pointer border transition-all group min-h-[30px] overflow-hidden shrink-0",
+            textClass,
             isSelected
               ? "bg-accent/15 border-accent/60 text-accent font-medium"
               : isDragOver
@@ -262,6 +280,7 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
             <div
               className="p-0.5 text-text-muted/40 hover:text-folder-icon cursor-grab active:cursor-grabbing transition-colors shrink-0"
               title={t("Drag to re-order/nest folder", "ドラッグしてフォルダーを移動")}
+              onClick={(e) => e.stopPropagation()}
             >
               <GripVertical size={13} className="text-folder-icon/70" />
             </div>
@@ -269,7 +288,10 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
             {/* Expand / Collapse Toggle Button */}
             <button
               type="button"
-              onClick={(e) => onToggleExpand(cat.id, e)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleExpand(cat.id, e);
+              }}
               className="p-0.5 text-text-muted hover:text-text-primary transition-colors shrink-0"
             >
               {isExpanded ? (
@@ -280,25 +302,16 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
             </button>
 
             {/* Folder Icon */}
-            {isExpanded ? (
-              <FolderOpen
-                size={14}
-                className={cn("shrink-0", isSelected ? "text-accent" : "text-folder-icon")}
-                style={{ color: isSelected ? undefined : (cat.color || undefined) }}
-              />
-            ) : (
-              <Folder
-                size={14}
-                className={cn("shrink-0", isSelected ? "text-accent" : "text-folder-icon")}
-                style={{ color: isSelected ? undefined : (cat.color || undefined) }}
-              />
-            )}
+            <FolderIconComponent
+              iconType={cat.icon}
+              isOpen={isExpanded}
+              size={14}
+              className={cn("shrink-0", isSelected ? "text-accent" : "text-folder-icon")}
+              style={{ color: isSelected ? undefined : (cat.color || undefined) }}
+            />
 
-            {/* Name */}
-            <span
-              className="truncate text-[11px] font-semibold tracking-wide"
-              style={{ color: !isSelected && cat.color ? cat.color : undefined }}
-            >
+            {/* Name (Clicking on text triggers row click and expands/collapses folder) */}
+            <span className={cn("truncate font-semibold tracking-wide", textClass)}>
               {cat.name}
             </span>
 
@@ -408,6 +421,17 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
     const isDragOver = dragOverTargetId === ds.id;
     const count = datasetCounts[ds.id] || 0;
 
+    const textClass =
+      sidebarFontSize === "xs"
+        ? "text-[10px]"
+        : sidebarFontSize === "sm"
+        ? "text-[11px]"
+        : sidebarFontSize === "base"
+        ? "text-[12px]"
+        : sidebarFontSize === "lg"
+        ? "text-[14px]"
+        : "text-[16px]";
+
     return (
       <div
         key={ds.id}
@@ -420,7 +444,8 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
         onClick={() => onSelectDataset(ds.id)}
         style={{ paddingLeft: `${Math.max(6, depth * 14 + 6)}px` }}
         className={cn(
-          "flex items-center justify-between pr-2 py-1 text-xs font-mono cursor-pointer border transition-colors group min-h-[30px] overflow-hidden shrink-0",
+          "flex items-center justify-between pr-2 py-1 font-mono cursor-pointer border transition-colors group min-h-[30px] overflow-hidden shrink-0",
+          textClass,
           isSelected
             ? "bg-accent/15 border-accent/60 text-accent font-medium"
             : isDragOver
@@ -445,7 +470,7 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
             </button>
           )}
 
-          <span className="truncate text-[11px]">{ds.name}</span>
+          <span className={cn("truncate", textClass)}>{ds.name}</span>
 
           <span className="text-text-muted text-[10px] shrink-0">
             ({count})

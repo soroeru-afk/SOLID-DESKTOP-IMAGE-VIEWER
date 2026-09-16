@@ -92,11 +92,13 @@ import {
   updateCategoryParent,
   deleteCategory,
   updateCategoryColor,
+  updateCategoryIcon,
   updateCategoryCoverPosition,
   updateCategoriesOrder,
   updateDatasetsOrder,
   updateDatasetCategory,
 } from "./lib/db";
+import { FolderIconComponent, FOLDER_ICON_OPTIONS } from "./components/FolderIcon";
 import { Panel, SolidButton } from "./components/ui";
 import { CategoryTree } from "./components/CategoryTree";
 import { CategoryExplorer } from "./components/CategoryExplorer";
@@ -859,11 +861,19 @@ export default function App() {
     const saved = localStorage.getItem("app_sidebarWidth");
     return saved ? Math.max(300, parseInt(saved, 10)) : 300;
   });
+  const [sidebarFontSize, setSidebarFontSize] = useState<"xs" | "sm" | "base" | "lg" | "xl">(() => {
+    const saved = localStorage.getItem("app_sidebarFontSize");
+    return (saved as "xs" | "sm" | "base" | "lg" | "xl") || "sm";
+  });
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   
   useEffect(() => {
     localStorage.setItem("app_sidebarWidth", sidebarWidth.toString());
   }, [sidebarWidth]);
+
+  useEffect(() => {
+    localStorage.setItem("app_sidebarFontSize", sidebarFontSize);
+  }, [sidebarFontSize]);
 
   const [sidebarOrder, setSidebarOrder] = useState(() => {
     try {
@@ -922,6 +932,7 @@ export default function App() {
   });
   const [colorCategoryModalTarget, setColorCategoryModalTarget] = useState<CategoryRecord | null>(null);
   const [colorCategoryInput, setColorCategoryInput] = useState<string>("#fbbf24");
+  const [categoryIconInput, setCategoryIconInput] = useState<string>("folder");
   const [mainBgColorOverride, setMainBgColorOverride] = useState<string>(() => {
     return localStorage.getItem("main_bg_color_override") || "default";
   });
@@ -997,21 +1008,22 @@ export default function App() {
   // Apply Theme
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
-    
-    // Dynamic theme-color meta tag
-    let metaThemeColor = document.querySelector('meta[name="theme-color"]');
-    if (!metaThemeColor) {
-      metaThemeColor = document.createElement("meta");
-      metaThemeColor.setAttribute("name", "theme-color");
-      document.head.appendChild(metaThemeColor);
-    }
+    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
     let color = "#0B0C0D"; // default for BLACK
     if (theme === "TRUE_BLACK") color = "#000000";
     else if (theme === "LIGHT") color = "#e2e8f0";
-    else if (theme === "PAPER") color = "#f4ebe1";
-    else if (theme === "NAVY") color = "#0F172A";
-    else if (theme === "RED") color = "#450a0a";
-    metaThemeColor.setAttribute("content", color);
+    else if (theme === "PAPER") color = "#f5f5f0";
+    else if (theme === "RED") color = "#0d0404";
+    else if (theme === "NAVY") color = "#06090e";
+    
+    if (metaThemeColor) {
+      metaThemeColor.setAttribute("content", color);
+    } else {
+      const meta = document.createElement("meta");
+      meta.name = "theme-color";
+      meta.content = color;
+      document.head.appendChild(meta);
+    }
   }, [theme]);
 
   // Load from DB on mount
@@ -3600,7 +3612,36 @@ Images imported: ${importedImages}`);
   return (
                   <Panel
                     key="datasets"
-                    title={t("02 DATA SETS", "02 データセット")}
+                    title={
+                      <div className="flex items-center justify-between w-full pr-1">
+                        <span>{t("02 DATA SETS", "02 データセット")}</span>
+                        <div className="flex items-center gap-1 font-mono text-[9px] shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <span className="text-text-muted text-[9px] mr-0.5">{t("SIZE:", "サイズ:")}</span>
+                          {[
+                            { id: "xs", label: "XS" },
+                            { id: "sm", label: "SM" },
+                            { id: "base", label: "MD" },
+                            { id: "lg", label: "LG" },
+                            { id: "xl", label: "XL" },
+                          ].map((f) => (
+                            <button
+                              key={f.id}
+                              type="button"
+                              onClick={() => setSidebarFontSize(f.id as any)}
+                              className={cn(
+                                "px-1.5 py-0.5 border transition-all text-[9px] rounded-xs cursor-pointer",
+                                sidebarFontSize === f.id
+                                  ? "border-accent bg-accent/30 text-accent font-bold"
+                                  : "border-panel-border/60 text-text-muted hover:text-text-primary bg-panel-bg"
+                              )}
+                              title={`Sidebar font size: ${f.label}`}
+                            >
+                              {f.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    }
                     className={cn("shrink-0 flex flex-col", isDataSetsExpanded && "flex-1 min-h-[200px]")}
                     contentClassName="flex flex-col p-4 overflow-hidden gap-3 h-full"
                     isCollapsible
@@ -3699,6 +3740,7 @@ Images imported: ${importedImages}`);
                   activeCategoryId={activeCategoryId}
                   expandedCategoryIds={expandedCategoryIds}
                   favoriteDatasetId={favoriteDatasetId}
+                  sidebarFontSize={sidebarFontSize}
                   onSelectDataset={(id) => {
                     setActiveDatasetId(id);
                     setSearchQuery("");
@@ -3733,6 +3775,7 @@ Images imported: ${importedImages}`);
                   onRequestColorCategoryModal={(cat) => {
                     setColorCategoryModalTarget(cat);
                     setColorCategoryInput(cat.color || themeFolderColors[theme] || "#fbbf24");
+                    setCategoryIconInput(cat.icon || "folder");
                   }}
                   t={t}
                 />
@@ -4244,6 +4287,41 @@ Images imported: ${importedImages}`);
                                     ON (ぼかし)
                                   </button>
                                 </div>
+                              </div>
+                            </div>
+
+                            {/* 3. SIDEBAR FONT SIZE */}
+                            <div className="flex flex-col gap-2">
+                              <div className="flex items-center justify-between font-mono text-[10px] text-text-muted tracking-wider uppercase font-bold border-b border-panel-border pb-1">
+                                <div className="flex items-center gap-1.5">
+                                  <Sliders size={12} className="text-accent" />
+                                  <span>{t("SIDEBAR FONT SIZE", "サイドバー文字サイズ")}</span>
+                                </div>
+                                <span className="text-[9px] text-accent font-mono uppercase font-bold">{sidebarFontSize}</span>
+                              </div>
+
+                              <div className="flex items-center gap-1">
+                                {[
+                                  { id: "xs", label: "XS (10px)" },
+                                  { id: "sm", label: "SM (11px/標準)" },
+                                  { id: "base", label: "MD (12px)" },
+                                  { id: "lg", label: "LG (14px)" },
+                                  { id: "xl", label: "XL (16px)" },
+                                ].map((f) => (
+                                  <button
+                                    key={f.id}
+                                    type="button"
+                                    onClick={() => setSidebarFontSize(f.id as any)}
+                                    className={cn(
+                                      "flex-1 py-1 border text-[9px] font-mono transition-all text-center rounded-xs cursor-pointer",
+                                      sidebarFontSize === f.id
+                                        ? "border-accent bg-accent/20 text-accent font-bold shadow-xs"
+                                        : "border-panel-border text-text-muted hover:text-text-primary bg-panel-bg"
+                                    )}
+                                  >
+                                    {f.label}
+                                  </button>
+                                ))}
                               </div>
                             </div>
 
@@ -4868,6 +4946,7 @@ Images imported: ${importedImages}`);
                           onRequestColorCategoryModal={(cat) => {
                             setColorCategoryModalTarget(cat);
                             setColorCategoryInput(cat.color || themeFolderColors[theme] || "#fbbf24");
+                            setCategoryIconInput(cat.icon || "folder");
                           }}
                           onBulkDeleteItems={handleBulkDeleteItems}
                           onBulkMoveItems={handleBulkMoveItems}
@@ -6414,7 +6493,7 @@ Images imported: ${importedImages}`);
         )}
       </AnimatePresence>
 
-      {/* Category Color Modal */}
+      {/* Category Appearance Modal (Color & Icon) */}
       <AnimatePresence>
         {colorCategoryModalTarget && (
           <motion.div
@@ -6423,18 +6502,55 @@ Images imported: ${importedImages}`);
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
           >
-            <div className="bg-panel-bg border border-accent/50 p-6 font-mono w-[420px] max-w-[90vw] shadow-[0_0_30px_rgba(59,130,246,0.2)]">
+            <div className="bg-panel-bg border border-accent/50 p-6 font-mono w-[460px] max-w-[92vw] shadow-[0_0_30px_rgba(59,130,246,0.2)]">
               <h2 className="text-accent mb-2 flex items-center gap-2 text-sm uppercase font-bold">
-                <Palette size={18} /> {t("SET FOLDER COLOR", "フォルダーカラーの設定")}
+                <Palette size={18} /> {t("SET FOLDER APPEARANCE", "フォルダーの外観設定")}
               </h2>
-              <p className="text-text-secondary text-xs mb-4">
+              <p className="text-text-secondary text-xs mb-4 leading-relaxed">
                 {t(
-                  `Set custom icon color for folder "${colorCategoryModalTarget.name}":`,
-                  `フォルダー「${colorCategoryModalTarget.name}」の個別表示カラーを設定します：`
+                  `Customize icon variation and color for folder "${colorCategoryModalTarget.name}":`,
+                  `フォルダー「${colorCategoryModalTarget.name}」の表示アイコンと個別カラーを設定します：`
                 )}
               </p>
 
-              <div className="flex flex-col gap-4 mb-6">
+              {/* 1. Folder Icon Variation Selector */}
+              <div className="mb-5 border-b border-panel-border/60 pb-4">
+                <span className="block text-[11px] font-mono text-text-muted mb-2 font-bold uppercase tracking-wider">
+                  {t("FOLDER ICON VARIATION", "フォルダーアイコンの種類")}:
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  {FOLDER_ICON_OPTIONS.map((opt) => {
+                    const isSelected = categoryIconInput === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setCategoryIconInput(opt.id)}
+                        className={cn(
+                          "flex items-center gap-2 p-2 border text-xs font-mono transition-all rounded-[2px] cursor-pointer text-left select-none",
+                          isSelected
+                            ? "bg-accent/20 border-accent text-accent font-bold ring-1 ring-accent"
+                            : "bg-root-bg/40 border-panel-border/80 text-text-secondary hover:text-text-primary hover:border-text-muted"
+                        )}
+                      >
+                        <FolderIconComponent
+                          iconType={opt.id}
+                          size={16}
+                          style={{ color: colorCategoryInput || undefined }}
+                          className="shrink-0"
+                        />
+                        <span className="truncate text-[10px]">{language === "JP" ? opt.labelJp : opt.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 2. Folder Color Selector */}
+              <div className="flex flex-col gap-3 mb-6">
+                <span className="block text-[11px] font-mono text-text-muted font-bold uppercase tracking-wider">
+                  {t("FOLDER ICON COLOR", "アイコンの個別カラー")}:
+                </span>
                 <div className="flex flex-wrap items-center gap-2">
                   {[
                     { name: "アンバー", hex: "#fbbf24" },
@@ -6492,12 +6608,12 @@ Images imported: ${importedImages}`);
                         : "border-panel-border text-text-muted hover:text-text-primary"
                     )}
                   >
-                    {t("Clear (Use Theme)", "標準に戻す")}
+                    {t("Clear (Use Theme)", "標準色に戻す")}
                   </button>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3">
+              <div className="flex justify-end gap-3 border-t border-panel-border/60 pt-4">
                 <SolidButton
                   onClick={() => setColorCategoryModalTarget(null)}
                   className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
@@ -6508,6 +6624,10 @@ Images imported: ${importedImages}`);
                   onClick={async () => {
                     if (colorCategoryModalTarget) {
                       await updateCategoryColor(colorCategoryModalTarget.id, colorCategoryInput || null);
+                      await updateCategoryIcon(
+                        colorCategoryModalTarget.id,
+                        categoryIconInput === "folder" ? null : categoryIconInput
+                      );
                       const updatedCats = await getAllCategories();
                       setCategories(updatedCats);
                       setColorCategoryModalTarget(null);
@@ -6515,7 +6635,7 @@ Images imported: ${importedImages}`);
                   }}
                   className="text-accent hover:text-accent border-accent/50"
                 >
-                  {t("SAVE COLOR", "カラーを保存")}
+                  {t("SAVE SETTINGS", "設定を保存")}
                 </SolidButton>
               </div>
             </div>

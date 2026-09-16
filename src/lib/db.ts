@@ -7,6 +7,7 @@ export interface CategoryRecord {
   createdAt: number;
   orderIndex?: number;
   color?: string | null;
+  icon?: string | null;
   coverImagePosition?: "top" | "center" | "bottom";
 }
 
@@ -56,7 +57,7 @@ interface ImageViewerDB extends DBSchema {
 }
 
 const DB_NAME = 'solid-image-viewer-db';
-const DB_VERSION = 12; // upgrade to version 4 for categories
+const DB_VERSION = 12; // upgrade to version 12 to resolve VersionErrors
 const STORE_NAME_IMAGES = 'images';
 const STORE_NAME_DATASETS = 'datasets';
 const STORE_NAME_CATEGORIES = 'categories';
@@ -64,24 +65,16 @@ const STORE_NAME_CATEGORIES = 'categories';
 export async function initDB() {
   return openDB<ImageViewerDB>(DB_NAME, DB_VERSION, {
     upgrade(db, oldVersion, newVersion, transaction) {
-      if (oldVersion < 1) {
-        // Initial creation
+      if (!db.objectStoreNames.contains(STORE_NAME_DATASETS)) {
         db.createObjectStore(STORE_NAME_DATASETS, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORE_NAME_IMAGES)) {
         const imgStore = db.createObjectStore(STORE_NAME_IMAGES, { keyPath: 'id' });
         imgStore.createIndex('by-dataset', 'datasetId');
-      } else if (oldVersion < 2) {
-        // Upgrade from version 1 to 2
-        db.createObjectStore(STORE_NAME_DATASETS, { keyPath: 'id' });
-        const imgStore = transaction.objectStore(STORE_NAME_IMAGES);
-        imgStore.createIndex('by-dataset', 'datasetId');
       }
-      // v3 adds autoBg to ImageRecord, no schema changes needed
-      // v4 adds categories store
-      if (oldVersion < 12) {
-        if (!db.objectStoreNames.contains(STORE_NAME_CATEGORIES)) {
-          const catStore = db.createObjectStore(STORE_NAME_CATEGORIES, { keyPath: 'id' });
-          catStore.createIndex('by-parent', 'parentId');
-        }
+      if (!db.objectStoreNames.contains(STORE_NAME_CATEGORIES)) {
+        const catStore = db.createObjectStore(STORE_NAME_CATEGORIES, { keyPath: 'id' });
+        catStore.createIndex('by-parent', 'parentId');
       }
     },
   });
@@ -409,6 +402,22 @@ export async function updateCategoryColor(id: string, color: string | null) {
       cat.color = color;
     } else {
       delete cat.color;
+    }
+    await store.put(cat);
+  }
+  await tx.done;
+}
+
+export async function updateCategoryIcon(id: string, icon: string | null) {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME_CATEGORIES, 'readwrite');
+  const store = tx.objectStore(STORE_NAME_CATEGORIES);
+  const cat = await store.get(id);
+  if (cat) {
+    if (icon) {
+      cat.icon = icon;
+    } else {
+      delete cat.icon;
     }
     await store.put(cat);
   }

@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { CategoryRecord, DatasetRecord } from "../lib/db";
 import { cn } from "../lib/utils";
+import { FolderIconComponent } from "./FolderIcon";
 
 interface CategoryExplorerProps {
   categories: CategoryRecord[];
@@ -709,7 +710,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                               />
                             ) : (
                               <div className="flex flex-col items-center justify-center text-folder-icon/50 font-mono text-[10px]">
-                                <Folder size={32} className="mb-1 opacity-70" />
+                                <FolderIconComponent iconType={cat.icon} size={32} className="mb-1 opacity-70" style={{ color: cat.color || undefined }} />
                                 <span>{t("FOLDER", "フォルダー")}</span>
                               </div>
                             )}
@@ -763,7 +764,8 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                                 <GripVertical size={14} className="text-folder-icon/80" />
                               </div>
                               {homeViewMode !== "card" && (
-                                <Folder
+                                <FolderIconComponent
+                                  iconType={cat.icon}
                                   size={18}
                                   className={cn(
                                     "text-folder-icon shrink-0 group-hover:scale-110 transition-transform",
@@ -772,10 +774,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                                   style={{ color: cat.color || undefined }}
                                 />
                               )}
-                              <span
-                                className="font-mono text-xs font-bold truncate text-text-primary group-hover:text-folder-icon transition-colors"
-                                style={{ color: cat.color || undefined }}
-                              >
+                              <span className="font-mono text-xs font-bold truncate text-text-primary group-hover:text-folder-icon transition-colors">
                                 {cat.name}
                               </span>
                             </div>
@@ -1167,7 +1166,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
 
                     {/* All available folders */}
                     {categories.map((cat) => {
-                      const isSelfOrDescendant = Array.from(selectedCategoryIds).some((selectedId) =>
+                      const isSelfOrDescendant = Array.from(selectedCategoryIds).some((selectedId: string) =>
                         selectedId === cat.id || isDescendant(cat.id, selectedId)
                       );
 
