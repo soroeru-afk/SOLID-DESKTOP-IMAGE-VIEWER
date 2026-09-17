@@ -9,6 +9,7 @@ export interface CategoryRecord {
   color?: string | null;
   icon?: string | null;
   coverImagePosition?: "top" | "center" | "bottom";
+  coverImageId?: string;
 }
 
 export interface DatasetRecord {
@@ -431,6 +432,22 @@ export async function updateCategoryCoverPosition(id: string, position: "top" | 
   const cat = await store.get(id);
   if (cat) {
     cat.coverImagePosition = position;
+    await store.put(cat);
+  }
+  await tx.done;
+}
+
+export async function updateCategoryCoverImage(id: string, coverImageId: string | null) {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME_CATEGORIES, 'readwrite');
+  const store = tx.objectStore(STORE_NAME_CATEGORIES);
+  const cat = await store.get(id);
+  if (cat) {
+    if (coverImageId) {
+      cat.coverImageId = coverImageId;
+    } else {
+      delete cat.coverImageId;
+    }
     await store.put(cat);
   }
   await tx.done;

@@ -96,6 +96,8 @@ import {
   updateCategoryColor,
   updateCategoryIcon,
   updateCategoryCoverPosition,
+  updateCategoryCoverImage,
+  getImageById,
   updateCategoriesOrder,
   updateDatasetsOrder,
   updateDatasetCategory,
@@ -833,6 +835,7 @@ export default function App() {
     }
   );
   const [datasetPreviewUrls, setDatasetPreviewUrls] = useState<Record<string, string>>({});
+  const [categoryPreviewUrls, setCategoryPreviewUrls] = useState<Record<string, string>>({});
   const [hoveredDatasetId, setHoveredDatasetId] = useState<string | null>(null);
   const [popupMousePos, setPopupMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
@@ -1018,22 +1021,21 @@ export default function App() {
   // Apply Theme
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
-    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    
+    // Dynamic theme-color meta tag
+    let metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    if (!metaThemeColor) {
+      metaThemeColor = document.createElement("meta");
+      metaThemeColor.setAttribute("name", "theme-color");
+      document.head.appendChild(metaThemeColor);
+    }
     let color = "#0B0C0D"; // default for BLACK
     if (theme === "TRUE_BLACK") color = "#000000";
     else if (theme === "LIGHT") color = "#e2e8f0";
-    else if (theme === "PAPER") color = "#f5f5f0";
-    else if (theme === "RED") color = "#0d0404";
-    else if (theme === "NAVY") color = "#06090e";
-    
-    if (metaThemeColor) {
-      metaThemeColor.setAttribute("content", color);
-    } else {
-      const meta = document.createElement("meta");
-      meta.name = "theme-color";
-      meta.content = color;
-      document.head.appendChild(meta);
-    }
+    else if (theme === "PAPER") color = "#f4ebe1";
+    else if (theme === "NAVY") color = "#0F172A";
+    else if (theme === "RED") color = "#450a0a";
+    metaThemeColor.setAttribute("content", color);
   }, [theme]);
 
   // Load from DB on mount
@@ -1082,6 +1084,122 @@ export default function App() {
       isMounted = false;
     };
   }, [activeDatasetId, datasets]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchCategoryPreviews = async () => {
+      const newUrls: Record<string, string> = {};
+      for (const cat of categories) {
+        if (cat.coverImageId) {
+          try {
+            const coverImg = await getImageById(cat.coverImageId);
+            if (coverImg && coverImg.data) {
+              newUrls[cat.id] = URL.createObjectURL(coverImg.data);
+            }
+          } catch (err) {
+            console.error(`Failed to load preview for category ${cat.id}`, err);
+          }
+        }
+      }
+      if (isMounted) {
+        setCategoryPreviewUrls((prev) => ({ ...prev, ...newUrls }));
+      }
+    };
+
+    fetchCategoryPreviews();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [categories]);
+
+  const handleSetCategoryAsCover = async (categoryId: string, imageId: string | null) => {
+    try {
+      await updateCategoryCoverImage(categoryId, imageId);
+      setCategories((prev) =>
+        prev.map((c) => (c.id === categoryId ? { ...c, coverImageId: imageId || undefined } : c))
+      );
+      if (imageId) {
+        const img = await getImageById(imageId);
+        if (img && img.data) {
+          setCategoryPreviewUrls((prev) => ({
+            ...prev,
+            [categoryId]: URL.createObjectURL(img.data),
+          }));
+        }
+        showNotification(t("SET AS FOLDER COVER IMAGE", "フォルダーのカバー画像に設定しました"));
+      } else {
+        setCategoryPreviewUrls((prev) => {
+          const next = { ...prev };
+          delete next[categoryId];
+          return next;
+        });
+        showNotification(t("RESET FOLDER COVER IMAGE TO AUTO", "フォルダーカバー画像を自動設定に戻しました"));
+      }
+    } catch (err) {
+      console.error("Failed to update category cover image", err);
+      showNotification(t("FAILED TO UPDATE COVER IMAGE", "カバー画像の設定に失敗しました"));
+    }
+  };
+
+  const handleBatchReorderCategories = async (updates: { id: string; orderIndex: number }[]) => {
+    try {
+      await updateCategoriesOrder(updates);
+      setCategories((prev) => {
+        const map = new Map(updates.map((u) => [u.id, u.orderIndex]));
+        return [...prev]
+          .map((c) => (map.has(c.id) ? { ...c, orderIndex: map.get(c.id)! } : c))
+          .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+      });
+    } catch (err) {
+      console.error("Failed to batch reorder categories", err);
+    }
+  };
+
+  const handleBatchReorderDatasets = async (updates: { id: string; orderIndex: number }[]) => {
+    try {
+      await updateDatasetsOrder(updates);
+      setDatasets((prev) => {
+        const map = new Map(updates.map((u) => [u.id, u.orderIndex]));
+        return [...prev]
+          .map((d) => (map.has(d.id) ? { ...d, orderIndex: map.get(d.id)! } : d))
+          .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+      });
+    } catch (err) {
+      console.error("Failed to batch reorder datasets", err);
+    }
+  };
+
+  const handleSetDatasetCoverImageById = async (datasetId: string, imageId: string | null) => {
+    try {
+      await updateDatasetCoverImage(datasetId, imageId);
+      setDatasets((prev) =>
+        prev.map((d) => (d.id === datasetId ? { ...d, coverImageId: imageId || undefined } : d))
+      );
+      if (imageId) {
+        const img = await getImageById(imageId);
+        if (img && img.data) {
+          setDatasetPreviewUrls((prev) => ({
+            ...prev,
+            [datasetId]: URL.createObjectURL(img.data),
+          }));
+        }
+        showNotification(t("SET AS DATASET COVER IMAGE", "リストのカバー画像に設定しました"));
+      } else {
+        const firstImg = await getFirstImageOfDataset(datasetId);
+        if (firstImg && firstImg.data) {
+          setDatasetPreviewUrls((prev) => ({
+            ...prev,
+            [datasetId]: URL.createObjectURL(firstImg.data),
+          }));
+        }
+        showNotification(t("RESET COVER IMAGE TO DEFAULT", "カバー画像を初期状態（先頭画像）に戻しました"));
+      }
+    } catch (err) {
+      console.error("Failed to set cover image", err);
+      showNotification(t("FAILED TO SET COVER IMAGE", "カバー画像の設定に失敗しました"));
+    }
+  };
 
   const handleSetAsCover = async (datasetId: string, targetImage: LoadedImage | ImageRecord) => {
     try {
@@ -5124,6 +5242,7 @@ Images imported: ${importedImages}`);
                           datasets={datasets}
                           datasetCounts={datasetCounts}
                           datasetPreviewUrls={datasetPreviewUrls}
+                          categoryPreviewUrls={categoryPreviewUrls}
                           activeCategoryId={activeCategoryId}
                           totalImagesCount={totalImagesCount}
                           homeViewMode={homeViewMode}
@@ -5152,10 +5271,14 @@ Images imported: ${importedImages}`);
                           onTogglePinDataset={handleTogglePinDataset}
                           onCycleCoverPosition={handleCycleCoverPosition}
                           onCycleCategoryCoverPosition={handleCycleCategoryCoverPosition}
+                          onSetCategoryCoverImage={handleSetCategoryAsCover}
+                          onSetDatasetCoverImage={handleSetDatasetCoverImageById}
                           onMoveDatasetToCategory={handleMoveDatasetToCategory}
                           onMoveCategoryParent={handleMoveCategoryParent}
                           onReorderDatasets={handleReorderDatasetItems}
                           onReorderCategories={handleReorderCategories}
+                          onBatchReorderCategories={handleBatchReorderCategories}
+                          onBatchReorderDatasets={handleBatchReorderDatasets}
                           onRequestMoveDatasetModal={handleRequestMoveDatasetModal}
                           onRequestMoveCategoryModal={handleRequestMoveCategoryModal}
                           onRequestColorCategoryModal={(cat) => {

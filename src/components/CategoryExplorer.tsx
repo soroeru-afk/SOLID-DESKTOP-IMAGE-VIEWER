@@ -30,9 +30,11 @@ import {
   Folders,
   ArrowUp,
   ArrowDown,
+  ArrowUpDown,
   List,
+  Bookmark,
 } from "lucide-react";
-import { CategoryRecord, DatasetRecord } from "../lib/db";
+import { CategoryRecord, DatasetRecord, ImageRecord, getImagesByDataset } from "../lib/db";
 import { cn } from "../lib/utils";
 import { FolderIconComponent } from "./FolderIcon";
 
@@ -41,6 +43,7 @@ interface CategoryExplorerProps {
   datasets: DatasetRecord[];
   datasetCounts: Record<string, number>;
   datasetPreviewUrls: Record<string, string>;
+  categoryPreviewUrls?: Record<string, string>;
   activeCategoryId: string | null;
   totalImagesCount: number;
   homeViewMode: "text" | "popup" | "card" | "cover" | "list";
@@ -56,10 +59,14 @@ interface CategoryExplorerProps {
   onTogglePinDataset: (id: string, e: React.MouseEvent) => void;
   onCycleCoverPosition: (id: string, e: React.MouseEvent) => void;
   onCycleCategoryCoverPosition?: (id: string, e: React.MouseEvent) => void;
+  onSetCategoryCoverImage?: (categoryId: string, imageId: string | null) => Promise<void>;
+  onSetDatasetCoverImage?: (datasetId: string, imageId: string | null) => Promise<void>;
   onMoveDatasetToCategory: (datasetId: string, targetCategoryId: string | null) => void;
   onMoveCategoryParent: (categoryId: string, newParentId: string | null) => void;
   onReorderDatasets?: (draggedDatasetId: string, targetDatasetId: string | null, targetCategoryId: string | null) => void;
   onReorderCategories?: (draggedCategoryId: string, targetCategoryId: string | null, targetParentId: string | null) => void;
+  onBatchReorderCategories?: (updates: { id: string; orderIndex: number }[]) => Promise<void>;
+  onBatchReorderDatasets?: (updates: { id: string; orderIndex: number }[]) => Promise<void>;
   onRequestMoveDatasetModal: (dataset: DatasetRecord) => void;
   onRequestMoveCategoryModal: (category: CategoryRecord) => void;
   onRequestColorCategoryModal?: (category: CategoryRecord) => void;
@@ -74,6 +81,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
   datasets,
   datasetCounts,
   datasetPreviewUrls,
+  categoryPreviewUrls,
   activeCategoryId,
   totalImagesCount,
   homeViewMode,
@@ -89,10 +97,14 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
   onTogglePinDataset,
   onCycleCoverPosition,
   onCycleCategoryCoverPosition,
+  onSetCategoryCoverImage,
+  onSetDatasetCoverImage,
   onMoveDatasetToCategory,
   onMoveCategoryParent,
   onReorderDatasets,
   onReorderCategories,
+  onBatchReorderCategories,
+  onBatchReorderDatasets,
   onRequestMoveDatasetModal,
   onRequestMoveCategoryModal,
   onRequestColorCategoryModal,
@@ -108,6 +120,18 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
     type: "category" | "dataset";
     id: string;
   } | null>(null);
+
+  // Category Cover Art Selection Modal States
+  const [categoryCoverModalTarget, setCategoryCoverModalTarget] = useState<CategoryRecord | null>(null);
+  const [categoryCoverCandidateImages, setCategoryCoverCandidateImages] = useState<ImageRecord[]>([]);
+  const [isLoadingCoverImages, setIsLoadingCoverImages] = useState(false);
+  const [coverSearchQuery, setCoverSearchQuery] = useState("");
+
+  // Dataset Cover Art Selection Modal States
+  const [datasetCoverModalTarget, setDatasetCoverModalTarget] = useState<DatasetRecord | null>(null);
+  const [datasetCoverCandidateImages, setDatasetCoverCandidateImages] = useState<ImageRecord[]>([]);
+  const [isLoadingDatasetCoverImages, setIsLoadingDatasetCoverImages] = useState(false);
+  const [datasetCoverSearchQuery, setDatasetCoverSearchQuery] = useState("");
 
   // Bulk Selection States
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<string>>(new Set());
@@ -179,6 +203,10 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
 
   // Helper to find preview url for a category
   const getCategoryCoverUrl = (catId: string): string | null => {
+    const cat = categories.find((c) => c.id === catId);
+    if (cat?.coverImageId && categoryPreviewUrls?.[catId]) {
+      return categoryPreviewUrls[catId];
+    }
     const directDs = datasets.filter((d) => d.categoryId === catId);
     for (const ds of directDs) {
       if (datasetPreviewUrls[ds.id]) return datasetPreviewUrls[ds.id];
@@ -189,6 +217,49 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
       if (url) return url;
     }
     return null;
+  };
+
+  const handleOpenCategoryCoverModal = async (cat: CategoryRecord, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setCategoryCoverModalTarget(cat);
+    setIsLoadingCoverImages(true);
+    setCoverSearchQuery("");
+    try {
+      const dsIds: string[] = [];
+      const collectDsIds = (targetCatId: string) => {
+        const direct = datasets.filter((d) => d.categoryId === targetCatId);
+        direct.forEach((d) => dsIds.push(d.id));
+        const subs = categories.filter((c) => c.parentId === targetCatId);
+        subs.forEach((sub) => collectDsIds(sub.id));
+      };
+      collectDsIds(cat.id);
+
+      const allCandidateImages: ImageRecord[] = [];
+      for (const dsId of dsIds) {
+        const imgs = await getImagesByDataset(dsId);
+        allCandidateImages.push(...imgs);
+      }
+      setCategoryCoverCandidateImages(allCandidateImages);
+    } catch (err) {
+      console.error("Failed to load candidate images for category cover", err);
+    } finally {
+      setIsLoadingCoverImages(false);
+    }
+  };
+
+  const handleOpenDatasetCoverModal = async (ds: DatasetRecord, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setDatasetCoverModalTarget(ds);
+    setIsLoadingDatasetCoverImages(true);
+    setDatasetCoverSearchQuery("");
+    try {
+      const imgs = await getImagesByDataset(ds.id);
+      setDatasetCoverCandidateImages(imgs);
+    } catch (err) {
+      console.error("Failed to load candidate images for dataset cover", err);
+    } finally {
+      setIsLoadingDatasetCoverImages(false);
+    }
   };
 
   const getCoverPositionStyle = (pos?: "top" | "center" | "bottom"): string => {
@@ -308,44 +379,176 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
     }
   };
 
-  const handleMoveSelectionUp = () => {
-    if (selectedCategoryIds.size > 0 && onReorderCategories) {
-      const selectedCats = currentSubcategories.filter((c) => selectedCategoryIds.has(c.id));
-      for (const cat of selectedCats) {
-        const idx = currentSubcategories.findIndex((c) => c.id === cat.id);
-        if (idx > 0) {
-          onReorderCategories(cat.id, currentSubcategories[idx - 1].id, activeCategoryId);
+  const handleMoveSelectionUp = async () => {
+    // 1. Categories
+    if (selectedCategoryIds.size > 0) {
+      const list = [...currentSubcategories];
+      let hasChanges = false;
+      for (let i = 0; i < list.length; i++) {
+        if (selectedCategoryIds.has(list[i].id)) {
+          if (i > 0 && !selectedCategoryIds.has(list[i - 1].id)) {
+            const temp = list[i];
+            list[i] = list[i - 1];
+            list[i - 1] = temp;
+            hasChanges = true;
+          }
+        }
+      }
+      if (hasChanges) {
+        if (onBatchReorderCategories) {
+          const updates = list.map((c, idx) => ({ id: c.id, orderIndex: idx }));
+          await onBatchReorderCategories(updates);
+        } else if (onReorderCategories) {
+          for (let i = 0; i < list.length; i++) {
+            if (selectedCategoryIds.has(list[i].id)) {
+              const prevItem = i > 0 ? list[i - 1] : null;
+              onReorderCategories(list[i].id, prevItem ? prevItem.id : null, activeCategoryId);
+            }
+          }
         }
       }
     }
-    if (selectedDatasetIds.size > 0 && onReorderDatasets) {
-      const selectedDs = currentDatasets.filter((d) => selectedDatasetIds.has(d.id));
-      for (const ds of selectedDs) {
-        const idx = currentDatasets.findIndex((d) => d.id === ds.id);
-        if (idx > 0) {
-          onReorderDatasets(ds.id, currentDatasets[idx - 1].id, activeCategoryId);
+
+    // 2. Datasets
+    if (selectedDatasetIds.size > 0) {
+      const list = [...currentDatasets];
+      let hasChanges = false;
+      for (let i = 0; i < list.length; i++) {
+        if (selectedDatasetIds.has(list[i].id)) {
+          if (i > 0 && !selectedDatasetIds.has(list[i - 1].id)) {
+            const temp = list[i];
+            list[i] = list[i - 1];
+            list[i - 1] = temp;
+            hasChanges = true;
+          }
+        }
+      }
+      if (hasChanges) {
+        if (onBatchReorderDatasets) {
+          const updates = list.map((d, idx) => ({ id: d.id, orderIndex: idx }));
+          await onBatchReorderDatasets(updates);
+        } else if (onReorderDatasets) {
+          for (let i = 0; i < list.length; i++) {
+            if (selectedDatasetIds.has(list[i].id)) {
+              const prevItem = i > 0 ? list[i - 1] : null;
+              onReorderDatasets(list[i].id, prevItem ? prevItem.id : null, activeCategoryId);
+            }
+          }
         }
       }
     }
   };
 
-  const handleMoveSelectionDown = () => {
-    if (selectedCategoryIds.size > 0 && onReorderCategories) {
-      const selectedCats = [...currentSubcategories].reverse().filter((c) => selectedCategoryIds.has(c.id));
-      for (const cat of selectedCats) {
-        const idx = currentSubcategories.findIndex((c) => c.id === cat.id);
-        if (idx >= 0 && idx < currentSubcategories.length - 1) {
-          onReorderCategories(cat.id, currentSubcategories[idx + 1].id, activeCategoryId);
+  const handleMoveSelectionDown = async () => {
+    // 1. Categories
+    if (selectedCategoryIds.size > 0) {
+      const list = [...currentSubcategories];
+      let hasChanges = false;
+      for (let i = list.length - 1; i >= 0; i--) {
+        if (selectedCategoryIds.has(list[i].id)) {
+          if (i < list.length - 1 && !selectedCategoryIds.has(list[i + 1].id)) {
+            const temp = list[i];
+            list[i] = list[i + 1];
+            list[i + 1] = temp;
+            hasChanges = true;
+          }
+        }
+      }
+      if (hasChanges) {
+        if (onBatchReorderCategories) {
+          const updates = list.map((c, idx) => ({ id: c.id, orderIndex: idx }));
+          await onBatchReorderCategories(updates);
+        } else if (onReorderCategories) {
+          for (let i = list.length - 1; i >= 0; i--) {
+            if (selectedCategoryIds.has(list[i].id)) {
+              const nextItem = i < list.length - 1 ? list[i + 1] : null;
+              onReorderCategories(list[i].id, nextItem ? nextItem.id : null, activeCategoryId);
+            }
+          }
         }
       }
     }
-    if (selectedDatasetIds.size > 0 && onReorderDatasets) {
-      const selectedDs = [...currentDatasets].reverse().filter((d) => selectedDatasetIds.has(d.id));
-      for (const ds of selectedDs) {
-        const idx = currentDatasets.findIndex((d) => d.id === ds.id);
-        if (idx >= 0 && idx < currentDatasets.length - 1) {
-          onReorderDatasets(ds.id, currentDatasets[idx + 1].id, activeCategoryId);
+
+    // 2. Datasets
+    if (selectedDatasetIds.size > 0) {
+      const list = [...currentDatasets];
+      let hasChanges = false;
+      for (let i = list.length - 1; i >= 0; i--) {
+        if (selectedDatasetIds.has(list[i].id)) {
+          if (i < list.length - 1 && !selectedDatasetIds.has(list[i + 1].id)) {
+            const temp = list[i];
+            list[i] = list[i + 1];
+            list[i + 1] = temp;
+            hasChanges = true;
+          }
         }
+      }
+      if (hasChanges) {
+        if (onBatchReorderDatasets) {
+          const updates = list.map((d, idx) => ({ id: d.id, orderIndex: idx }));
+          await onBatchReorderDatasets(updates);
+        } else if (onReorderDatasets) {
+          for (let i = list.length - 1; i >= 0; i--) {
+            if (selectedDatasetIds.has(list[i].id)) {
+              const nextItem = i < list.length - 1 ? list[i + 1] : null;
+              onReorderDatasets(list[i].id, nextItem ? nextItem.id : null, activeCategoryId);
+            }
+          }
+        }
+      }
+    }
+  };
+
+  const handleReverseOrder = async () => {
+    // Determine whether to reverse selected items only or all items in the current folder if none selected
+    const targetCatIds = selectedCategoryIds.size > 0 ? selectedCategoryIds : new Set(currentSubcategories.map((c) => c.id));
+    const targetDsIds = selectedDatasetIds.size > 0 ? selectedDatasetIds : new Set(currentDatasets.map((d) => d.id));
+
+    // 1. Reverse Categories order among target items
+    if (targetCatIds.size > 1) {
+      const list = [...currentSubcategories];
+      const indices: number[] = [];
+      const itemsToReverse: CategoryRecord[] = [];
+      
+      list.forEach((c, idx) => {
+        if (targetCatIds.has(c.id)) {
+          indices.push(idx);
+          itemsToReverse.push(c);
+        }
+      });
+
+      itemsToReverse.reverse();
+      indices.forEach((listIdx, i) => {
+        list[listIdx] = itemsToReverse[i];
+      });
+
+      if (onBatchReorderCategories) {
+        const updates = list.map((c, idx) => ({ id: c.id, orderIndex: idx }));
+        await onBatchReorderCategories(updates);
+      }
+    }
+
+    // 2. Reverse Datasets order among target items
+    if (targetDsIds.size > 1) {
+      const list = [...currentDatasets];
+      const indices: number[] = [];
+      const itemsToReverse: DatasetRecord[] = [];
+
+      list.forEach((d, idx) => {
+        if (targetDsIds.has(d.id)) {
+          indices.push(idx);
+          itemsToReverse.push(d);
+        }
+      });
+
+      itemsToReverse.reverse();
+      indices.forEach((listIdx, i) => {
+        list[listIdx] = itemsToReverse[i];
+      });
+
+      if (onBatchReorderDatasets) {
+        const updates = list.map((d, idx) => ({ id: d.id, orderIndex: idx }));
+        await onBatchReorderDatasets(updates);
       }
     }
   };
@@ -807,6 +1010,27 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                 <span>{t("DOWN", "下へ")}</span>
               </button>
 
+              {/* REVERSE ORDER BUTTON */}
+              <button
+                type="button"
+                disabled={totalSelected < 2 && (currentSubcategories.length < 2 && currentDatasets.length < 2)}
+                onClick={handleReverseOrder}
+                className={cn(
+                  "flex items-center gap-1 px-2.5 py-1.5 rounded-xs font-bold border transition-all shadow-xs",
+                  totalSelected >= 2 || (totalSelected === 0 && (currentSubcategories.length >= 2 || currentDatasets.length >= 2))
+                    ? "bg-panel-bg border-accent/60 text-accent hover:bg-accent/15 hover:border-accent cursor-pointer"
+                    : "bg-panel-bg/40 border-panel-border/40 text-text-muted opacity-40 cursor-not-allowed"
+                )}
+                title={
+                  totalSelected >= 2
+                    ? t("Reverse order of selected items", "選択した項目の並び順を真逆に反転")
+                    : t("Reverse order of all items in current folder", "現在のフォルダー内の全項目の並び順を真逆に反転")
+                }
+              >
+                <ArrowUpDown size={14} />
+                <span>{t("REVERSE", "反転")}</span>
+              </button>
+
               <button
                 type="button"
                 disabled={totalSelected === 0}
@@ -963,6 +1187,19 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
 
                         {/* Right side actions */}
                         <div className="flex items-center gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {onSetCategoryCoverImage && (
+                            <button
+                              type="button"
+                              onClick={(e) => handleOpenCategoryCoverModal(cat, e)}
+                              className={cn(
+                                "p-1 hover:text-amber-400 text-text-muted hover:bg-panel-border/50 rounded transition-colors",
+                                cat.coverImageId && "text-amber-400"
+                              )}
+                              title={cat.coverImageId ? t("Custom cover image set (Click to change)", "カバー画像設定中（クリックで変更）") : t("Set Folder Cover Image", "フォルダーカバー画像を設定")}
+                            >
+                              <Bookmark size={13} fill={cat.coverImageId ? "currentColor" : "none"} />
+                            </button>
+                          )}
                           {onRequestColorCategoryModal && (
                             <button
                               type="button"
@@ -1080,11 +1317,11 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                           <button
                             type="button"
                             onClick={(e) => onCycleCategoryCoverPosition(cat.id, e)}
-                            className="absolute top-2 right-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity bg-panel-bg/90 hover:bg-panel-bg text-text-secondary hover:text-accent font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-panel-border backdrop-blur-xs flex items-center gap-0.5 shadow-xs cursor-pointer"
+                            className="absolute top-2 right-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 hover:bg-black text-white hover:text-amber-400 font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-white/25 backdrop-blur-xs flex items-center gap-0.5 shadow-md cursor-pointer transition-colors"
                             title={t("Cycle crop position", "トリミング位置切替")}
                           >
                             <span>POS:</span>
-                            <span className="text-accent uppercase">
+                            <span className="text-amber-400 uppercase font-bold">
                               {cat.coverImagePosition === "center"
                                 ? "MID"
                                 : cat.coverImagePosition === "bottom"
@@ -1118,15 +1355,31 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                               <span>{t("DIR", "フォルダ")}</span>
                             </div>
 
+                            {/* Cover select & crop buttons in CARD mode */}
+                            {onSetCategoryCoverImage && (
+                              <button
+                                type="button"
+                                onClick={(e) => handleOpenCategoryCoverModal(cat, e)}
+                                className={cn(
+                                  "absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 hover:bg-black text-white hover:text-amber-400 font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-white/20 backdrop-blur-xs flex items-center gap-1 shadow-sm z-10",
+                                  cat.coverImageId && "opacity-100 text-amber-400 border-amber-400/50 bg-black/90"
+                                )}
+                                title={cat.coverImageId ? t("Custom cover image set (Click to change/reset)", "カスタムカバー画像設定済み (クリックで変更/解除)") : t("Choose cover image for folder", "フォルダーのカバー画像を選択")}
+                              >
+                                <Bookmark size={10} fill={cat.coverImageId ? "currentColor" : "none"} />
+                                <span>{cat.coverImageId ? t("CUSTOM COVER", "カバー変更") : t("SET COVER", "カバー設定")}</span>
+                              </button>
+                            )}
+
                             {coverUrl && onCycleCategoryCoverPosition && (
                               <button
                                 type="button"
                                 onClick={(e) => onCycleCategoryCoverPosition(cat.id, e)}
-                                className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 hover:bg-black text-white hover:text-accent font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-white/20 backdrop-blur-xs flex items-center gap-0.5 shadow-sm z-10"
+                                className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 hover:bg-black text-white hover:text-amber-400 font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-white/25 backdrop-blur-xs flex items-center gap-0.5 shadow-sm z-10 transition-colors"
                                 title={t("Cycle crop position", "トリミング位置切替")}
                               >
                                 <span>POS:</span>
-                                <span className="text-accent uppercase">
+                                <span className="text-amber-400 uppercase font-bold">
                                   {cat.coverImagePosition === "center"
                                     ? "MID"
                                     : cat.coverImagePosition === "bottom"
@@ -1180,6 +1433,19 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
 
                             {/* Folder actions */}
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {onSetCategoryCoverImage && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleOpenCategoryCoverModal(cat, e)}
+                                  className={cn(
+                                    "p-1 hover:text-amber-400 text-text-muted transition-colors",
+                                    cat.coverImageId && "text-amber-400"
+                                  )}
+                                  title={cat.coverImageId ? t("Cover image is set (Click to edit)", "カバー画像設定中（クリックで変更）") : t("Set Folder Cover Image", "フォルダーカバー画像を設定")}
+                                >
+                                  <Bookmark size={12} fill={cat.coverImageId ? "currentColor" : "none"} />
+                                </button>
+                              )}
                               {onRequestColorCategoryModal && (
                                 <button
                                   type="button"
@@ -1353,6 +1619,14 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                         <div className="flex items-center gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
                             type="button"
+                            onClick={(e) => handleOpenDatasetCoverModal(ds, e)}
+                            className="p-1 hover:text-amber-400 text-text-muted hover:bg-panel-border/50 rounded transition-colors"
+                            title={t("Select Cover Art", "カバー画像を選択")}
+                          >
+                            <ImageIcon size={13} className={ds.coverImageId ? "text-amber-400" : ""} />
+                          </button>
+                          <button
+                            type="button"
                             onClick={(e) => onTogglePinDataset(ds.id, e)}
                             className="p-1 hover:text-amber-400 text-text-muted hover:bg-panel-border/50 rounded transition-colors"
                             title={t("Toggle Pin", "ピン留め切り替え")}
@@ -1445,24 +1719,35 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                           />
                         )}
 
-                        {/* COVER MODE POS BUTTON */}
-                        {homeViewMode === "cover" && previewUrl && (
-                          <button
-                            type="button"
-                            onClick={(e) => onCycleCoverPosition(ds.id, e)}
-                            className="absolute top-2 right-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity bg-panel-bg/90 hover:bg-panel-bg text-text-secondary hover:text-accent font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-panel-border backdrop-blur-xs flex items-center gap-0.5 shadow-xs cursor-pointer"
-                            title={t("Cycle crop position", "トリミング位置切替")}
-                          >
-                            <span>POS:</span>
-                            <span className="text-accent uppercase">
-                              {ds.coverImagePosition === "center"
-                                ? "MID"
-                                : ds.coverImagePosition === "bottom"
-                                ? "BTM"
-                                : "TOP"}
-                            </span>
-                          </button>
-                        )}
+                            {/* COVER MODE POS & COVER SELECT BUTTON */}
+                            {homeViewMode === "cover" && previewUrl && (
+                              <div className="absolute top-2 right-2 z-20 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleOpenDatasetCoverModal(ds, e)}
+                                  className="bg-black/80 hover:bg-black text-white hover:text-amber-400 font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-white/25 backdrop-blur-xs flex items-center gap-0.5 shadow-md cursor-pointer transition-colors"
+                                  title={t("Select Cover Art", "カバー画像を選択")}
+                                >
+                                  <ImageIcon size={9} className={ds.coverImageId ? "text-amber-400" : "text-white/80"} />
+                                  <span>{t("COVER", "カバー")}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => onCycleCoverPosition(ds.id, e)}
+                                  className="bg-black/80 hover:bg-black text-white hover:text-amber-400 font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-white/25 backdrop-blur-xs flex items-center gap-0.5 shadow-md cursor-pointer transition-colors"
+                                  title={t("Cycle crop position", "トリミング位置切替")}
+                                >
+                                  <span>POS:</span>
+                                  <span className="text-amber-400 uppercase font-bold">
+                                    {ds.coverImagePosition === "center"
+                                      ? "MID"
+                                      : ds.coverImagePosition === "bottom"
+                                      ? "BTM"
+                                      : "TOP"}
+                                  </span>
+                                </button>
+                              </div>
+                            )}
 
                         {/* CARD MODE */}
                         {homeViewMode === "card" && (
@@ -1501,21 +1786,32 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                               )}
                             </div>
                             {previewUrl && (
-                              <button
-                                type="button"
-                                onClick={(e) => onCycleCoverPosition(ds.id, e)}
-                                className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 hover:bg-black text-white hover:text-accent font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-white/20 backdrop-blur-xs flex items-center gap-0.5 shadow-sm"
-                                title={t("Cycle crop position", "トリミング位置切替")}
-                              >
-                                <span>POS:</span>
-                                <span className="text-accent uppercase">
-                                  {ds.coverImagePosition === "center"
-                                    ? "MID"
-                                    : ds.coverImagePosition === "bottom"
-                                    ? "BTM"
-                                    : "TOP"}
-                                </span>
-                              </button>
+                              <div className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 z-10">
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleOpenDatasetCoverModal(ds, e)}
+                                  className="bg-black/80 hover:bg-black text-white hover:text-amber-400 font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-white/25 backdrop-blur-xs flex items-center gap-0.5 shadow-md cursor-pointer transition-colors"
+                                  title={t("Select Cover Art", "カバー画像を選択")}
+                                >
+                                  <ImageIcon size={9} className={ds.coverImageId ? "text-amber-400" : "text-white/80"} />
+                                  <span>{t("COVER", "カバー")}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => onCycleCoverPosition(ds.id, e)}
+                                  className="bg-black/80 hover:bg-black text-white hover:text-amber-400 font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-white/25 backdrop-blur-xs flex items-center gap-0.5 shadow-md cursor-pointer transition-colors"
+                                  title={t("Cycle crop position", "トリミング位置切替")}
+                                >
+                                  <span>POS:</span>
+                                  <span className="text-amber-400 uppercase font-bold">
+                                    {ds.coverImagePosition === "center"
+                                      ? "MID"
+                                      : ds.coverImagePosition === "bottom"
+                                      ? "BTM"
+                                      : "TOP"}
+                                  </span>
+                                </button>
+                              </div>
                             )}
                           </div>
                         )}
@@ -1583,8 +1879,17 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                               {count} {count === 1 ? "IMAGE" : "IMAGES"}
                             </span>
 
-                            {/* Move Button / Open indicator */}
+                            {/* Actions: Cover & Move & Open */}
                             <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={(e) => handleOpenDatasetCoverModal(ds, e)}
+                                className="flex items-center gap-1 px-1.5 py-0.5 bg-panel-border/50 hover:bg-amber-500 hover:text-black rounded text-[9px] font-mono text-text-secondary transition-colors"
+                                title={t("Select Cover Art", "カバー画像を選択")}
+                              >
+                                <ImageIcon size={10} className={ds.coverImageId ? "text-amber-500" : ""} />
+                                <span>{t("COVER", "カバー")}</span>
+                              </button>
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -1612,11 +1917,30 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
           )}
 
           {/* POPUP PREVIEW FLOATER */}
-          {homeViewMode === "popup" && hoveredItemId && datasetPreviewUrls[hoveredItemId] && (() => {
+          {homeViewMode === "popup" && hoveredItemId && (() => {
             const hoveredDs = datasets.find((d) => d.id === hoveredItemId);
-            if (!hoveredDs) return null;
-            const count = datasetCounts[hoveredDs.id] || 0;
-            const previewUrl = datasetPreviewUrls[hoveredDs.id];
+            const hoveredCat = !hoveredDs ? categories.find((c) => c.id === hoveredItemId) : null;
+
+            if (!hoveredDs && !hoveredCat) return null;
+
+            const previewUrl = hoveredDs
+              ? datasetPreviewUrls[hoveredDs.id]
+              : hoveredCat
+              ? getCategoryCoverUrl(hoveredCat.id)
+              : null;
+
+            if (!previewUrl) return null;
+
+            const name = hoveredDs ? hoveredDs.name : hoveredCat?.name || "";
+            const count = hoveredDs
+              ? (datasetCounts[hoveredDs.id] || 0)
+              : hoveredCat
+              ? getCategoryTotalCount(hoveredCat.id)
+              : 0;
+            const coverPos = hoveredDs
+              ? hoveredDs.coverImagePosition
+              : hoveredCat?.coverImagePosition;
+
             const popupWidth = 190;
 
             let left = popupMousePos.x - popupWidth / 2;
@@ -1633,14 +1957,24 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                 <div className="w-full aspect-[4/3] bg-black/40 overflow-hidden flex items-center justify-center border border-panel-border">
                   <img
                     src={previewUrl}
-                    alt={hoveredDs.name}
+                    alt={name}
                     className="w-full h-full object-cover"
+                    style={{
+                      objectPosition: getCoverPositionStyle(coverPos),
+                    }}
                     referrerPolicy="no-referrer"
                   />
                 </div>
                 <div className="flex justify-between items-center text-[10px] text-text-primary px-1">
-                  <span className="truncate font-bold text-accent">{hoveredDs.name}</span>
-                  <span className="text-text-muted text-[9px]">({count})</span>
+                  <div className="flex items-center gap-1 min-w-0 flex-1">
+                    {hoveredCat ? (
+                      <Folder size={11} className="text-folder-icon shrink-0" />
+                    ) : (
+                      <Layers size={11} className="text-accent shrink-0" />
+                    )}
+                    <span className="truncate font-bold text-accent">{name}</span>
+                  </div>
+                  <span className="text-text-muted text-[9px] shrink-0 ml-1">({count})</span>
                 </div>
               </div>
             );
@@ -2277,6 +2611,427 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                     >
                       <Check size={14} />
                       <span>{t("APPLY RENAME", "一括変更を実行")}</span>
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Category Cover Art Selection Modal */}
+          <AnimatePresence>
+            {categoryCoverModalTarget && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-6 backdrop-blur-sm"
+              >
+                <div className="bg-panel-bg border border-amber-500/50 p-6 font-mono w-[760px] max-w-[94vw] h-[85vh] max-h-[800px] flex flex-col shadow-[0_0_40px_rgba(245,158,11,0.2)]">
+                  {/* Header */}
+                  <div className="flex items-center justify-between pb-3 border-b border-panel-border/80 shrink-0">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <FolderIconComponent
+                        iconType={categoryCoverModalTarget.icon}
+                        size={20}
+                        style={{ color: categoryCoverModalTarget.color || undefined }}
+                        className="text-amber-400 shrink-0"
+                      />
+                      <div>
+                        <h2 className="text-amber-400 font-bold text-sm uppercase flex items-center gap-2 truncate">
+                          <span>{t("SELECT FOLDER COVER ART", "フォルダーのカバー画像を選択")}</span>
+                        </h2>
+                        <span className="text-[11px] text-text-muted">
+                          {t("Folder: ", "フォルダー: ")}
+                          <span className="text-text-primary font-bold">{categoryCoverModalTarget.name}</span>
+                          {" "}• {categoryCoverCandidateImages.length} {t("images available in sub-datasets", "枚の画像が利用可能")}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCategoryCoverModalTarget(null)}
+                      className="p-1.5 text-text-muted hover:text-text-primary hover:bg-panel-border/50 rounded transition-colors"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+
+                  {/* Top Controls: Search & Reset & Crop Position */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 py-3 border-b border-panel-border/60 shrink-0">
+                    <div className="relative flex-1 min-w-[200px]">
+                      <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
+                      <input
+                        type="text"
+                        value={coverSearchQuery}
+                        onChange={(e) => setCoverSearchQuery(e.target.value)}
+                        placeholder={t("SEARCH IMAGES BY NAME...", "画像名で検索...")}
+                        className="w-full bg-root-bg border border-panel-border text-text-primary pl-8 pr-3 py-1.5 text-xs font-mono outline-none focus:border-accent"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {/* Crop position cycle button */}
+                      {onCycleCategoryCoverPosition && (
+                        <button
+                          type="button"
+                          onClick={(e) => onCycleCategoryCoverPosition(categoryCoverModalTarget.id, e)}
+                          className="px-2.5 py-1.5 bg-root-bg border border-panel-border hover:border-accent text-text-primary hover:text-accent text-xs font-mono font-bold transition-colors flex items-center gap-1.5"
+                          title={t("Cycle crop position", "トリミング表示位置切替")}
+                        >
+                          <span className="text-text-muted font-normal">POS:</span>
+                          <span className="text-accent uppercase">
+                            {categoryCoverModalTarget.coverImagePosition === "center"
+                              ? "MID"
+                              : categoryCoverModalTarget.coverImagePosition === "bottom"
+                              ? "BTM"
+                              : "TOP"}
+                          </span>
+                        </button>
+                      )}
+
+                      {/* Reset to Auto button */}
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (onSetCategoryCoverImage) {
+                            await onSetCategoryCoverImage(categoryCoverModalTarget.id, null);
+                            setCategoryCoverModalTarget((prev) => (prev ? { ...prev, coverImageId: undefined } : null));
+                          }
+                        }}
+                        className={cn(
+                          "px-3 py-1.5 text-xs font-mono border transition-colors flex items-center gap-1.5",
+                          !categoryCoverModalTarget.coverImageId
+                            ? "bg-amber-500/20 border-amber-500 text-amber-400 font-bold"
+                            : "border-panel-border text-text-muted hover:text-text-primary hover:border-text-muted bg-root-bg"
+                        )}
+                        title={t("Reset to default automatic cover", "自動設定（先頭の画像）に戻す")}
+                      >
+                        <Bookmark size={13} className={!categoryCoverModalTarget.coverImageId ? "text-amber-400" : ""} />
+                        <span>{t("AUTO (DEFAULT)", "自動（初期設定）")}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Image Grid Area */}
+                  <div className="flex-1 overflow-y-auto p-2 bg-root-bg/50 border border-panel-border/40 my-3 scrollbar-dark">
+                    {isLoadingCoverImages ? (
+                      <div className="h-full flex flex-col items-center justify-center text-text-muted text-xs font-mono py-12">
+                        <ImageIcon size={36} className="animate-spin mb-3 text-amber-400 opacity-60" />
+                        <span>{t("LOADING IMAGES...", "画像を読み込み中...")}</span>
+                      </div>
+                    ) : categoryCoverCandidateImages.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-text-muted text-xs font-mono py-12 text-center">
+                        <ImageIcon size={40} className="mb-3 opacity-30" />
+                        <p className="font-bold text-text-primary mb-1">
+                          {t("NO IMAGES FOUND IN THIS FOLDER", "このフォルダー配下に画像がありません")}
+                        </p>
+                        <p className="text-[11px] text-text-muted max-w-sm">
+                          {t(
+                            "Add datasets with images inside this folder to select a custom cover art.",
+                            "このフォルダー内に画像を含むリストを作成すると、カバー画像を選択できるようになります。"
+                          )}
+                        </p>
+                      </div>
+                    ) : (
+                      (() => {
+                        const filtered = coverSearchQuery.trim()
+                          ? categoryCoverCandidateImages.filter((img) =>
+                              img.name.toLowerCase().includes(coverSearchQuery.toLowerCase())
+                            )
+                          : categoryCoverCandidateImages;
+
+                        if (filtered.length === 0) {
+                          return (
+                            <div className="h-full flex flex-col items-center justify-center text-text-muted text-xs font-mono py-12">
+                              <span>{t("NO MATCHING IMAGES FOUND", "該当する画像が見つかりませんでした")}</span>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 p-1">
+                            {filtered.map((img) => {
+                              const isCurrentCover = categoryCoverModalTarget.coverImageId === img.id;
+                              const imgUrl = img.data ? URL.createObjectURL(img.data) : "";
+
+                              return (
+                                <div
+                                  key={img.id}
+                                  onClick={async () => {
+                                    if (onSetCategoryCoverImage) {
+                                      const nextCoverId = isCurrentCover ? null : img.id;
+                                      await onSetCategoryCoverImage(categoryCoverModalTarget.id, nextCoverId);
+                                      setCategoryCoverModalTarget((prev) =>
+                                        prev ? { ...prev, coverImageId: nextCoverId || undefined } : null
+                                      );
+                                    }
+                                  }}
+                                  className={cn(
+                                    "group relative aspect-square bg-black/40 border rounded-[2px] overflow-hidden cursor-pointer transition-all hover:scale-[1.02] flex flex-col justify-between shadow-sm",
+                                    isCurrentCover
+                                      ? "border-amber-400 ring-2 ring-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.3)]"
+                                      : "border-panel-border/80 hover:border-amber-400/80"
+                                  )}
+                                >
+                                  {imgUrl && (
+                                    <img
+                                      src={imgUrl}
+                                      alt={img.name}
+                                      className="w-full h-full object-cover"
+                                      style={{
+                                        objectPosition: getCoverPositionStyle(categoryCoverModalTarget.coverImagePosition),
+                                      }}
+                                      referrerPolicy="no-referrer"
+                                    />
+                                  )}
+
+                                  {/* Badge on Image */}
+                                  <div className="absolute top-1.5 left-1.5 right-1.5 flex items-center justify-between pointer-events-none">
+                                    {isCurrentCover ? (
+                                      <span className="bg-amber-500 text-black font-bold text-[9px] px-1.5 py-0.5 rounded-[2px] shadow-sm flex items-center gap-1">
+                                        <Bookmark size={10} fill="currentColor" />
+                                        <span>{t("COVER", "カバー")}</span>
+                                      </span>
+                                    ) : (
+                                      <span />
+                                    )}
+                                  </div>
+
+                                  {/* Name label at bottom */}
+                                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-2 pt-4 pointer-events-none">
+                                    <span className="text-[10px] font-mono text-white/90 truncate block drop-shadow-sm">
+                                      {img.name}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()
+                    )}
+                  </div>
+
+                  {/* Footer */}
+                  <div className="flex items-center justify-between pt-2 border-t border-panel-border/60 shrink-0">
+                    <span className="text-[11px] text-text-muted">
+                      {t("Click any image to set/unset as folder cover", "画像をクリックしてフォルダーのカバーに設定/解除します")}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setCategoryCoverModalTarget(null)}
+                      className="px-5 py-2 text-xs font-mono font-bold bg-amber-500 hover:bg-amber-400 text-black border border-amber-400 shadow-md transition-all cursor-pointer"
+                    >
+                      {t("DONE", "完了")}
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Dataset Cover Art Selection Modal */}
+          <AnimatePresence>
+            {datasetCoverModalTarget && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-6 backdrop-blur-sm"
+              >
+                <div className="bg-panel-bg border border-amber-500/50 p-6 font-mono w-[760px] max-w-[94vw] h-[85vh] max-h-[800px] flex flex-col shadow-[0_0_40px_rgba(245,158,11,0.2)]">
+                  {/* Header */}
+                  <div className="flex items-center justify-between pb-3 border-b border-panel-border/80 shrink-0">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Layers size={20} className="text-accent shrink-0" />
+                      <div>
+                        <h2 className="text-amber-400 font-bold text-sm uppercase flex items-center gap-2 truncate">
+                          <span>{t("SELECT DATASET COVER ART", "データセットのカバー画像を選択")}</span>
+                        </h2>
+                        <span className="text-[11px] text-text-muted">
+                          {t("Dataset: ", "リスト: ")}
+                          <span className="text-text-primary font-bold">{datasetCoverModalTarget.name}</span>
+                          {" "}• {datasetCoverCandidateImages.length} {t("images available", "枚の画像が利用可能")}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDatasetCoverModalTarget(null)}
+                      className="p-1.5 text-text-muted hover:text-text-primary hover:bg-panel-border/50 rounded transition-colors"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+
+                  {/* Top Controls: Search & Reset & Crop Position */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 py-3 border-b border-panel-border/60 shrink-0">
+                    <div className="relative flex-1 min-w-[200px]">
+                      <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
+                      <input
+                        type="text"
+                        value={datasetCoverSearchQuery}
+                        onChange={(e) => setDatasetCoverSearchQuery(e.target.value)}
+                        placeholder={t("SEARCH IMAGES BY NAME...", "画像名で検索...")}
+                        className="w-full bg-root-bg border border-panel-border text-text-primary pl-8 pr-3 py-1.5 text-xs font-mono outline-none focus:border-accent"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {/* Crop position cycle button */}
+                      {onCycleCoverPosition && (
+                        <button
+                          type="button"
+                          onClick={(e) => onCycleCoverPosition(datasetCoverModalTarget.id, e)}
+                          className="px-2.5 py-1.5 bg-root-bg border border-panel-border hover:border-accent text-text-primary hover:text-accent text-xs font-mono font-bold transition-colors flex items-center gap-1.5"
+                          title={t("Cycle crop position", "トリミング表示位置切替")}
+                        >
+                          <span className="text-text-muted font-normal">POS:</span>
+                          <span className="text-accent uppercase">
+                            {datasetCoverModalTarget.coverImagePosition === "center"
+                              ? "MID"
+                              : datasetCoverModalTarget.coverImagePosition === "bottom"
+                              ? "BTM"
+                              : "TOP"}
+                          </span>
+                        </button>
+                      )}
+
+                      {/* Reset to Auto button */}
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (onSetDatasetCoverImage) {
+                            await onSetDatasetCoverImage(datasetCoverModalTarget.id, null);
+                            setDatasetCoverModalTarget((prev) => (prev ? { ...prev, coverImageId: undefined } : null));
+                          }
+                        }}
+                        className={cn(
+                          "px-3 py-1.5 text-xs font-mono border transition-colors flex items-center gap-1.5",
+                          !datasetCoverModalTarget.coverImageId
+                            ? "bg-amber-500/20 border-amber-500 text-amber-400 font-bold"
+                            : "border-panel-border text-text-muted hover:text-text-primary hover:border-text-muted bg-root-bg"
+                        )}
+                        title={t("Reset to default automatic cover", "自動設定（先頭の画像）に戻す")}
+                      >
+                        <Bookmark size={13} className={!datasetCoverModalTarget.coverImageId ? "text-amber-400" : ""} />
+                        <span>{t("AUTO (DEFAULT)", "自動（初期設定）")}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Image Grid Area */}
+                  <div className="flex-1 overflow-y-auto p-2 bg-root-bg/50 border border-panel-border/40 my-3 scrollbar-dark">
+                    {isLoadingDatasetCoverImages ? (
+                      <div className="h-full flex flex-col items-center justify-center text-text-muted text-xs font-mono py-12">
+                        <ImageIcon size={36} className="animate-spin mb-3 text-amber-400 opacity-60" />
+                        <span>{t("LOADING IMAGES...", "画像を読み込み中...")}</span>
+                      </div>
+                    ) : datasetCoverCandidateImages.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-text-muted text-xs font-mono py-12 text-center">
+                        <ImageIcon size={40} className="mb-3 opacity-30" />
+                        <p className="font-bold text-text-primary mb-1">
+                          {t("NO IMAGES FOUND IN THIS DATASET", "このリスト内に画像がありません")}
+                        </p>
+                        <p className="text-[11px] text-text-muted max-w-sm">
+                          {t(
+                            "Add images to this dataset to select a custom cover art.",
+                            "このリストに画像を追加すると、カバー画像を選択できるようになります。"
+                          )}
+                        </p>
+                      </div>
+                    ) : (
+                      (() => {
+                        const filtered = datasetCoverSearchQuery.trim()
+                          ? datasetCoverCandidateImages.filter((img) =>
+                              img.name.toLowerCase().includes(datasetCoverSearchQuery.toLowerCase())
+                            )
+                          : datasetCoverCandidateImages;
+
+                        if (filtered.length === 0) {
+                          return (
+                            <div className="h-full flex flex-col items-center justify-center text-text-muted text-xs font-mono py-12">
+                              <span>{t("NO MATCHING IMAGES FOUND", "該当する画像が見つかりませんでした")}</span>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 p-1">
+                            {filtered.map((img) => {
+                              const isCurrentCover = datasetCoverModalTarget.coverImageId === img.id;
+                              const imgUrl = img.data ? URL.createObjectURL(img.data) : "";
+
+                              return (
+                                <div
+                                  key={img.id}
+                                  onClick={async () => {
+                                    if (onSetDatasetCoverImage) {
+                                      const nextCoverId = isCurrentCover ? null : img.id;
+                                      await onSetDatasetCoverImage(datasetCoverModalTarget.id, nextCoverId);
+                                      setDatasetCoverModalTarget((prev) =>
+                                        prev ? { ...prev, coverImageId: nextCoverId || undefined } : null
+                                      );
+                                    }
+                                  }}
+                                  className={cn(
+                                    "group relative aspect-square bg-black/40 border rounded-[2px] overflow-hidden cursor-pointer transition-all hover:scale-[1.02] flex flex-col justify-between shadow-sm",
+                                    isCurrentCover
+                                      ? "border-amber-400 ring-2 ring-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.3)]"
+                                      : "border-panel-border/80 hover:border-amber-400/80"
+                                  )}
+                                >
+                                  {imgUrl && (
+                                    <img
+                                      src={imgUrl}
+                                      alt={img.name}
+                                      className="w-full h-full object-cover"
+                                      style={{
+                                        objectPosition: getCoverPositionStyle(datasetCoverModalTarget.coverImagePosition),
+                                      }}
+                                      referrerPolicy="no-referrer"
+                                    />
+                                  )}
+
+                                  {/* Badge on Image */}
+                                  <div className="absolute top-1.5 left-1.5 right-1.5 flex items-center justify-between pointer-events-none">
+                                    {isCurrentCover ? (
+                                      <span className="bg-amber-500 text-black font-bold text-[9px] px-1.5 py-0.5 rounded-[2px] shadow-sm flex items-center gap-1">
+                                        <Bookmark size={10} fill="currentColor" />
+                                        <span>{t("COVER", "カバー")}</span>
+                                      </span>
+                                    ) : (
+                                      <span />
+                                    )}
+                                  </div>
+
+                                  {/* Name label at bottom */}
+                                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-2 pt-4 pointer-events-none">
+                                    <span className="text-[10px] font-mono text-white/90 truncate block drop-shadow-sm">
+                                      {img.name}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()
+                    )}
+                  </div>
+
+                  {/* Footer */}
+                  <div className="flex items-center justify-between pt-2 border-t border-panel-border/60 shrink-0">
+                    <span className="text-[11px] text-text-muted">
+                      {t("Click any image to set/unset as dataset cover", "画像をクリックしてリストのカバーに設定/解除します")}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setDatasetCoverModalTarget(null)}
+                      className="px-5 py-2 text-xs font-mono font-bold bg-amber-500 hover:bg-amber-400 text-black border border-amber-400 shadow-md transition-all cursor-pointer"
+                    >
+                      {t("DONE", "完了")}
                     </button>
                   </div>
                 </div>
