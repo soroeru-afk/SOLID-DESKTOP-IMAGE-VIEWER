@@ -239,7 +239,7 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
     const subCategories = categories.filter((c) => c.parentId === cat.id);
     const categoryDatasets = datasets.filter((d) => d.categoryId === cat.id);
     const totalImgCount = getCategoryTotalCount(cat.id);
-    const canHaveSubcategory = depth < 2; // Max 3 levels: 0, 1, 2
+    const canHaveSubcategory = depth < 10; // Deep folder nesting supported
 
     const textClass =
       sidebarFontSize === "xs"

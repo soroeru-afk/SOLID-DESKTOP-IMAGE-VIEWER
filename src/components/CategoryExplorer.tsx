@@ -176,9 +176,9 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
     chain.forEach((cat) => breadcrumbs.push({ id: cat.id, name: cat.name }));
   }
 
-  // Calculate current folder depth (0, 1, 2)
+  // Unlimited folder nesting
   const currentDepth = breadcrumbs.length - 1;
-  const canCreateSubcategory = currentDepth < 2;
+  const canCreateSubcategory = true;
 
   // Direct subcategories in current folder
   const currentSubcategories = activeCategoryId

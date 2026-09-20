@@ -822,6 +822,7 @@ export default function App() {
   const [overwriteFiles, setOverwriteFiles] = useState<{ files: File[], datasetId: string, forceLoad: boolean, existingMap: Map<string, ImageRecord> } | null>(null);
   const [favoriteDatasetId, setFavoriteDatasetId] = useState<string | null>(() => localStorage.getItem("favoriteDatasetId"));
   const [fullscreenFavorited, setFullscreenFavorited] = useState<Set<string>>(new Set());
+  const [isCurrentFavorited, setIsCurrentFavorited] = useState(false);
   const [homeViewMode, setHomeViewMode] = useState<"text" | "popup" | "card" | "cover" | "list">(
     () => {
       const saved = localStorage.getItem("homeViewMode");
@@ -850,6 +851,32 @@ export default function App() {
       localStorage.removeItem("favoriteDatasetId");
     }
   }, [favoriteDatasetId]);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!selectedImage || !favoriteDatasetId) {
+      setIsCurrentFavorited(false);
+      return;
+    }
+    if (activeDatasetId === favoriteDatasetId) {
+      setIsCurrentFavorited(true);
+      return;
+    }
+    getImagesByDataset(favoriteDatasetId).then((favImages) => {
+      if (!isMounted) return;
+      const exists = favImages.some(
+        (fi) =>
+          fi.id === `${favoriteDatasetId}-${selectedImage.name}-${selectedImage.lastModified}-${selectedImage.size}` ||
+          (fi.name === selectedImage.name &&
+            fi.size === selectedImage.size &&
+            fi.lastModified === selectedImage.lastModified)
+      );
+      setIsCurrentFavorited(exists);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedImage, favoriteDatasetId, activeDatasetId]);
 
   // Custom Prompts/Modals because alert/prompt/confirm are unreliable in iframe
   const [showNewDatasetModal, setShowNewDatasetModal] = useState(false);
@@ -1021,21 +1048,22 @@ export default function App() {
   // Apply Theme
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
-    
-    // Dynamic theme-color meta tag
-    let metaThemeColor = document.querySelector('meta[name="theme-color"]');
-    if (!metaThemeColor) {
-      metaThemeColor = document.createElement("meta");
-      metaThemeColor.setAttribute("name", "theme-color");
-      document.head.appendChild(metaThemeColor);
-    }
+    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
     let color = "#0B0C0D"; // default for BLACK
     if (theme === "TRUE_BLACK") color = "#000000";
     else if (theme === "LIGHT") color = "#e2e8f0";
-    else if (theme === "PAPER") color = "#f4ebe1";
-    else if (theme === "NAVY") color = "#0F172A";
-    else if (theme === "RED") color = "#450a0a";
-    metaThemeColor.setAttribute("content", color);
+    else if (theme === "PAPER") color = "#f5f5f0";
+    else if (theme === "RED") color = "#0d0404";
+    else if (theme === "NAVY") color = "#06090e";
+    
+    if (metaThemeColor) {
+      metaThemeColor.setAttribute("content", color);
+    } else {
+      const meta = document.createElement("meta");
+      meta.name = "theme-color";
+      meta.content = color;
+      document.head.appendChild(meta);
+    }
   }, [theme]);
 
   // Load from DB on mount
@@ -2478,6 +2506,88 @@ Images imported: ${importedImages}`);
     showNotification(language === "JP" ? "コピーしました" : "Copied");
   };
 
+  const handleToggleFavoriteImage = async (targetImg: ImageRecord) => {
+    if (!favoriteDatasetId) {
+      showNotification(
+        language === "JP"
+          ? "お気に入りフォルダーが設定されていません。サイドバーの☆マークでリストをお気に入りに設定してください。"
+          : "No favorite dataset is designated. Please star a dataset in the sidebar."
+      );
+      return;
+    }
+
+    // 1. When currently inside the favorite dataset
+    if (activeDatasetId === favoriteDatasetId) {
+      setIsLoading(true);
+      await deleteImage(targetImg.id);
+
+      // Keep the current list in memory or remove from list, but retain selectedImage in fullscreen
+      const remaining = images.filter((i) => i.id !== targetImg.id);
+      setImages(remaining);
+
+      // Keep the un-favorited image in view (do not jump to next image or close fullscreen)
+      setIsCurrentFavorited(false);
+      await loadDatasets();
+      setIsLoading(false);
+      showNotification(language === "JP" ? "お気に入りから解除しました" : "Removed from favorites");
+      return;
+    }
+
+    // 2. When in another dataset
+    const favImages = await getImagesByDataset(favoriteDatasetId);
+    const existing = favImages.find(
+      (fi) =>
+        fi.id === `${favoriteDatasetId}-${targetImg.name}-${targetImg.lastModified}-${targetImg.size}` ||
+        (fi.name === targetImg.name &&
+          fi.size === targetImg.size &&
+          fi.lastModified === targetImg.lastModified)
+    );
+
+    if (existing) {
+      // Image is already in favorite dataset -> REMOVE it!
+      setIsLoading(true);
+      await deleteImage(existing.id);
+      setIsCurrentFavorited(false);
+      setFullscreenFavorited((prev) => {
+        const next = new Set(prev);
+        next.delete(targetImg.id);
+        return next;
+      });
+      await loadDatasets();
+      setIsLoading(false);
+      showNotification(language === "JP" ? "お気に入りから解除しました" : "Removed from favorites");
+    } else {
+      // Image is not yet in favorite dataset -> ADD it!
+      setIsLoading(true);
+      await copyImagesToDataset([targetImg.id], favoriteDatasetId);
+      setIsCurrentFavorited(true);
+      setFullscreenFavorited((prev) => {
+        const next = new Set(prev);
+        next.add(targetImg.id);
+        return next;
+      });
+      await loadDatasets();
+      setIsLoading(false);
+      showNotification(language === "JP" ? "お気に入りに追加しました" : "Added to favorites");
+    }
+  };
+
+  const handleRemoveSelectedFromFavorite = async () => {
+    if (selectedImageIds.size === 0) return;
+    setIsLoading(true);
+    for (const id of selectedImageIds) {
+      await deleteImage(id);
+    }
+    const remaining = images.filter((i) => !selectedImageIds.has(i.id));
+    setImages(remaining);
+    setSelectedImageIds(new Set());
+    setLastSelectedIdx(null);
+    setIsSelectionMode(false);
+    await loadDatasets();
+    setIsLoading(false);
+    showNotification(language === "JP" ? "お気に入りから解除しました" : "Removed from favorites");
+  };
+
   const handleCustomMove = async (direction: "top" | "bottom" | "up" | "down") => {
     if (selectedImageIds.size === 0) return;
     setIsLoading(true);
@@ -3806,37 +3916,47 @@ Images imported: ${importedImages}`);
                     onToggle={() => setIsDataSetsExpanded(!isDataSetsExpanded)}
                     dragHandle
                   >
-                    <div className="flex gap-2 shrink-0">
-              <SolidButton
-                onClick={handleAddDatasetClick}
-                className="flex-1 justify-center text-accent"
-              >
-                + {t("NEW SET", "新規セット")}
-              </SolidButton>
-              <SolidButton
-                onClick={() =>
-                  setDatasetViewMode((v) =>
-                    v === "list" ? "dropdown" : "list",
-                  )
-                }
-                className="px-3"
-                title="TOGGLE VIEW MODE"
-              >
-                {datasetViewMode === "dropdown" ? (
-                  <List size={16} />
-                ) : (
-                  <ChevronDown size={16} />
-                )}
-              </SolidButton>
+                    <div className="flex gap-1.5 shrink-0">
+                      <SolidButton
+                        onClick={() => handleOpenNewCategoryModal(activeCategoryId)}
+                        className="flex-1 justify-center text-folder-icon text-[11px] gap-1 px-1.5"
+                        title={t("Create new folder", "新規フォルダーを作成")}
+                      >
+                        <FolderPlus size={13} />
+                        <span>+ {t("NEW FOLDER", "フォルダー")}</span>
+                      </SolidButton>
+                      <SolidButton
+                        onClick={() => handleAddDatasetClick(activeCategoryId)}
+                        className="flex-1 justify-center text-accent text-[11px] gap-1 px-1.5"
+                        title={t("Create new dataset", "新規データセットを作成")}
+                      >
+                        <FilePlus size={13} />
+                        <span>+ {t("NEW SET", "セット")}</span>
+                      </SolidButton>
+                      <SolidButton
+                        onClick={() =>
+                          setDatasetViewMode((v) =>
+                            v === "list" ? "dropdown" : "list",
+                          )
+                        }
+                        className="px-2.5"
+                        title="TOGGLE VIEW MODE"
+                      >
+                        {datasetViewMode === "dropdown" ? (
+                          <List size={16} />
+                        ) : (
+                          <ChevronDown size={16} />
+                        )}
+                      </SolidButton>
 
-              <SolidButton
-                onClick={handleClear}
-                className="px-3"
-                title="CLEAR DATABASE"
-              >
-                <Trash2 size={16} />
-              </SolidButton>
-            </div>
+                      <SolidButton
+                        onClick={handleClear}
+                        className="px-2.5"
+                        title="CLEAR DATABASE"
+                      >
+                        <Trash2 size={16} />
+                      </SolidButton>
+                    </div>
 
             <div className="shrink-0 flex flex-col gap-2">
               <input
@@ -4810,14 +4930,24 @@ Images imported: ${importedImages}`);
                         {datasets.find(d => d.id === activeDatasetId)?.coverImageId === Array.from(selectedImageIds)[0] ? "COVER SET" : "SET COVER"}
                       </button>
                     )}
-                    {favoriteDatasetId && favoriteDatasetId !== activeDatasetId && selectedImageIds.size > 0 && (
-                      <button
-                        onClick={() => handleCopySelected(favoriteDatasetId)}
-                        className="text-[10px] uppercase font-mono tracking-wider transition-colors text-yellow-500 hover:text-yellow-400 px-2 py-0.5 bg-yellow-500/10 hover:bg-yellow-500/20 rounded mr-1 flex items-center gap-1"
-                        title={t("COPY TO FAVORITE", "お気に入りにコピー")}
-                      >
-                        <Star size={12} fill="currentColor" /> COPY TO FAV
-                      </button>
+                    {favoriteDatasetId && selectedImageIds.size > 0 && (
+                      activeDatasetId === favoriteDatasetId ? (
+                        <button
+                          onClick={handleRemoveSelectedFromFavorite}
+                          className="text-[10px] uppercase font-mono tracking-wider transition-colors text-red-400 hover:text-red-300 px-2 py-0.5 bg-red-500/10 hover:bg-red-500/20 rounded mr-1 flex items-center gap-1"
+                          title={t("REMOVE FROM FAVORITES", "お気に入りから解除")}
+                        >
+                          <Star size={12} fill="none" /> REMOVE FROM FAV
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleCopySelected(favoriteDatasetId)}
+                          className="text-[10px] uppercase font-mono tracking-wider transition-colors text-yellow-500 hover:text-yellow-400 px-2 py-0.5 bg-yellow-500/10 hover:bg-yellow-500/20 rounded mr-1 flex items-center gap-1"
+                          title={t("COPY TO FAVORITE", "お気に入りにコピー")}
+                        >
+                          <Star size={12} fill="currentColor" /> COPY TO FAV
+                        </button>
+                      )
                     )}
                     <select
                       value={moveTargetId}
@@ -5033,7 +5163,7 @@ Images imported: ${importedImages}`);
               const currentCatId = isCategoryImagesView ? activeCategoryId : (currentDataset?.categoryId || activeCategoryId || null);
               const breadcrumbs = getCategoryBreadcrumbs(currentCatId);
               const currentDepth = breadcrumbs.length;
-              const canCreateSubcategory = currentDepth < 2;
+              const canCreateSubcategory = true; // Unlimited folder nesting
 
               return (
                 <div className="w-full bg-panel-bg border-b border-panel-border px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs font-mono shrink-0 select-none z-30 shadow-xs">
@@ -5183,19 +5313,39 @@ Images imported: ${importedImages}`);
                         )}
                       </>
                     ) : (
-                      /* Back to Explorer Quick Action Button */
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveDatasetId(null);
-                          setIsCategoryImagesView(false);
-                        }}
-                        className="flex items-center gap-1 px-2.5 py-1 bg-panel-bg border border-panel-border/80 hover:border-accent hover:bg-accent/15 text-text-secondary hover:text-accent text-[11px] font-bold transition-all rounded shrink-0 shadow-2xs cursor-pointer"
-                        title={t("Back to Folder Explorer", "フォルダー一覧に戻る")}
-                      >
-                        <ChevronLeft size={13} />
-                        <span>{t("BACK TO EXPLORER", "一覧に戻る")}</span>
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenNewCategoryModal(currentCatId)}
+                          className="flex items-center gap-1 px-2.5 py-1 bg-panel-bg border border-panel-border hover:border-accent text-text-secondary hover:text-text-primary transition-colors cursor-pointer rounded-[2px]"
+                          title={t("Create new folder in this location", "この階層に新規フォルダーを作成")}
+                        >
+                          <FolderPlus size={13} className="text-folder-icon" />
+                          <span>+ {t("NEW FOLDER", "新規フォルダー")}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAddDatasetClick(currentCatId)}
+                          className="flex items-center gap-1 px-2.5 py-1 bg-panel-bg border border-panel-border hover:border-accent text-text-secondary hover:text-text-primary transition-colors cursor-pointer rounded-[2px]"
+                          title={t("Create new dataset in this location", "この階層に新規データセットを作成")}
+                        >
+                          <FilePlus size={13} className="text-accent" />
+                          <span>+ {t("NEW DATASET", "新規セット")}</span>
+                        </button>
+                        {/* Back to Explorer Quick Action Button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveDatasetId(null);
+                            setIsCategoryImagesView(false);
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1 bg-panel-bg border border-panel-border/80 hover:border-accent hover:bg-accent/15 text-text-secondary hover:text-accent text-[11px] font-bold transition-all rounded shrink-0 shadow-2xs cursor-pointer"
+                          title={t("Back to Folder Explorer", "フォルダー一覧に戻る")}
+                        >
+                          <ChevronLeft size={13} />
+                          <span>{t("BACK TO EXPLORER", "一覧に戻る")}</span>
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -6103,31 +6253,29 @@ Images imported: ${importedImages}`);
                 </button>
               </div>
               {/* Favorite Button in Fullscreen */}
-              {favoriteDatasetId && favoriteDatasetId !== activeDatasetId && (
+              {favoriteDatasetId && selectedImage && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (selectedImage) {
-                      handleCopySelected(favoriteDatasetId, [selectedImage.id]);
-                      setFullscreenFavorited(prev => {
-                        const next = new Set(prev);
-                        next.add(selectedImage.id);
-                        return next;
-                      });
-                    }
+                    handleToggleFavoriteImage(selectedImage);
                   }}
                   className={cn(
-                    "absolute top-6 right-[196px] w-12 h-12 flex items-center justify-center rounded-full transition-all hover:scale-110 outline-none focus:outline-none backdrop-blur-sm border shadow-sm",
+                    "absolute top-6 right-[196px] w-12 h-12 flex items-center justify-center rounded-full transition-all hover:scale-110 outline-none focus:outline-none backdrop-blur-sm border shadow-sm cursor-pointer",
                     isFullscreenDarkText
                       ? "bg-white/20 border-black/10 text-black/70 hover:text-black hover:bg-white/40"
-                      : "bg-black/20 border-white/10 text-white/70 hover:text-white hover:bg-black/40"
+                      : "bg-black/20 border-white/10 text-white/70 hover:text-white hover:bg-black/40",
+                    isCurrentFavorited && (
+                      isFullscreenDarkText
+                        ? "bg-yellow-400/40 text-yellow-900 border-yellow-500/60"
+                        : "bg-yellow-500/30 text-yellow-300 border-yellow-400/60"
+                    )
                   )}
-                  title={t("COPY TO FAVORITE", "お気に入りにコピー")}
+                  title={isCurrentFavorited ? t("REMOVE FROM FAVORITES", "お気に入りから解除") : t("ADD TO FAVORITES", "お気に入りに追加")}
                 >
                   <Star 
                     size={24} 
-                    className={selectedImage && fullscreenFavorited.has(selectedImage.id) ? "text-yellow-400" : "text-inherit"} 
-                    fill={selectedImage && fullscreenFavorited.has(selectedImage.id) ? "currentColor" : "none"} 
+                    className={isCurrentFavorited ? "text-yellow-400" : "text-inherit"} 
+                    fill={isCurrentFavorited ? "currentColor" : "none"} 
                   />
                 </button>
               )}
@@ -6140,8 +6288,8 @@ Images imported: ${importedImages}`);
                     handleSetAsCover(activeDatasetId, selectedImage);
                   }}
                   className={cn(
-                    "absolute top-6 w-12 h-12 flex items-center justify-center rounded-full transition-all hover:scale-110 outline-none focus:outline-none backdrop-blur-sm border shadow-sm",
-                    favoriteDatasetId && favoriteDatasetId !== activeDatasetId ? "right-[256px]" : "right-[196px]",
+                    "absolute top-6 w-12 h-12 flex items-center justify-center rounded-full transition-all hover:scale-110 outline-none focus:outline-none backdrop-blur-sm border shadow-sm cursor-pointer",
+                    favoriteDatasetId ? "right-[256px]" : "right-[196px]",
                     isFullscreenDarkText
                       ? "bg-white/20 border-black/10 text-black/70 hover:text-black hover:bg-white/40"
                       : "bg-black/20 border-white/10 text-white/70 hover:text-white hover:bg-black/40",
@@ -6212,6 +6360,14 @@ Images imported: ${importedImages}`);
               >
                 <X size={26} />
               </button>
+
+              {/* Status indicator when in favorite dataset but image was unstarred */}
+              {activeDatasetId === favoriteDatasetId && !isCurrentFavorited && (
+                <div className="absolute top-20 right-6 font-mono text-[11px] px-3 py-1 rounded bg-black/70 text-white border border-white/20 shadow backdrop-blur-sm pointer-events-none animate-fade-in flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-red-400"></span>
+                  <span>{t("Removed from Fav (kept in view)", "お気に入り解除済み（表示維持中）")}</span>
+                </div>
+              )}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -6230,10 +6386,26 @@ Images imported: ${importedImages}`);
             className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
           >
             <div className="bg-panel-bg border border-panel-border p-6 font-mono w-[440px] shadow-2xl">
-              <h2 className="text-text-primary mb-4 uppercase flex items-center gap-2 font-bold text-sm">
-                <Layers size={18} className="text-accent" />
-                {editingDatasetId ? t("RENAME DATASET", "データセット名の変更") : t("NEW DATASET", "新規データセットの作成")}
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-text-primary uppercase flex items-center gap-2 font-bold text-sm">
+                  <Layers size={18} className="text-accent" />
+                  {editingDatasetId ? t("RENAME DATASET", "データセット名の変更") : t("NEW DATASET", "新規データセットの作成")}
+                </h2>
+                {!editingDatasetId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowNewDatasetModal(false);
+                      handleOpenNewCategoryModal(targetCategoryIdForNewDataset);
+                    }}
+                    className="text-[10px] text-folder-icon hover:underline flex items-center gap-1 cursor-pointer"
+                    title={t("Switch to Create Folder", "フォルダー作成に切り替え")}
+                  >
+                    <FolderPlus size={12} />
+                    <span>{t("CREATE FOLDER INSTEAD", "フォルダー作成はこちら")}</span>
+                  </button>
+                )}
+              </div>
 
               <div className="space-y-4 mb-6">
                 <div>
@@ -6309,10 +6481,26 @@ Images imported: ${importedImages}`);
             className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
           >
             <div className="bg-panel-bg border border-panel-border p-6 font-mono w-[440px] shadow-2xl">
-              <h2 className="text-text-primary mb-4 uppercase flex items-center gap-2 font-bold text-sm">
-                <Folder size={18} className="text-accent" />
-                {editingCategoryId ? t("RENAME CATEGORY", "フォルダー名の変更") : t("NEW CATEGORY", "新規フォルダーの作成")}
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-text-primary uppercase flex items-center gap-2 font-bold text-sm">
+                  <Folder size={18} className="text-folder-icon" />
+                  {editingCategoryId ? t("RENAME CATEGORY", "フォルダー名の変更") : t("NEW CATEGORY", "新規フォルダーの作成")}
+                </h2>
+                {!editingCategoryId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowNewCategoryModal(false);
+                      handleAddDatasetClick(newCategoryParentId);
+                    }}
+                    className="text-[10px] text-accent hover:underline flex items-center gap-1 cursor-pointer"
+                    title={t("Switch to Create Dataset", "データセット作成に切り替え")}
+                  >
+                    <FilePlus size={12} />
+                    <span>{t("CREATE DATASET INSTEAD", "セット作成はこちら")}</span>
+                  </button>
+                )}
+              </div>
 
               <div className="space-y-4 mb-6">
                 <div>
