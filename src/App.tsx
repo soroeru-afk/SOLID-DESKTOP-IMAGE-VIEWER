@@ -4500,7 +4500,7 @@ Images imported: ${importedImages}`);
                                   Wheel / Drag
                                 </kbd>
                                 <span className="text-text-secondary truncate">
-                                  {t("Wheel/Drag: Speed / Click: Stop", "ホイール/ドラッグ速度調整 / クリック停止")}
+                                  {t("Wheel on Image/Jog: Speed / Click: Stop", "画像上・ジョグでホイール速度調整 / クリック停止")}
                                 </span>
 
                                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
@@ -5568,6 +5568,13 @@ Images imported: ${importedImages}`);
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                  onWheel={(e) => {
+                    // 画像一覧（grid-sq, grid-ma, list）表示時、画像の上や余白でのホイール操作を
+                    // ジョグコントローラー（無段階加速・方向転換・自動スクロール）と連動
+                    if (viewMode !== "free" && sortedImages.length > 0) {
+                      handleJogWheel(e);
+                    }
+                  }}
                   className={cn(
                     "w-full h-full absolute inset-0 p-4",
                     (viewMode === "grid-sq" ||
