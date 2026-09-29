@@ -551,8 +551,30 @@ export default function App() {
   // Auto Scroll States & Loop
   const [autoScrollDir, setAutoScrollDir] = useState<"up" | "down" | null>(null);
   const [autoScrollSpeed, setAutoScrollSpeed] = useState<number>(2);
+  const [autoScrollPxPerSec, setAutoScrollPxPerSec] = useState<number>(250);
   const autoScrollDirRef = useRef<"up" | "down" | null>(null);
   const lastAutoScrollDirRef = useRef<"up" | "down">("down");
+  const autoScrollPxPerSecRef = useRef<number>(250);
+
+  // Jog Drag States & Refs
+  const [jogDragState, setJogDragState] = useState<{
+    active: boolean;
+    deltaY: number;
+    currentSpeed: number;
+    dir: "up" | "down" | null;
+  }>({
+    active: false,
+    deltaY: 0,
+    currentSpeed: 0,
+    dir: null,
+  });
+  const isJogPointerDownRef = useRef(false);
+  const jogStartYRef = useRef(0);
+  const jogHasDraggedRef = useRef(false);
+
+  useEffect(() => {
+    autoScrollPxPerSecRef.current = autoScrollPxPerSec;
+  }, [autoScrollPxPerSec]);
 
   useEffect(() => {
     autoScrollDirRef.current = autoScrollDir;
@@ -566,18 +588,15 @@ export default function App() {
     let animId: number;
     let lastTime = performance.now();
 
-    // 速度 (1x: 100px/s, 2x: 250px/s, 3x: 500px/s, 4x: 1000px/s)
-    const baseSpeed =
-      autoScrollSpeed === 1 ? 100 : autoScrollSpeed === 2 ? 250 : autoScrollSpeed === 3 ? 500 : 1000;
-    const dirFactor = autoScrollDir === "down" ? 1 : -1;
-
     const loop = (now: number) => {
       const delta = (now - lastTime) / 1000;
       lastTime = now;
       if (scrollContainerRef.current) {
         const el = scrollContainerRef.current;
         const maxScroll = el.scrollHeight - el.clientHeight;
-        el.scrollBy({ top: dirFactor * baseSpeed * delta, behavior: "auto" });
+        const currentSpeed = autoScrollPxPerSecRef.current;
+        const dirFactor = autoScrollDir === "down" ? 1 : -1;
+        el.scrollBy({ top: dirFactor * currentSpeed * delta, behavior: "auto" });
 
         // 端に到達したら停止
         if (
@@ -593,7 +612,170 @@ export default function App() {
 
     animId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animId);
-  }, [autoScrollDir, autoScrollSpeed]);
+  }, [autoScrollDir]);
+
+  const setPresetSpeed = (level: number) => {
+    const clamped = Math.max(1, Math.min(4, level));
+    setAutoScrollSpeed(clamped);
+    const px = clamped === 1 ? 100 : clamped === 2 ? 250 : clamped === 3 ? 500 : 1000;
+    setAutoScrollPxPerSec(px);
+  };
+
+  const handleJogPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    isJogPointerDownRef.current = true;
+    jogStartYRef.current = e.clientY;
+    jogHasDraggedRef.current = false;
+
+    setJogDragState({
+      active: true,
+      deltaY: 0,
+      currentSpeed: autoScrollPxPerSecRef.current,
+      dir: autoScrollDirRef.current,
+    });
+  };
+
+  const handleJogPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isJogPointerDownRef.current) return;
+    const dy = e.clientY - jogStartYRef.current;
+
+    // 4px以上の移動でドラッグ（方向転換・速度調整）と判定
+    if (Math.abs(dy) >= 4) {
+      jogHasDraggedRef.current = true;
+      const newDir: "up" | "down" = dy < 0 ? "up" : "down";
+      const dist = Math.abs(dy) - 4;
+
+      // 微速 (75px/s) から大きくドラッグ時の超高速 (最大3600px/s) まで滑らかに加速
+      const speed = Math.min(3600, Math.round(75 + Math.pow(dist, 1.45) * 3.4));
+
+      setAutoScrollDir(newDir);
+      setAutoScrollPxPerSec(speed);
+
+      // 近似プリセット倍率も更新
+      const approx = speed < 175 ? 1 : speed < 375 ? 2 : speed < 750 ? 3 : 4;
+      setAutoScrollSpeed(approx);
+
+      setJogDragState({
+        active: true,
+        deltaY: dy,
+        currentSpeed: speed,
+        dir: newDir,
+      });
+    } else {
+      setJogDragState((prev) => ({
+        ...prev,
+        deltaY: dy,
+      }));
+    }
+  };
+
+  const handleJogPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isJogPointerDownRef.current) return;
+    isJogPointerDownRef.current = false;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+
+    const hadDragged = jogHasDraggedRef.current;
+    setJogDragState({
+      active: false,
+      deltaY: 0,
+      currentSpeed: 0,
+      dir: null,
+    });
+
+    // 動かさずにクリックしただけの場合は「停止」（または停止中なら再開）
+    if (!hadDragged) {
+      if (autoScrollDirRef.current !== null) {
+        setAutoScrollDir(null);
+      } else {
+        setAutoScrollDir(lastAutoScrollDirRef.current || "down");
+      }
+    }
+  };
+
+  const handleJogPointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isJogPointerDownRef.current) return;
+    isJogPointerDownRef.current = false;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    setJogDragState({
+      active: false,
+      deltaY: 0,
+      currentSpeed: 0,
+      dir: null,
+    });
+  };
+
+  // Jog Wheel (Mouse Wheel Speed & Direction Control)
+  const [wheelHudVisible, setWheelHudVisible] = useState(false);
+  const wheelHudTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerWheelHud = (dir: "up" | "down", speed: number) => {
+    setWheelHudVisible(true);
+    if (wheelHudTimerRef.current) clearTimeout(wheelHudTimerRef.current);
+    wheelHudTimerRef.current = setTimeout(() => {
+      setWheelHudVisible(false);
+    }, 1400);
+  };
+
+  const handleJogWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const delta = e.deltaY;
+    if (Math.abs(delta) < 1) return;
+
+    // 現在の速度ベクトル (上が負、下が正)
+    let currentVelocity = 0;
+    if (autoScrollDirRef.current === "down") {
+      currentVelocity = autoScrollPxPerSecRef.current;
+    } else if (autoScrollDirRef.current === "up") {
+      currentVelocity = -autoScrollPxPerSecRef.current;
+    }
+
+    // ホイール下回転 (delta > 0) -> 下方向への加速 (+方向)
+    // ホイール上回転 (delta < 0) -> 上方向への加速 (-方向)
+    // 1ノッチで +120〜180px/s、シュッと勢いよく回した時は一気に +600〜1600px/s 加速
+    const absDelta = Math.abs(delta);
+    const impulseMag = absDelta > 80
+      ? Math.min(1600, Math.round(Math.pow(absDelta, 1.28) * 1.8))
+      : Math.round(absDelta * 1.5);
+    const impulse = Math.sign(delta) * Math.max(120, impulseMag);
+
+    let nextVelocity = currentVelocity + impulse;
+
+    // 停止中から回し始めた場合は初速 240px/s で瞬時に快適スタート
+    if (currentVelocity === 0) {
+      nextVelocity = impulse > 0 ? Math.max(240, impulse) : Math.min(-240, impulse);
+    }
+
+    if (Math.abs(nextVelocity) < 40) {
+      // 速度が相殺されて0付近になったら停止
+      setAutoScrollDir(null);
+      setWheelHudVisible(false);
+    } else {
+      const newDir: "up" | "down" = nextVelocity > 0 ? "down" : "up";
+      const newSpeed = Math.min(3600, Math.max(60, Math.round(Math.abs(nextVelocity))));
+      setAutoScrollDir(newDir);
+      setAutoScrollPxPerSec(newSpeed);
+
+      const approx = newSpeed < 175 ? 1 : newSpeed < 375 ? 2 : newSpeed < 750 ? 3 : 4;
+      setAutoScrollSpeed(approx);
+
+      triggerWheelHud(newDir, newSpeed);
+    }
+  };
 
   // Fullscreen Slideshow States
   const [isSlideshowPlaying, setIsSlideshowPlaying] = useState(false);
@@ -2865,7 +3047,12 @@ Images imported: ${importedImages}`);
         if (key === "t" || key === "T") {
           if (e.repeat) return;
           e.preventDefault();
-          setAutoScrollSpeed((s) => (s >= 4 ? 1 : (s + 1)));
+          setAutoScrollSpeed((s) => {
+            const next = s >= 4 ? 1 : s + 1;
+            const px = next === 1 ? 100 : next === 2 ? 250 : next === 3 ? 500 : 1000;
+            setAutoScrollPxPerSec(px);
+            return next;
+          });
           return;
         }
         if (key === "ArrowRight") {
@@ -4310,6 +4497,13 @@ Images imported: ${importedImages}`);
                                 </span>
 
                                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  Wheel / Drag
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Wheel/Drag: Speed / Click: Stop", "ホイール/ドラッグ速度調整 / クリック停止")}
+                                </span>
+
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
                                   ← / →
                                 </kbd>
                                 <span className="text-text-secondary truncate">
@@ -5626,9 +5820,42 @@ Images imported: ${importedImages}`);
                 </motion.div>
               </AnimatePresence>
               {viewMode !== "free" && sortedImages.length > 0 && (
-                <div data-scroll-controls="true" className="absolute bottom-6 right-8 z-[60] flex flex-col items-end gap-2 select-none">
-                  {/* Vertical Scroll Nav Bar */}
-                  <div className="flex flex-col items-center bg-white/95 dark:bg-[#18181b]/95 backdrop-blur-md border border-gray-300/80 dark:border-gray-700/80 shadow-md w-9 py-1 rounded-none">
+                <div data-scroll-controls="true" className="absolute bottom-6 right-8 z-[60] flex flex-col items-end gap-1.5 select-none">
+                  {/* Floating Drag / Wheel HUD (Appears during drag or wheel) */}
+                  {(jogDragState.active || wheelHudVisible) && (
+                    <div className="absolute right-full mr-3 bottom-0 whitespace-nowrap bg-black/90 dark:bg-black/90 backdrop-blur-md text-white border border-gray-600/80 px-3 py-1.5 shadow-2xl flex flex-col items-end pointer-events-none animate-in fade-in zoom-in-95 duration-100">
+                      <div className="flex items-center gap-1.5 font-mono text-[12px] font-bold tracking-tight tabular-nums">
+                        {(jogDragState.active ? jogDragState.dir : autoScrollDir) === "up" ? (
+                          <span className="text-amber-400 flex items-center gap-0.5">
+                            <ChevronUp size={13} className="stroke-[3]" />
+                            UP
+                          </span>
+                        ) : (jogDragState.active ? jogDragState.dir : autoScrollDir) === "down" ? (
+                          <span className="text-sky-400 flex items-center gap-0.5">
+                            <ChevronDown size={13} className="stroke-[3]" />
+                            DOWN
+                          </span>
+                        ) : (
+                          <span className="text-gray-300">STOPPED</span>
+                        )}
+                        <span className="text-white">
+                          {jogDragState.active ? jogDragState.currentSpeed : autoScrollPxPerSec} <span className="text-[10px] text-gray-400">px/s</span>
+                        </span>
+                        <span className="text-[11px] text-amber-300 font-mono">
+                          ({((jogDragState.active ? jogDragState.currentSpeed : autoScrollPxPerSec) / 250).toFixed(1)}x)
+                        </span>
+                      </div>
+                      <div className="text-[9px] font-mono text-gray-400 tracking-wider mt-0.5">
+                        WHEEL: SPEED • DRAG: SPEED • CLICK: STOP
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Vertical Scroll Nav Bar & Jog Shuttle */}
+                  <div
+                    onWheel={handleJogWheel}
+                    className="flex flex-col items-center bg-white/95 dark:bg-[#18181b]/95 backdrop-blur-md border border-gray-300/80 dark:border-gray-700/80 shadow-md w-11 rounded-none overflow-hidden"
+                  >
                     {/* Scroll To Top */}
                     <button
                       type="button"
@@ -5636,41 +5863,121 @@ Images imported: ${importedImages}`);
                         setAutoScrollDir(null);
                         scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
                       }}
-                      className="w-full py-1.5 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
-                      title="SCROLL TO TOP"
+                      className="w-full h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
+                      title="SCROLL TO TOP (一番上へジャンプ)"
                     >
                       <ChevronsUp size={14} />
                     </button>
 
-                    {/* Auto Scroll UP Toggle */}
+                    {/* Standard Auto Scroll UP Toggle Button */}
                     <button
                       type="button"
                       onClick={() => setAutoScrollDir((d) => (d === "up" ? null : "up"))}
                       className={cn(
-                        "w-full py-1.5 flex items-center justify-center transition-colors cursor-pointer outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
+                        "w-full h-7 flex items-center justify-center transition-colors cursor-pointer border-t border-gray-200 dark:border-gray-700/60 outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
                         autoScrollDir === "up"
-                          ? "bg-gray-200 dark:bg-gray-700 text-black dark:text-white font-bold"
+                          ? "bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold"
                           : "text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
                       )}
-                      title="AUTO SCROLL UP"
+                      title="AUTO SCROLL UP (上へ自動スクロール開始/停止)"
                     >
                       <ChevronUp size={14} />
                     </button>
 
-                    {/* Subtle divider between UP and DOWN */}
-                    <div className="w-3/4 mx-auto border-t border-gray-200 dark:border-gray-700/60 my-0.5" />
+                    {/* JOG & SHUTTLE CONTROLLER PAD (Lengthened to h-36) */}
+                    <div
+                      onPointerDown={handleJogPointerDown}
+                      onPointerMove={handleJogPointerMove}
+                      onPointerUp={handleJogPointerUp}
+                      onPointerCancel={handleJogPointerCancel}
+                      onWheel={handleJogWheel}
+                      className={cn(
+                        "w-full h-36 relative flex flex-col items-center justify-between py-2 cursor-ns-resize border-y border-gray-200 dark:border-gray-700/70 select-none transition-colors touch-none",
+                        jogDragState.active || wheelHudVisible
+                          ? "bg-gray-200/90 dark:bg-gray-800/90"
+                          : autoScrollDir !== null
+                          ? "bg-amber-500/10 dark:bg-amber-500/15"
+                          : "hover:bg-gray-100/80 dark:hover:bg-gray-800/50"
+                      )}
+                      title="ホイール回転 / 上下ドラッグ: 向き＆速度を無段階調整 / クリック: 停止"
+                    >
+                      {/* Active Tension Bar during Drag */}
+                      {jogDragState.active && (
+                        <div
+                          className={cn(
+                            "absolute left-0 right-0 pointer-events-none transition-all",
+                            jogDragState.dir === "up" ? "bottom-1/2 bg-amber-500/30" : "top-1/2 bg-sky-500/30"
+                          )}
+                          style={{
+                            height: `${Math.min(64, Math.abs(jogDragState.deltaY) * 0.4)}px`,
+                          }}
+                        />
+                      )}
 
-                    {/* Auto Scroll DOWN Toggle */}
+                      {/* UP Direction Indicator */}
+                      <div
+                        className={cn(
+                          "flex flex-col items-center transition-colors pointer-events-none",
+                          autoScrollDir === "up" || jogDragState.dir === "up"
+                            ? "text-amber-500 font-bold"
+                            : "text-gray-400 dark:text-gray-500"
+                        )}
+                      >
+                        <ChevronUp
+                          size={13}
+                          className={cn(
+                            "stroke-[2.5]",
+                            autoScrollDir === "up" && "animate-pulse"
+                          )}
+                        />
+                      </div>
+
+                      {/* Center Knurled Grip & State Badge */}
+                      <div className="flex flex-col items-center justify-center gap-0.5 pointer-events-none z-10">
+                        <div className="flex items-center gap-0.5">
+                          <div className="w-1 h-3.5 bg-gray-400 dark:bg-gray-500" />
+                          <div className="w-1 h-3.5 bg-gray-400 dark:bg-gray-500" />
+                          <div className="w-1 h-3.5 bg-gray-400 dark:bg-gray-500" />
+                        </div>
+                        <span className="font-mono text-[8px] font-bold tracking-tighter text-gray-500 dark:text-gray-400 uppercase mt-0.5">
+                          {jogDragState.active
+                            ? "DRAG"
+                            : autoScrollDir !== null
+                            ? "STOP"
+                            : "JOG"}
+                        </span>
+                      </div>
+
+                      {/* DOWN Direction Indicator */}
+                      <div
+                        className={cn(
+                          "flex flex-col items-center transition-colors pointer-events-none",
+                          autoScrollDir === "down" || jogDragState.dir === "down"
+                            ? "text-sky-500 font-bold"
+                            : "text-gray-400 dark:text-gray-500"
+                        )}
+                      >
+                        <ChevronDown
+                          size={13}
+                          className={cn(
+                            "stroke-[2.5]",
+                            autoScrollDir === "down" && "animate-pulse"
+                          )}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Standard Auto Scroll DOWN Toggle Button */}
                     <button
                       type="button"
                       onClick={() => setAutoScrollDir((d) => (d === "down" ? null : "down"))}
                       className={cn(
-                        "w-full py-1.5 flex items-center justify-center transition-colors cursor-pointer outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
+                        "w-full h-7 flex items-center justify-center transition-colors cursor-pointer border-b border-gray-200 dark:border-gray-700/60 outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
                         autoScrollDir === "down"
-                          ? "bg-gray-200 dark:bg-gray-700 text-black dark:text-white font-bold"
+                          ? "bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold"
                           : "text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
                       )}
-                      title="AUTO SCROLL DOWN"
+                      title="AUTO SCROLL DOWN (下へ自動スクロール開始/停止)"
                     >
                       <ChevronDown size={14} />
                     </button>
@@ -5687,22 +5994,25 @@ Images imported: ${importedImages}`);
                           });
                         }
                       }}
-                      className="w-full py-1.5 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
-                      title="SCROLL TO BOTTOM"
+                      className="w-full h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
+                      title="SCROLL TO BOTTOM (一番下へジャンプ)"
                     >
                       <ChevronsDown size={14} />
                     </button>
                   </div>
 
                   {/* Horizontal Speed Control Bar (Bottom) */}
-                  <div className="flex items-center bg-white/95 dark:bg-[#18181b]/95 backdrop-blur-md border border-gray-300/80 dark:border-gray-700/80 shadow-md h-7 px-1 rounded-none">
+                  <div
+                    onWheel={handleJogWheel}
+                    className="flex items-center bg-white/95 dark:bg-[#18181b]/95 backdrop-blur-md border border-gray-300/80 dark:border-gray-700/80 shadow-md h-7 px-1 rounded-none"
+                  >
                     <button
                       type="button"
-                      onClick={() => setAutoScrollSpeed((s) => Math.max(1, s - 1))}
-                      disabled={autoScrollSpeed <= 1}
+                      onClick={() => setPresetSpeed(autoScrollSpeed - 1)}
+                      disabled={autoScrollSpeed <= 1 && autoScrollPxPerSec <= 100}
                       className={cn(
                         "w-5 h-5 flex items-center justify-center text-[12px] font-bold transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
-                        autoScrollSpeed <= 1
+                        autoScrollSpeed <= 1 && autoScrollPxPerSec <= 100
                           ? "opacity-30 cursor-not-allowed text-gray-400"
                           : "hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 cursor-pointer"
                       )}
@@ -5711,17 +6021,20 @@ Images imported: ${importedImages}`);
                       <Minus size={11} />
                     </button>
 
-                    <span className="font-mono font-bold text-[11px] tabular-nums px-1 text-gray-800 dark:text-gray-200 pointer-events-none min-w-[22px] text-center select-none">
-                      {autoScrollSpeed}x
+                    <span
+                      className="font-mono font-bold text-[10px] tabular-nums px-1 text-gray-800 dark:text-gray-200 pointer-events-none min-w-[34px] text-center select-none"
+                      title={`${autoScrollPxPerSec} px/s`}
+                    >
+                      {(autoScrollPxPerSec / 250).toFixed(1)}x
                     </span>
 
                     <button
                       type="button"
-                      onClick={() => setAutoScrollSpeed((s) => Math.min(4, s + 1))}
-                      disabled={autoScrollSpeed >= 4}
+                      onClick={() => setPresetSpeed(autoScrollSpeed + 1)}
+                      disabled={autoScrollSpeed >= 4 && autoScrollPxPerSec >= 1000}
                       className={cn(
                         "w-5 h-5 flex items-center justify-center text-[12px] font-bold transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
-                        autoScrollSpeed >= 4
+                        autoScrollSpeed >= 4 && autoScrollPxPerSec >= 1000
                           ? "opacity-30 cursor-not-allowed text-gray-400"
                           : "hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 cursor-pointer"
                       )}
