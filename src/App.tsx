@@ -62,6 +62,7 @@ import {
   Sliders,
   Folders,
   Mouse,
+  MoveVertical,
 } from "lucide-react";
 import {
   ImageRecord,
@@ -494,6 +495,23 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem("app_theme", theme);
+    document.documentElement.setAttribute("data-theme", theme);
+    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    let color = "#0B0C0D"; // default for BLACK
+    if (theme === "TRUE_BLACK") color = "#000000";
+    else if (theme === "LIGHT") color = "#e2e8f0";
+    else if (theme === "PAPER") color = "#f5f5f0";
+    else if (theme === "RED") color = "#0d0404";
+    else if (theme === "NAVY") color = "#06090e";
+    
+    if (metaThemeColor) {
+      metaThemeColor.setAttribute("content", color);
+    } else {
+      const meta = document.createElement("meta");
+      meta.name = "theme-color";
+      meta.content = color;
+      document.head.appendChild(meta);
+    }
   }, [theme]);
 
   useEffect(() => {
@@ -578,6 +596,17 @@ export default function App() {
     localStorage.setItem("wheel_invert", String(wheelInvert));
   }, [wheelInvert]);
 
+  // Drag Scroll Direction Setting (Invert)
+  const [dragInvert, setDragInvert] = useState<boolean>(() => {
+    return localStorage.getItem("drag_invert") === "true";
+  });
+  const dragInvertRef = useRef<boolean>(dragInvert);
+
+  useEffect(() => {
+    dragInvertRef.current = dragInvert;
+    localStorage.setItem("drag_invert", String(dragInvert));
+  }, [dragInvert]);
+
   // Jog Drag States & Refs
   const [jogDragState, setJogDragState] = useState<{
     active: boolean;
@@ -593,6 +622,15 @@ export default function App() {
   const isJogPointerDownRef = useRef(false);
   const jogStartYRef = useRef(0);
   const jogHasDraggedRef = useRef(false);
+
+  // Image List Drag-to-Scroll Refs
+  const isListPointerDownRef = useRef(false);
+  const listDragStartYRef = useRef(0);
+  const listDragStartXRef = useRef(0);
+  const listHasDraggedRef = useRef(false);
+  const wasAutoScrollingOnDownRef = useRef(false);
+  const suppressNextClickRef = useRef(false);
+  const [isListDragging, setIsListDragging] = useState(false);
 
   useEffect(() => {
     autoScrollPxPerSecRef.current = autoScrollPxPerSec;
@@ -669,7 +707,8 @@ export default function App() {
     // 4px以上の移動でドラッグ（方向転換・速度調整）と判定
     if (Math.abs(dy) >= 4) {
       jogHasDraggedRef.current = true;
-      const newDir: "up" | "down" = dy < 0 ? "up" : "down";
+      const rawDir: "up" | "down" = dy < 0 ? "up" : "down";
+      const newDir: "up" | "down" = dragInvertRef.current ? (rawDir === "up" ? "down" : "up") : rawDir;
       const dist = Math.abs(dy) - 4;
 
       // 微速 (75px/s) から大きくドラッグ時の超高速 (最大3600px/s) まで滑らかに加速
@@ -738,6 +777,146 @@ export default function App() {
       dir: null,
     });
   };
+
+  // Image List Drag-to-Scroll Handlers (掴んで上下に滑らすジョグドラッグスクロール)
+  const handleListPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (viewMode === "free" || sortedImages.length === 0) return;
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    const target = e.target as HTMLElement;
+    // ボタンや入力欄、カスタムUIのクリックは除外
+    if (target.closest("button, input, select, textarea, label, [data-interactive='true'], [data-scroll-controls='true']")) {
+      return;
+    }
+
+    isListPointerDownRef.current = true;
+    listDragStartYRef.current = e.clientY;
+    listDragStartXRef.current = e.clientX;
+    listHasDraggedRef.current = false;
+    wasAutoScrollingOnDownRef.current = autoScrollDirRef.current !== null;
+  };
+
+  const processListDragMove = (clientY: number) => {
+    if (!isListPointerDownRef.current) return;
+    const dy = clientY - listDragStartYRef.current;
+
+    // 4px以上の移動でドラッグ判定
+    if (!listHasDraggedRef.current) {
+      if (Math.abs(dy) >= 4) {
+        listHasDraggedRef.current = true;
+        setIsListDragging(true);
+      }
+    }
+
+    if (listHasDraggedRef.current) {
+      if (Math.abs(dy) < 4) {
+        // デッドゾーン (開始位置付近に戻った場合は一時停止)
+        setAutoScrollDir(null);
+        setJogDragState({
+          active: true,
+          deltaY: dy,
+          currentSpeed: 0,
+          dir: null,
+        });
+        return;
+      }
+
+      const rawDir: "up" | "down" = dy < 0 ? "up" : "down";
+      const newDir: "up" | "down" = dragInvertRef.current ? (rawDir === "up" ? "down" : "up") : rawDir;
+      const dist = Math.max(0, Math.abs(dy) - 4);
+      const sens = Math.max(0.1, wheelSensitivityRef.current || 1.0);
+      // ジョグパッドと同じ無段階カーブで加速 (75px/s から最大3600px/s)
+      const speed = Math.min(3600, Math.round(75 + Math.pow(dist, 1.45) * 3.2 * sens));
+
+      setAutoScrollDir(newDir);
+      setAutoScrollPxPerSec(speed);
+
+      const approx = speed < 175 ? 1 : speed < 375 ? 2 : speed < 750 ? 3 : 4;
+      setAutoScrollSpeed(approx);
+
+      setJogDragState({
+        active: true,
+        deltaY: dy,
+        currentSpeed: speed,
+        dir: newDir,
+      });
+    }
+  };
+
+  const finishListDrag = () => {
+    if (!isListPointerDownRef.current) return;
+    isListPointerDownRef.current = false;
+    setIsListDragging(false);
+
+    if (listHasDraggedRef.current) {
+      // ドラッグ終了: 現在の速度で自動スクロールを維持し、画像クリック発火を完全阻止
+      setJogDragState({
+        active: false,
+        deltaY: 0,
+        currentSpeed: 0,
+        dir: null,
+      });
+      if (autoScrollDirRef.current) {
+        triggerWheelHud(autoScrollDirRef.current, autoScrollPxPerSecRef.current);
+      }
+      suppressNextClickRef.current = true;
+      setTimeout(() => {
+        suppressNextClickRef.current = false;
+      }, 200);
+    } else {
+      // ドラッグせずクリックのみの場合
+      if (wasAutoScrollingOnDownRef.current) {
+        // スクロール動作中だった場合はピタッと停止させ、画像オープンを防止
+        setAutoScrollDir(null);
+        suppressNextClickRef.current = true;
+        setTimeout(() => {
+          suppressNextClickRef.current = false;
+        }, 200);
+      }
+    }
+  };
+
+  const handleListPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    processListDragMove(e.clientY);
+  };
+
+  const handleListPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    finishListDrag();
+  };
+
+  const handleListPointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    finishListDrag();
+  };
+
+  useEffect(() => {
+    const handleGlobalPointerMove = (e: PointerEvent) => {
+      if (isListPointerDownRef.current) {
+        processListDragMove(e.clientY);
+      }
+    };
+    const handleGlobalPointerUp = () => {
+      if (isListPointerDownRef.current) {
+        finishListDrag();
+      }
+    };
+    window.addEventListener("pointermove", handleGlobalPointerMove, { passive: true });
+    window.addEventListener("pointerup", handleGlobalPointerUp);
+    window.addEventListener("pointercancel", handleGlobalPointerUp);
+    return () => {
+      window.removeEventListener("pointermove", handleGlobalPointerMove);
+      window.removeEventListener("pointerup", handleGlobalPointerUp);
+      window.removeEventListener("pointercancel", handleGlobalPointerUp);
+    };
+  }, []);
 
   // Jog Wheel (Mouse Wheel Speed & Direction Control)
   const [wheelHudVisible, setWheelHudVisible] = useState(false);
@@ -1265,21 +1444,6 @@ export default function App() {
   // Apply Theme
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
-    
-    // Dynamic theme-color meta tag
-    let metaThemeColor = document.querySelector('meta[name="theme-color"]');
-    if (!metaThemeColor) {
-      metaThemeColor = document.createElement("meta");
-      metaThemeColor.setAttribute("name", "theme-color");
-      document.head.appendChild(metaThemeColor);
-    }
-    let color = "#0B0C0D"; // default for BLACK
-    if (theme === "TRUE_BLACK") color = "#000000";
-    else if (theme === "LIGHT") color = "#e2e8f0";
-    else if (theme === "PAPER") color = "#f4ebe1";
-    else if (theme === "NAVY") color = "#0F172A";
-    else if (theme === "RED") color = "#450a0a";
-    metaThemeColor.setAttribute("content", color);
   }, [theme]);
 
   // Load from DB on mount
@@ -3563,7 +3727,7 @@ Images imported: ${importedImages}`);
         },
       }}
       onClick={(e) => {
-        if (autoScrollDirRef.current !== null) {
+        if (suppressNextClickRef.current || autoScrollDirRef.current !== null) {
           setAutoScrollDir(null);
           return;
         }
@@ -3593,7 +3757,7 @@ Images imported: ${importedImages}`);
         }
       }}
       onDoubleClick={() => {
-        if (isSelectionMode) return;
+        if (suppressNextClickRef.current || isSelectionMode) return;
         setSelectedImage(img);
         if (openAction === "dblclick" || viewMode === "free") {
           setIsFullscreen(true);
@@ -4561,10 +4725,10 @@ Images imported: ${importedImages}`);
                                 </span>
 
                                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                                  Wheel / Drag
+                                  Drag / Wheel
                                 </kbd>
                                 <span className="text-text-secondary truncate">
-                                  {t("Wheel on Image/Jog: Speed / Click: Stop", "画像上・ジョグでホイール速度調整 / クリック停止")}
+                                  {t("List Drag / Jog: Speed / Click: Stop", "一覧ドラッグ・ジョグで速度調整 / クリック停止")}
                                 </span>
 
                                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
@@ -4820,19 +4984,76 @@ Images imported: ${importedImages}`);
                               </div>
                             </div>
 
-                            {/* 3. AUTO SCROLL SHORTCUT HINT */}
+                            {/* 3. DRAG SCROLL DIRECTION (INVERT) */}
+                            <div className="flex flex-col gap-1.5">
+                              <div className="flex items-center justify-between font-mono text-[10px] text-text-muted tracking-wider uppercase font-bold border-b border-panel-border pb-1">
+                                <div className="flex items-center gap-1.5">
+                                  <MoveVertical size={12} className="text-accent" />
+                                  <span>{t("DRAG DIRECTION", "ドラッグスクロール方向")}</span>
+                                </div>
+                                <span className="text-[9px] text-accent font-mono uppercase font-bold">
+                                  {dragInvert ? t("INVERTED (↑)", "反転 (下引: ↑)") : t("NORMAL (↓)", "標準 (下引: ↓)")}
+                                </span>
+                              </div>
+
+                              <div className="text-[10px] text-text-muted leading-tight">
+                                {t(
+                                  "Choose whether dragging down scrolls forward/down or upward.",
+                                  "一覧を掴んで下へ滑らせた時のスクロール方向を切り替えます。"
+                                )}
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-1.5 font-mono text-[10px]">
+                                <button
+                                  type="button"
+                                  onClick={() => setDragInvert(false)}
+                                  className={cn(
+                                    "flex flex-col items-center justify-center p-2 border transition-all text-center rounded-xs cursor-pointer gap-0.5",
+                                    !dragInvert
+                                      ? "border-accent bg-accent/15 text-text-primary font-bold ring-1 ring-accent"
+                                      : "border-panel-border hover:border-text-muted text-text-secondary hover:text-text-primary bg-panel-bg"
+                                  )}
+                                >
+                                  <div className="flex items-center gap-1">
+                                    <ArrowDown size={12} className="text-sky-400" />
+                                    <span>{t("NORMAL", "標準 (下ドラッグ: ↓)")}</span>
+                                  </div>
+                                  <span className="text-[9px] text-text-muted">下へ引いて下へスクロール</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setDragInvert(true)}
+                                  className={cn(
+                                    "flex flex-col items-center justify-center p-2 border transition-all text-center rounded-xs cursor-pointer gap-0.5",
+                                    dragInvert
+                                      ? "border-accent bg-accent/15 text-text-primary font-bold ring-1 ring-accent"
+                                      : "border-panel-border hover:border-text-muted text-text-secondary hover:text-text-primary bg-panel-bg"
+                                  )}
+                                >
+                                  <div className="flex items-center gap-1">
+                                    <ArrowUp size={12} className="text-amber-400" />
+                                    <span>{t("INVERT", "反転 (下ドラッグ: ↑)")}</span>
+                                  </div>
+                                  <span className="text-[9px] text-text-muted">下へ引いて上へスクロール</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* 4. AUTO SCROLL SHORTCUT HINT */}
                             <div className="flex flex-col gap-1 p-2 bg-panel-bg border border-panel-border rounded-xs">
                               <span className="font-mono text-[9px] text-text-muted uppercase tracking-wider font-bold">
                                 {t("AUTO SCROLL NOTES", "自動スクロールの操作補足")}
                               </span>
                               <div className="text-[9px] text-text-secondary leading-normal flex flex-col gap-0.5">
-                                <span>• 画像の上や右下コントローラーでホイールを回すと加速開始</span>
-                                <span>• 動作中に画面や画像をクリックすると即座に安全停止</span>
+                                <span>• 一覧を掴んで上下にドラッグ（滑らす）で滑らかに無段階加速</span>
+                                <span>• 右下のジョグパッドのドラッグやホイールでも微調整可能</span>
+                                <span>• 動作中に画面や画像をクリックすると即座に安全停止（画像は開きません）</span>
                                 <span>• Spaceキーで開始/一時停止、Tキーで速度段階切替</span>
                               </div>
                             </div>
 
-                            {/* 4. RESET GENERAL SETTINGS */}
+                            {/* 5. RESET GENERAL SETTINGS */}
                             <div className="pt-1.5 border-t border-panel-border flex items-center justify-between">
                               <span className="text-[10px] text-text-muted font-mono">{t("GENERAL SETTINGS", "一般設定の初期化")}</span>
                               <button
@@ -4840,6 +5061,7 @@ Images imported: ${importedImages}`);
                                 onClick={() => {
                                   setWheelSensitivity(1.0);
                                   setWheelInvert(false);
+                                  setDragInvert(false);
                                 }}
                                 className="px-2 py-1 border border-panel-border bg-panel-bg hover:border-accent hover:text-accent text-[9px] font-mono transition-colors rounded-xs cursor-pointer"
                               >
@@ -5760,6 +5982,11 @@ Images imported: ${importedImages}`);
               ref={scatterContainerRef}
               className={cn("w-full flex-1 relative overflow-hidden")}
               onClickCapture={(e) => {
+                if (suppressNextClickRef.current) {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  return;
+                }
                 if (autoScrollDirRef.current !== null) {
                   const target = e.target as HTMLElement;
                   if (target.closest('[data-scroll-controls="true"]')) {
@@ -5778,20 +6005,19 @@ Images imported: ${importedImages}`);
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0, transition: { duration: 0.15 } }}
-                  onWheel={(e) => {
-                    // 画像一覧（grid-sq, grid-ma, list）表示時、画像の上や余白でのホイール操作を
-                    // ジョグコントローラー（無段階加速・方向転換・自動スクロール）と連動
-                    if (viewMode !== "free" && sortedImages.length > 0) {
-                      handleJogWheel(e);
-                    }
-                  }}
+                  onPointerDown={handleListPointerDown}
+                  onPointerMove={handleListPointerMove}
+                  onPointerUp={handleListPointerUp}
+                  onPointerCancel={handleListPointerCancel}
+                  onDragStart={(e) => e.preventDefault()}
                   className={cn(
-                    "w-full h-full absolute inset-0 p-4",
+                    "w-full h-full absolute inset-0 p-4 select-none",
                     (viewMode === "grid-sq" ||
                       viewMode === "grid-ma" ||
                       viewMode === "list") &&
                       "overflow-y-auto overflow-x-hidden pb-8",
                     viewMode === "free" && "overflow-hidden",
+                    isListDragging && "cursor-ns-resize",
                   )}
                 >
                   {(() => {
