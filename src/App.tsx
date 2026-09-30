@@ -630,6 +630,7 @@ export default function App() {
   const listHasDraggedRef = useRef(false);
   const wasAutoScrollingOnDownRef = useRef(false);
   const suppressNextClickRef = useRef(false);
+  const lastDragEndTimeRef = useRef(0);
   const [isListDragging, setIsListDragging] = useState(false);
 
   useEffect(() => {
@@ -658,13 +659,15 @@ export default function App() {
         const dirFactor = autoScrollDir === "down" ? 1 : -1;
         el.scrollBy({ top: dirFactor * currentSpeed * delta, behavior: "auto" });
 
-        // 端に到達したら停止
+        // 端に到達したら停止 (ただしユーザーが現在ドラッグ操作中の時は一時停止のみで状態クリアしない)
         if (
           (autoScrollDir === "down" && el.scrollTop >= maxScroll - 1) ||
           (autoScrollDir === "up" && el.scrollTop <= 1)
         ) {
-          setAutoScrollDir(null);
-          return;
+          if (!isListPointerDownRef.current && !isJogPointerDownRef.current) {
+            setAutoScrollDir(null);
+            return;
+          }
         }
       }
       animId = requestAnimationFrame(loop);
@@ -788,6 +791,12 @@ export default function App() {
       return;
     }
 
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+
     isListPointerDownRef.current = true;
     listDragStartYRef.current = e.clientY;
     listDragStartXRef.current = e.clientX;
@@ -848,6 +857,12 @@ export default function App() {
     setIsListDragging(false);
 
     if (listHasDraggedRef.current) {
+      lastDragEndTimeRef.current = performance.now();
+      suppressNextClickRef.current = true;
+      setTimeout(() => {
+        suppressNextClickRef.current = false;
+      }, 500);
+
       // ドラッグ終了: 現在の速度で自動スクロールを維持し、画像クリック発火を完全阻止
       setJogDragState({
         active: false,
@@ -858,19 +873,16 @@ export default function App() {
       if (autoScrollDirRef.current) {
         triggerWheelHud(autoScrollDirRef.current, autoScrollPxPerSecRef.current);
       }
-      suppressNextClickRef.current = true;
-      setTimeout(() => {
-        suppressNextClickRef.current = false;
-      }, 200);
     } else {
       // ドラッグせずクリックのみの場合
       if (wasAutoScrollingOnDownRef.current) {
         // スクロール動作中だった場合はピタッと停止させ、画像オープンを防止
         setAutoScrollDir(null);
+        lastDragEndTimeRef.current = performance.now();
         suppressNextClickRef.current = true;
         setTimeout(() => {
           suppressNextClickRef.current = false;
-        }, 200);
+        }, 500);
       }
     }
   };
@@ -3727,7 +3739,12 @@ Images imported: ${importedImages}`);
         },
       }}
       onClick={(e) => {
-        if (suppressNextClickRef.current || autoScrollDirRef.current !== null) {
+        const timeSinceDragEnd = performance.now() - lastDragEndTimeRef.current;
+        if (suppressNextClickRef.current || timeSinceDragEnd < 500) {
+          suppressNextClickRef.current = false;
+          return;
+        }
+        if (autoScrollDirRef.current !== null) {
           setAutoScrollDir(null);
           return;
         }
@@ -5982,7 +5999,9 @@ Images imported: ${importedImages}`);
               ref={scatterContainerRef}
               className={cn("w-full flex-1 relative overflow-hidden")}
               onClickCapture={(e) => {
-                if (suppressNextClickRef.current) {
+                const timeSinceDragEnd = performance.now() - lastDragEndTimeRef.current;
+                if (suppressNextClickRef.current || timeSinceDragEnd < 500) {
+                  suppressNextClickRef.current = false;
                   e.stopPropagation();
                   e.preventDefault();
                   return;
@@ -6011,7 +6030,7 @@ Images imported: ${importedImages}`);
                   onPointerCancel={handleListPointerCancel}
                   onDragStart={(e) => e.preventDefault()}
                   className={cn(
-                    "w-full h-full absolute inset-0 p-4 select-none",
+                    "w-full h-full absolute inset-0 p-4 select-none touch-pan-x",
                     (viewMode === "grid-sq" ||
                       viewMode === "grid-ma" ||
                       viewMode === "list") &&
