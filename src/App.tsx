@@ -630,6 +630,7 @@ export default function App() {
   const listHasDraggedRef = useRef(false);
   const wasAutoScrollingOnDownRef = useRef(false);
   const suppressNextClickRef = useRef(false);
+  const listPointerIdRef = useRef<number | null>(null);
   const lastDragEndTimeRef = useRef(0);
   const [isListDragging, setIsListDragging] = useState(false);
 
@@ -786,17 +787,12 @@ export default function App() {
     if (viewMode === "free" || sortedImages.length === 0) return;
     if (e.button !== 0 && e.pointerType === "mouse") return;
     const target = e.target as HTMLElement;
-    // ボタンや入力欄、カスタムUIのクリックは除外
-    if (target.closest("button, input, select, textarea, label, [data-interactive='true'], [data-scroll-controls='true']")) {
+    // ボタンや入力欄、カスタムUIのクリック、並び替えハンドルのドラッグは除外
+    if (target.closest("button, input, select, textarea, label, [data-interactive='true'], [data-scroll-controls='true'], .image-sort-handle")) {
       return;
     }
 
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      // ignore
-    }
-
+    listPointerIdRef.current = e.pointerId;
     isListPointerDownRef.current = true;
     listDragStartYRef.current = e.clientY;
     listDragStartXRef.current = e.clientX;
@@ -813,6 +809,13 @@ export default function App() {
       if (Math.abs(dy) >= 4) {
         listHasDraggedRef.current = true;
         setIsListDragging(true);
+        if (listPointerIdRef.current !== null && scrollContainerRef.current) {
+          try {
+            scrollContainerRef.current.setPointerCapture(listPointerIdRef.current);
+          } catch {
+            // ignore
+          }
+        }
       }
     }
 
@@ -856,12 +859,21 @@ export default function App() {
     isListPointerDownRef.current = false;
     setIsListDragging(false);
 
+    if (listPointerIdRef.current !== null && scrollContainerRef.current) {
+      try {
+        scrollContainerRef.current.releasePointerCapture(listPointerIdRef.current);
+      } catch {
+        // ignore
+      }
+      listPointerIdRef.current = null;
+    }
+
     if (listHasDraggedRef.current) {
       lastDragEndTimeRef.current = performance.now();
       suppressNextClickRef.current = true;
       setTimeout(() => {
         suppressNextClickRef.current = false;
-      }, 500);
+      }, 400);
 
       // ドラッグ終了: 現在の速度で自動スクロールを維持し、画像クリック発火を完全阻止
       setJogDragState({
@@ -878,11 +890,12 @@ export default function App() {
       if (wasAutoScrollingOnDownRef.current) {
         // スクロール動作中だった場合はピタッと停止させ、画像オープンを防止
         setAutoScrollDir(null);
-        lastDragEndTimeRef.current = performance.now();
         suppressNextClickRef.current = true;
         setTimeout(() => {
           suppressNextClickRef.current = false;
-        }, 500);
+        }, 400);
+      } else {
+        suppressNextClickRef.current = false;
       }
     }
   };
@@ -3739,8 +3752,7 @@ Images imported: ${importedImages}`);
         },
       }}
       onClick={(e) => {
-        const timeSinceDragEnd = performance.now() - lastDragEndTimeRef.current;
-        if (suppressNextClickRef.current || timeSinceDragEnd < 500) {
+        if (suppressNextClickRef.current) {
           suppressNextClickRef.current = false;
           return;
         }
@@ -3969,6 +3981,23 @@ Images imported: ${importedImages}`);
           )}>
             {isMultiSelected && <Check size={14} />}
           </div>
+        </div>
+      )}
+
+      {/* Custom Sort Reorder Handle (カスタムソート時の並び替え用専用ハンドル) */}
+      {sortField === "custom" && viewMode !== "free" && (
+        <div
+          className={cn(
+            "image-sort-handle z-20 cursor-grab active:cursor-grabbing select-none transition-all flex items-center justify-center",
+            viewMode === "list"
+              ? "shrink-0 p-1.5 text-text-muted hover:text-accent rounded hover:bg-panel-border/50"
+              : "absolute bottom-2 right-2 bg-black/80 hover:bg-accent text-text-muted hover:text-root-bg border border-panel-border/70 rounded-xs px-1.5 py-1 gap-1 shadow-md opacity-60 hover:opacity-100 group-hover:opacity-90 font-mono text-[9px] backdrop-blur-xs",
+          )}
+          title={t("Drag to reorder in Custom Sort", "ドラッグして並び替え（カスタムソート）")}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <GripVertical size={viewMode === "list" ? 16 : 11} />
+          {viewMode !== "list" && <span className="font-bold tracking-wider text-[8px]">SORT</span>}
         </div>
       )}
     </motion.div>
@@ -5999,8 +6028,7 @@ Images imported: ${importedImages}`);
               ref={scatterContainerRef}
               className={cn("w-full flex-1 relative overflow-hidden")}
               onClickCapture={(e) => {
-                const timeSinceDragEnd = performance.now() - lastDragEndTimeRef.current;
-                if (suppressNextClickRef.current || timeSinceDragEnd < 500) {
+                if (suppressNextClickRef.current) {
                   suppressNextClickRef.current = false;
                   e.stopPropagation();
                   e.preventDefault();
@@ -6119,8 +6147,7 @@ Images imported: ${importedImages}`);
                       onEnd: handleSortEnd,
                       animation: 150,
                       disabled: sortOrders[sortField] !== "asc",
-                      delay: 150,
-                      delayOnTouchOnly: true,
+                      handle: ".image-sort-handle",
                     } : {};
 
                     return (
