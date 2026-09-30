@@ -61,6 +61,7 @@ import {
   Settings,
   Sliders,
   Folders,
+  Mouse,
 } from "lucide-react";
 import {
   ImageRecord,
@@ -556,6 +557,27 @@ export default function App() {
   const lastAutoScrollDirRef = useRef<"up" | "down">("down");
   const autoScrollPxPerSecRef = useRef<number>(250);
 
+  // Wheel Scroll Settings (Sensitivity & Direction Invert)
+  const [wheelSensitivity, setWheelSensitivity] = useState<number>(() => {
+    const saved = localStorage.getItem("wheel_sensitivity");
+    return saved ? parseFloat(saved) : 1.0;
+  });
+  const [wheelInvert, setWheelInvert] = useState<boolean>(() => {
+    return localStorage.getItem("wheel_invert") === "true";
+  });
+  const wheelSensitivityRef = useRef<number>(wheelSensitivity);
+  const wheelInvertRef = useRef<boolean>(wheelInvert);
+
+  useEffect(() => {
+    wheelSensitivityRef.current = wheelSensitivity;
+    localStorage.setItem("wheel_sensitivity", String(wheelSensitivity));
+  }, [wheelSensitivity]);
+
+  useEffect(() => {
+    wheelInvertRef.current = wheelInvert;
+    localStorage.setItem("wheel_invert", String(wheelInvert));
+  }, [wheelInvert]);
+
   // Jog Drag States & Refs
   const [jogDragState, setJogDragState] = useState<{
     active: boolean;
@@ -733,8 +755,13 @@ export default function App() {
     e.preventDefault();
     e.stopPropagation();
 
-    const delta = e.deltaY;
+    let delta = e.deltaY;
+    if (wheelInvertRef.current) {
+      delta = -delta;
+    }
     if (Math.abs(delta) < 1) return;
+
+    const sens = Math.max(0.1, wheelSensitivityRef.current || 1.0);
 
     // 現在の速度ベクトル (上が負、下が正)
     let currentVelocity = 0;
@@ -746,27 +773,32 @@ export default function App() {
 
     // ホイール下回転 (delta > 0) -> 下方向への加速 (+方向)
     // ホイール上回転 (delta < 0) -> 上方向への加速 (-方向)
-    // 1ノッチで +120〜180px/s、シュッと勢いよく回した時は一気に +600〜1600px/s 加速
+    // 1ノッチで 120〜180px/s * sens、シュッと勢いよく回した時は一気に 600〜1600px/s * sens 加速
     const absDelta = Math.abs(delta);
     const impulseMag = absDelta > 80
-      ? Math.min(1600, Math.round(Math.pow(absDelta, 1.28) * 1.8))
-      : Math.round(absDelta * 1.5);
-    const impulse = Math.sign(delta) * Math.max(120, impulseMag);
+      ? Math.min(1600 * Math.max(1, sens), Math.round(Math.pow(absDelta, 1.28) * 1.8 * sens))
+      : Math.round(absDelta * 1.5 * sens);
+    const minImpulse = Math.max(20, Math.round(120 * sens));
+    const impulse = Math.sign(delta) * Math.max(minImpulse, impulseMag);
 
     let nextVelocity = currentVelocity + impulse;
 
-    // 停止中から回し始めた場合は初速 240px/s で瞬時に快適スタート
+    // 停止中から回し始めた場合は初速 (240px/s * sens) で瞬時に快適スタート
+    const baseStartSpeed = Math.max(40, Math.round(240 * sens));
     if (currentVelocity === 0) {
-      nextVelocity = impulse > 0 ? Math.max(240, impulse) : Math.min(-240, impulse);
+      nextVelocity = impulse > 0 ? Math.max(baseStartSpeed, impulse) : Math.min(-baseStartSpeed, impulse);
     }
 
-    if (Math.abs(nextVelocity) < 40) {
+    const stopThreshold = Math.max(15, Math.round(40 * Math.min(1, sens)));
+    if (Math.abs(nextVelocity) < stopThreshold) {
       // 速度が相殺されて0付近になったら停止
       setAutoScrollDir(null);
       setWheelHudVisible(false);
     } else {
       const newDir: "up" | "down" = nextVelocity > 0 ? "down" : "up";
-      const newSpeed = Math.min(3600, Math.max(60, Math.round(Math.abs(nextVelocity))));
+      const maxSpeed = Math.round(3600 * Math.max(1, sens));
+      const minSpeed = Math.max(20, Math.round(60 * Math.min(1, sens)));
+      const newSpeed = Math.min(maxSpeed, Math.max(minSpeed, Math.round(Math.abs(nextVelocity))));
       setAutoScrollDir(newDir);
       setAutoScrollPxPerSec(newSpeed);
 
@@ -1116,8 +1148,11 @@ export default function App() {
     const saved = localStorage.getItem("isTrackInfoCollapsed");
     return saved ? saved === "true" : true;
   });
-  const [bottomPanelTab, setBottomPanelTab] = useState<"command" | "settings">(() => {
-    return (localStorage.getItem("bottomPanelTab") as "command" | "settings") || "command";
+  const [bottomPanelTab, setBottomPanelTab] = useState<"command" | "general" | "appearance">(() => {
+    const saved = localStorage.getItem("bottomPanelTab");
+    if (saved === "general" || saved === "appearance" || saved === "command") return saved;
+    if (saved === "settings") return "appearance";
+    return "command";
   });
   type AppTheme = "NAVY" | "BLACK" | "TRUE_BLACK" | "RED" | "LIGHT" | "PAPER";
   const DEFAULT_THEME_FOLDER_COLORS: Record<AppTheme, string> = {
@@ -1230,22 +1265,21 @@ export default function App() {
   // Apply Theme
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
-    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    
+    // Dynamic theme-color meta tag
+    let metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    if (!metaThemeColor) {
+      metaThemeColor = document.createElement("meta");
+      metaThemeColor.setAttribute("name", "theme-color");
+      document.head.appendChild(metaThemeColor);
+    }
     let color = "#0B0C0D"; // default for BLACK
     if (theme === "TRUE_BLACK") color = "#000000";
     else if (theme === "LIGHT") color = "#e2e8f0";
-    else if (theme === "PAPER") color = "#f5f5f0";
-    else if (theme === "RED") color = "#0d0404";
-    else if (theme === "NAVY") color = "#06090e";
-    
-    if (metaThemeColor) {
-      metaThemeColor.setAttribute("content", color);
-    } else {
-      const meta = document.createElement("meta");
-      meta.name = "theme-color";
-      meta.content = color;
-      document.head.appendChild(meta);
-    }
+    else if (theme === "PAPER") color = "#f4ebe1";
+    else if (theme === "NAVY") color = "#0F172A";
+    else if (theme === "RED") color = "#450a0a";
+    metaThemeColor.setAttribute("content", color);
   }, [theme]);
 
   // Load from DB on mount
@@ -4401,6 +4435,7 @@ Images imported: ${importedImages}`);
                     key="commandInfo"
                     title={
                       <div className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider">
+                        {/* 03 COMMAND */}
                         <button
                           type="button"
                           onClick={(e) => {
@@ -4415,44 +4450,73 @@ Images imported: ${importedImages}`);
                             }
                           }}
                           className={cn(
-                            "px-2 py-0.5 transition-all flex items-center gap-1 border rounded-xs",
+                            "px-1.5 py-0.5 transition-all flex items-center gap-1 border rounded-xs cursor-pointer",
                             !isTrackInfoCollapsed && bottomPanelTab === "command"
                               ? "bg-accent text-accent-text font-bold border-accent shadow-xs"
                               : "border-transparent text-text-secondary hover:text-text-primary hover:bg-white/5"
                           )}
+                          title={t("Command Shortcut List", "ショートカット一覧")}
                         >
                           <Terminal size={11} />
-                          <span>{t("03 COMMAND", "03 コマンド一覧")}</span>
+                          <span>{t("03 CMD", "03 コマンド")}</span>
                         </button>
 
+                        {/* GENERAL SETTINGS */}
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             if (isTrackInfoCollapsed) {
                               setIsTrackInfoCollapsed(false);
-                              setBottomPanelTab("settings");
-                            } else if (bottomPanelTab === "settings") {
+                              setBottomPanelTab("general");
+                            } else if (bottomPanelTab === "general") {
                               setIsTrackInfoCollapsed(true);
                             } else {
-                              setBottomPanelTab("settings");
+                              setBottomPanelTab("general");
                             }
                           }}
                           className={cn(
-                            "px-2 py-0.5 transition-all flex items-center gap-1 border rounded-xs",
-                            !isTrackInfoCollapsed && bottomPanelTab === "settings"
+                            "px-1.5 py-0.5 transition-all flex items-center gap-1 border rounded-xs cursor-pointer",
+                            !isTrackInfoCollapsed && bottomPanelTab === "general"
                               ? "bg-accent text-accent-text font-bold border-accent shadow-xs"
                               : "border-transparent text-text-secondary hover:text-text-primary hover:bg-white/5"
                           )}
+                          title={t("General & Wheel Settings", "ホイール・一般設定")}
                         >
-                          <Settings size={11} />
-                          <span>{t("SETTING", "設定")}</span>
+                          <Mouse size={11} />
+                          <span>{t("GENERAL", "一般設定")}</span>
+                        </button>
+
+                        {/* APPEARANCE / COLOR SETTINGS */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isTrackInfoCollapsed) {
+                              setIsTrackInfoCollapsed(false);
+                              setBottomPanelTab("appearance");
+                            } else if (bottomPanelTab === "appearance") {
+                              setIsTrackInfoCollapsed(true);
+                            } else {
+                              setBottomPanelTab("appearance");
+                            }
+                          }}
+                          className={cn(
+                            "px-1.5 py-0.5 transition-all flex items-center gap-1 border rounded-xs cursor-pointer",
+                            !isTrackInfoCollapsed && bottomPanelTab === "appearance"
+                              ? "bg-accent text-accent-text font-bold border-accent shadow-xs"
+                              : "border-transparent text-text-secondary hover:text-text-primary hover:bg-white/5"
+                          )}
+                          title={t("Appearance & Color Settings", "外観・カラー設定")}
+                        >
+                          <Palette size={11} />
+                          <span>{t("COLOR", "外観・カラー")}</span>
                         </button>
                       </div>
                     }
                     className={cn(
                       "shrink-0 flex flex-col items-center min-w-0 w-full transition-all duration-300",
-                      isTrackInfoCollapsed ? "h-[34px]" : "h-[320px]",
+                      isTrackInfoCollapsed ? "h-[34px]" : "h-[330px]",
                     )}
                     contentClassName={cn(
                       "flex flex-col w-full min-w-0 transition-opacity duration-300",
@@ -4467,7 +4531,7 @@ Images imported: ${importedImages}`);
                   >
                     {!isTrackInfoCollapsed && (
                       <div className="flex flex-col gap-3 h-full w-full min-w-0 overflow-y-auto pr-1 select-none text-[11px]">
-                        {bottomPanelTab === "command" ? (
+                        {bottomPanelTab === "command" && (
                           <>
                             {/* 一覧画面 (LIST / GRID) */}
                             <div className="flex flex-col gap-1.5">
@@ -4639,7 +4703,153 @@ Images imported: ${importedImages}`);
                               </div>
                             </div>
                           </>
-                        ) : (
+                        )}
+
+                        {bottomPanelTab === "general" && (
+                          <div className="flex flex-col gap-3.5 text-[11px]">
+                            {/* 1. MOUSE WHEEL SENSITIVITY / SCROLL WIDTH */}
+                            <div className="flex flex-col gap-1.5">
+                              <div className="flex items-center justify-between font-mono text-[10px] text-text-muted tracking-wider uppercase font-bold border-b border-panel-border pb-1">
+                                <div className="flex items-center gap-1.5">
+                                  <Mouse size={12} className="text-accent" />
+                                  <span>{t("WHEEL SENSITIVITY", "ホイール感度・移動幅")}</span>
+                                </div>
+                                <span className="text-accent font-bold font-mono text-[11px] tabular-nums">
+                                  {wheelSensitivity.toFixed(2)}x ({Math.round(wheelSensitivity * 100)}%)
+                                </span>
+                              </div>
+
+                              <div className="text-[10px] text-text-muted leading-tight">
+                                {t(
+                                  "Adjust wheel acceleration & scroll step size for your mouse/PC.",
+                                  "マウスホイール回転時の加速率・移動幅を調整します。PCやマウスの環境に合わせて微調整できます。"
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2 pt-0.5">
+                                <input
+                                  type="range"
+                                  min="0.1"
+                                  max="2.5"
+                                  step="0.05"
+                                  value={wheelSensitivity}
+                                  onChange={(e) => setWheelSensitivity(parseFloat(e.target.value))}
+                                  className="w-full h-1.5 bg-btn-bg border border-btn-border rounded-lg appearance-none cursor-pointer accent-accent"
+                                />
+                              </div>
+
+                              {/* Sensitivity Presets */}
+                              <div className="flex items-center gap-1 font-mono text-[9px]">
+                                {[
+                                  { label: "0.3x (極低)", val: 0.3 },
+                                  { label: "0.6x (控えめ)", val: 0.6 },
+                                  { label: "1.0x (標準)", val: 1.0 },
+                                  { label: "1.5x (高速)", val: 1.5 },
+                                  { label: "2.0x (爆速)", val: 2.0 },
+                                ].map((preset) => (
+                                  <button
+                                    key={preset.val}
+                                    type="button"
+                                    onClick={() => setWheelSensitivity(preset.val)}
+                                    className={cn(
+                                      "flex-1 py-1 border transition-all text-[9px] text-center rounded-xs cursor-pointer",
+                                      Math.abs(wheelSensitivity - preset.val) < 0.01
+                                        ? "border-accent bg-accent/20 text-accent font-bold shadow-xs"
+                                        : "border-panel-border text-text-muted hover:text-text-primary bg-panel-bg"
+                                    )}
+                                  >
+                                    {preset.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* 2. WHEEL ROTATION DIRECTION (INVERT) */}
+                            <div className="flex flex-col gap-1.5">
+                              <div className="flex items-center justify-between font-mono text-[10px] text-text-muted tracking-wider uppercase font-bold border-b border-panel-border pb-1">
+                                <div className="flex items-center gap-1.5">
+                                  <RotateCw size={12} className="text-accent" />
+                                  <span>{t("WHEEL DIRECTION", "ホイール回転方向")}</span>
+                                </div>
+                                <span className="text-[9px] text-accent font-mono uppercase font-bold">
+                                  {wheelInvert ? t("INVERTED (↑)", "反転 (上↑)") : t("NORMAL (↓)", "標準 (下↓)")}
+                                </span>
+                              </div>
+
+                              <div className="text-[10px] text-text-muted leading-tight">
+                                {t(
+                                  "Choose whether wheel down scrolls forward/down or upward.",
+                                  "ホイールを手前（下）に回した時のスクロール方向を切り替えます。"
+                                )}
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-1.5 font-mono text-[10px]">
+                                <button
+                                  type="button"
+                                  onClick={() => setWheelInvert(false)}
+                                  className={cn(
+                                    "flex flex-col items-center justify-center p-2 border transition-all text-center rounded-xs cursor-pointer gap-0.5",
+                                    !wheelInvert
+                                      ? "border-accent bg-accent/15 text-text-primary font-bold ring-1 ring-accent"
+                                      : "border-panel-border hover:border-text-muted text-text-secondary hover:text-text-primary bg-panel-bg"
+                                  )}
+                                >
+                                  <div className="flex items-center gap-1">
+                                    <ArrowDown size={12} className="text-sky-400" />
+                                    <span>{t("NORMAL", "標準 (下回転: ↓)")}</span>
+                                  </div>
+                                  <span className="text-[9px] text-text-muted">下回転で下へスクロール</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setWheelInvert(true)}
+                                  className={cn(
+                                    "flex flex-col items-center justify-center p-2 border transition-all text-center rounded-xs cursor-pointer gap-0.5",
+                                    wheelInvert
+                                      ? "border-accent bg-accent/15 text-text-primary font-bold ring-1 ring-accent"
+                                      : "border-panel-border hover:border-text-muted text-text-secondary hover:text-text-primary bg-panel-bg"
+                                  )}
+                                >
+                                  <div className="flex items-center gap-1">
+                                    <ArrowUp size={12} className="text-amber-400" />
+                                    <span>{t("INVERT", "反転 (下回転: ↑)")}</span>
+                                  </div>
+                                  <span className="text-[9px] text-text-muted">下回転で上へスクロール</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* 3. AUTO SCROLL SHORTCUT HINT */}
+                            <div className="flex flex-col gap-1 p-2 bg-panel-bg border border-panel-border rounded-xs">
+                              <span className="font-mono text-[9px] text-text-muted uppercase tracking-wider font-bold">
+                                {t("AUTO SCROLL NOTES", "自動スクロールの操作補足")}
+                              </span>
+                              <div className="text-[9px] text-text-secondary leading-normal flex flex-col gap-0.5">
+                                <span>• 画像の上や右下コントローラーでホイールを回すと加速開始</span>
+                                <span>• 動作中に画面や画像をクリックすると即座に安全停止</span>
+                                <span>• Spaceキーで開始/一時停止、Tキーで速度段階切替</span>
+                              </div>
+                            </div>
+
+                            {/* 4. RESET GENERAL SETTINGS */}
+                            <div className="pt-1.5 border-t border-panel-border flex items-center justify-between">
+                              <span className="text-[10px] text-text-muted font-mono">{t("GENERAL SETTINGS", "一般設定の初期化")}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setWheelSensitivity(1.0);
+                                  setWheelInvert(false);
+                                }}
+                                className="px-2 py-1 border border-panel-border bg-panel-bg hover:border-accent hover:text-accent text-[9px] font-mono transition-colors rounded-xs cursor-pointer"
+                              >
+                                {t("RESET TO DEFAULT", "標準設定に戻す")}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {bottomPanelTab === "appearance" && (
                           <div className="flex flex-col gap-4 text-[11px]">
                             {/* 1. COLOR THEME SETTING */}
                             <div className="flex flex-col gap-2">
@@ -4661,7 +4871,7 @@ Images imported: ${importedImages}`);
                                     type="button"
                                     onClick={() => setTheme(thm.id as any)}
                                     className={cn(
-                                      "flex items-center justify-between p-1.5 border transition-all text-left",
+                                      "flex items-center justify-between p-1.5 border transition-all text-left cursor-pointer",
                                       theme === thm.id
                                         ? "border-accent bg-accent/10 text-text-primary font-bold ring-1 ring-accent"
                                         : "border-panel-border hover:border-text-muted text-text-secondary hover:text-text-primary bg-panel-bg"
@@ -4719,7 +4929,7 @@ Images imported: ${importedImages}`);
                                     type="button"
                                     onClick={() => setCoverOpacity(preset.val)}
                                     className={cn(
-                                      "px-1.5 py-0.5 border transition-all text-[9px]",
+                                      "px-1.5 py-0.5 border transition-all text-[9px] cursor-pointer",
                                       coverOpacity === preset.val
                                         ? "border-accent bg-accent/20 text-accent font-bold"
                                         : "border-panel-border text-text-muted hover:text-text-primary bg-panel-bg"
@@ -4737,7 +4947,7 @@ Images imported: ${importedImages}`);
                                     type="button"
                                     onClick={() => setCoverBlur(false)}
                                     className={cn(
-                                      "px-2 py-0.5 border text-[9px] font-mono transition-all",
+                                      "px-2 py-0.5 border text-[9px] font-mono transition-all cursor-pointer",
                                       !coverBlur
                                         ? "border-accent bg-accent/20 text-accent font-bold"
                                         : "border-panel-border text-text-muted hover:text-text-primary bg-panel-bg"
@@ -4749,7 +4959,7 @@ Images imported: ${importedImages}`);
                                     type="button"
                                     onClick={() => setCoverBlur(true)}
                                     className={cn(
-                                      "px-2 py-0.5 border text-[9px] font-mono transition-all",
+                                      "px-2 py-0.5 border text-[9px] font-mono transition-all cursor-pointer",
                                       coverBlur
                                         ? "border-accent bg-accent/20 text-accent font-bold"
                                         : "border-panel-border text-text-muted hover:text-text-primary bg-panel-bg"
@@ -4796,7 +5006,7 @@ Images imported: ${importedImages}`);
                               </div>
                             </div>
 
-                            {/* 3. FOLDER ICON COLOR */}
+                            {/* 4. FOLDER ICON COLOR */}
                             <div className="flex flex-col gap-2">
                               <div className="flex items-center justify-between font-mono text-[10px] text-text-muted tracking-wider uppercase font-bold border-b border-panel-border pb-1">
                                 <div className="flex items-center gap-1.5">
@@ -4812,7 +5022,7 @@ Images imported: ${importedImages}`);
                                     }));
                                   }}
                                   className={cn(
-                                    "px-1.5 py-0.5 text-[9px] border transition-colors",
+                                    "px-1.5 py-0.5 text-[9px] border transition-colors cursor-pointer",
                                     themeFolderColors[theme] === DEFAULT_THEME_FOLDER_COLORS[theme]
                                       ? "bg-accent/20 border-accent text-accent font-bold"
                                       : "border-panel-border text-text-muted hover:text-text-primary"
@@ -4885,7 +5095,7 @@ Images imported: ${importedImages}`);
                               </div>
                             </div>
 
-                            {/* 4. MAIN SCREEN BG COLOR OVERRIDE */}
+                            {/* 5. MAIN SCREEN BG COLOR OVERRIDE */}
                             <div className="flex flex-col gap-2">
                               <div className="flex items-center justify-between font-mono text-[10px] text-text-muted tracking-wider uppercase font-bold border-b border-panel-border pb-1">
                                 <div className="flex items-center gap-1.5">
@@ -4896,7 +5106,7 @@ Images imported: ${importedImages}`);
                                   type="button"
                                   onClick={() => setMainBgColorOverride("default")}
                                   className={cn(
-                                    "px-1.5 py-0.5 text-[9px] border transition-colors",
+                                    "px-1.5 py-0.5 text-[9px] border transition-colors cursor-pointer",
                                     mainBgColorOverride === "default"
                                       ? "bg-accent/20 border-accent text-accent font-bold"
                                       : "border-panel-border text-text-muted hover:text-text-primary"
@@ -4918,7 +5128,7 @@ Images imported: ${importedImages}`);
                                     type="button"
                                     onClick={() => setMainBgColorOverride(bgOpt.hex)}
                                     className={cn(
-                                      "flex items-center justify-between p-1.5 border transition-all text-left",
+                                      "flex items-center justify-between p-1.5 border transition-all text-left cursor-pointer",
                                       mainBgColorOverride === bgOpt.hex
                                         ? "border-accent bg-accent/10 text-text-primary font-bold ring-1 ring-accent"
                                         : "border-panel-border hover:border-text-muted text-text-secondary hover:text-text-primary bg-panel-bg"
