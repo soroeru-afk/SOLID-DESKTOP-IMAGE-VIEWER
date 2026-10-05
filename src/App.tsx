@@ -1807,7 +1807,7 @@ export default function App() {
         case "custom":
           comparison = (a.orderIndex ?? 0) - (b.orderIndex ?? 0);
           if (comparison === 0) comparison = (a.addedAt || a.lastModified) - (b.addedAt || b.lastModified);
-          break;
+          return comparison; // カスタム順は常に0..Nの絶対配置（反転させない）
       }
       return sortOrders[sortField] === "asc" ? comparison : -comparison;
     });
@@ -2997,12 +2997,16 @@ Images imported: ${importedImages}`);
     if (selectedImageIds.size === 0) return;
     setIsLoading(true);
 
-    if (sortField !== "custom") {
+    if (sortField !== "custom" || sortOrders.custom !== "asc") {
       setSortField("custom");
       setSortOrders(prev => ({ ...prev, custom: "asc" }));
     }
 
-    const currentImages = [...sortedImages];
+    // 常に orderIndex 昇順（画面上＝0、画面下＝N）で基準配列を構築
+    const currentImages = [...sortedImages].sort((a, b) => {
+      const cmp = (a.orderIndex ?? 0) - (b.orderIndex ?? 0);
+      return cmp !== 0 ? cmp : (a.addedAt || a.lastModified) - (b.addedAt || b.lastModified);
+    });
 
     const selectedIdsArray = Array.from(selectedImageIds);
     const selectedIndexes = selectedIdsArray
@@ -3048,10 +3052,23 @@ Images imported: ${importedImages}`);
     }
 
     const updates = newImages.map((img, i) => ({ id: img.id, orderIndex: i }));
+
+    // UIを即時反映するためステートを先行同期
+    setImages(prev => {
+      const copy = [...prev];
+      for (const update of updates) {
+        const item = copy.find(c => c.id === update.id);
+        if (item) item.orderIndex = update.orderIndex;
+      }
+      return copy;
+    });
+
     await updateImagesOrder(updates);
 
     if (activeDatasetId) {
       await loadImages(activeDatasetId);
+    } else if (activeCategoryId) {
+      await loadImagesForCategory(activeCategoryId);
     }
     setIsLoading(false);
   };
@@ -3679,9 +3696,13 @@ Images imported: ${importedImages}`);
     i: number,
     isSelected: boolean,
     isMultiSelected: boolean,
-  ) => (
-    <motion.div
-      id={`image-card-${img.id}`}
+  ) => {
+    const currentDs = datasets.find(d => d.id === activeDatasetId);
+    const isCover = currentDs?.coverImageId === img.id;
+
+    return (
+      <motion.div
+        id={`image-card-${img.id}`}
       key={img.id}
       layout={viewMode === "grid-sq" || viewMode === "grid-ma"}
       drag={viewMode === "free"}
@@ -3925,9 +3946,6 @@ Images imported: ${importedImages}`);
 
       {/* Cover Image Indicator / Set Button */}
       {(() => {
-        const currentDs = datasets.find(d => d.id === activeDatasetId);
-        const isCover = currentDs?.coverImageId === img.id;
-        
         if (isCover) {
           const currentPos = currentDs?.coverImagePosition || "top";
           const posLabel = currentPos === "center" ? "MID" : currentPos === "bottom" ? "BTM" : "TOP";
@@ -3972,7 +3990,12 @@ Images imported: ${importedImages}`);
         </div>
       )}
       {isSelectionMode && (
-        <div className="absolute top-2 left-2 z-20 pointer-events-none">
+        <div
+          className={cn(
+            "absolute left-2 z-20 pointer-events-none transition-all",
+            isCover ? "top-[34px]" : "top-2",
+          )}
+        >
           <div className={cn(
             "w-5 h-5 flex items-center justify-center transition-colors shadow-sm rounded-sm outline outline-1",
             isMultiSelected 
@@ -4001,7 +4024,8 @@ Images imported: ${importedImages}`);
         </div>
       )}
     </motion.div>
-  );
+    );
+  };
 
   return (
     <div className="h-screen w-screen flex flex-col p-4 gap-4 box-border overflow-hidden select-none">
@@ -5773,6 +5797,9 @@ Images imported: ${importedImages}`);
                             if (f === "random") {
                               setSortField("random");
                               setRandomSeed((prev) => prev + 1);
+                            } else if (f === "custom") {
+                              setSortField("custom");
+                              setSortOrders((prev) => ({ ...prev, custom: "asc" }));
                             } else if (sortField === f) {
                               setSortOrders((prev) => ({
                                 ...prev,
@@ -5791,7 +5818,7 @@ Images imported: ${importedImages}`);
                         >
                           <span className="relative flex items-center justify-center">
                             <span>{f}</span>
-                            {f !== "random" && (
+                            {f !== "random" && f !== "custom" && (
                               <span className={cn("absolute left-full ml-1 flex items-center justify-center", sortField === f ? "opacity-100" : "opacity-0")}>
                                 {sortField === f ? (sortOrders[f] === "asc" ? "↑" : "↓") : "↑"}
                               </span>
