@@ -946,13 +946,15 @@ export default function App() {
   // Jog Wheel (Mouse Wheel Speed & Direction Control)
   const [wheelHudVisible, setWheelHudVisible] = useState(false);
   const wheelHudTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wheelBrakeTimestampRef = useRef<number>(0);
+  const wheelBrakeDirRef = useRef<"up" | "down" | null>(null);
 
-  const triggerWheelHud = (dir: "up" | "down", speed: number) => {
+  const triggerWheelHud = (dir: "up" | "down" | null, speed: number) => {
     setWheelHudVisible(true);
     if (wheelHudTimerRef.current) clearTimeout(wheelHudTimerRef.current);
     wheelHudTimerRef.current = setTimeout(() => {
       setWheelHudVisible(false);
-    }, 1400);
+    }, 1200);
   };
 
   const handleJogWheel = (e: React.WheelEvent<HTMLDivElement>) => {
@@ -966,8 +968,30 @@ export default function App() {
     if (Math.abs(delta) < 1) return;
 
     const sens = Math.max(0.1, wheelSensitivityRef.current || 1.0);
+    const inputDir: "up" | "down" = delta > 0 ? "down" : "up";
 
-    // 現在の速度ベクトル (上が負、下が正)
+    // 1. 自動スクロール中に逆方向へホイールが回された場合：即座にブレーキ（停止）
+    if (autoScrollDirRef.current !== null && autoScrollDirRef.current !== inputDir) {
+      setAutoScrollDir(null);
+      wheelBrakeTimestampRef.current = performance.now();
+      wheelBrakeDirRef.current = inputDir;
+      setJogDragState({
+        active: false,
+        deltaY: 0,
+        currentSpeed: 0,
+        dir: null,
+      });
+      triggerWheelHud(null, 0);
+      return;
+    }
+
+    // 2. ブレーキ直後（250ms以内）の余韻・連続イベントを吸収（「ちょこっと止まる」タメ時間）
+    const timeSinceBrake = performance.now() - wheelBrakeTimestampRef.current;
+    if (timeSinceBrake < 250 && wheelBrakeDirRef.current === inputDir && autoScrollDirRef.current === null) {
+      return;
+    }
+
+    // 3. 停止状態からの始動、または同方向への加速
     let currentVelocity = 0;
     if (autoScrollDirRef.current === "down") {
       currentVelocity = autoScrollPxPerSecRef.current;
@@ -6083,6 +6107,31 @@ Images imported: ${importedImages}`);
                   onPointerMove={handleListPointerMove}
                   onPointerUp={handleListPointerUp}
                   onPointerCancel={handleListPointerCancel}
+                  onWheel={(e) => {
+                    if (autoScrollDirRef.current !== null) {
+                      let delta = e.deltaY;
+                      if (wheelInvertRef.current) {
+                        delta = -delta;
+                      }
+                      if (Math.abs(delta) < 1) return;
+                      const inputDir: "up" | "down" = delta > 0 ? "down" : "up";
+
+                      // 自動スクロール中に対向方向へホイールを回した場合、即座にブレーキ・停止
+                      if (autoScrollDirRef.current !== inputDir) {
+                        e.preventDefault();
+                        setAutoScrollDir(null);
+                        wheelBrakeTimestampRef.current = performance.now();
+                        wheelBrakeDirRef.current = inputDir;
+                        setJogDragState({
+                          active: false,
+                          deltaY: 0,
+                          currentSpeed: 0,
+                          dir: null,
+                        });
+                        triggerWheelHud(null, 0);
+                      }
+                    }
+                  }}
                   onDragStart={(e) => e.preventDefault()}
                   className={cn(
                     "w-full h-full absolute inset-0 p-4 select-none touch-pan-x",
