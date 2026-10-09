@@ -63,6 +63,8 @@ import {
   Folders,
   Mouse,
   MoveVertical,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import {
   ImageRecord,
@@ -400,6 +402,39 @@ export default function App() {
     free: 0,
   });
 
+  const [isOnline, setIsOnline] = useState<boolean>(() =>
+    typeof navigator !== "undefined" ? navigator.onLine : true
+  );
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    const handleBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      setDeferredInstallPrompt(e);
+    };
+    window.addEventListener("beforeinstallprompt", handleBeforeInstall);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstall);
+    };
+  }, []);
+
+  const handleInstallPWA = async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    const { outcome } = await deferredInstallPrompt.userChoice;
+    if (outcome === "accepted") {
+      setDeferredInstallPrompt(null);
+    }
+  };
+
   useEffect(() => {
     if (activeDatasetId) {
       const savedScales = localStorage.getItem(`app_scales_${activeDatasetId}`);
@@ -495,23 +530,6 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem("app_theme", theme);
-    document.documentElement.setAttribute("data-theme", theme);
-    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
-    let color = "#0B0C0D"; // default for BLACK
-    if (theme === "TRUE_BLACK") color = "#000000";
-    else if (theme === "LIGHT") color = "#e2e8f0";
-    else if (theme === "PAPER") color = "#f5f5f0";
-    else if (theme === "RED") color = "#0d0404";
-    else if (theme === "NAVY") color = "#06090e";
-    
-    if (metaThemeColor) {
-      metaThemeColor.setAttribute("content", color);
-    } else {
-      const meta = document.createElement("meta");
-      meta.name = "theme-color";
-      meta.content = color;
-      document.head.appendChild(meta);
-    }
   }, [theme]);
 
   useEffect(() => {
@@ -1493,6 +1511,21 @@ export default function App() {
   // Apply Theme
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
+    
+    // Dynamic theme-color meta tag
+    let metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    if (!metaThemeColor) {
+      metaThemeColor = document.createElement("meta");
+      metaThemeColor.setAttribute("name", "theme-color");
+      document.head.appendChild(metaThemeColor);
+    }
+    let color = "#0B0C0D"; // default for BLACK
+    if (theme === "TRUE_BLACK") color = "#000000";
+    else if (theme === "LIGHT") color = "#e2e8f0";
+    else if (theme === "PAPER") color = "#f4ebe1";
+    else if (theme === "NAVY") color = "#0F172A";
+    else if (theme === "RED") color = "#450a0a";
+    metaThemeColor.setAttribute("content", color);
   }, [theme]);
 
   // Load from DB on mount
@@ -4193,6 +4226,22 @@ Images imported: ${importedImages}`);
           </div>
 
           <div className="flex items-center gap-2 h-full border-l border-panel-border pl-4">
+            {!isOnline && (
+              <div className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-500/15 border border-amber-500/40 text-amber-400 text-[10px] font-mono tracking-wider animate-pulse select-none">
+                <WifiOff size={11} />
+                <span>OFFLINE</span>
+              </div>
+            )}
+            {deferredInstallPrompt && (
+              <SolidButton
+                onClick={handleInstallPWA}
+                className="px-2.5 py-0 h-6 text-[10px] flex items-center gap-1.5 text-accent border-accent/40 bg-accent/10 hover:bg-accent/20"
+                title={t("Install app on this device", "この端末にアプリをインストール")}
+              >
+                <Download size={12} />
+                <span>INSTALL</span>
+              </SolidButton>
+            )}
             <SolidButton
               onClick={toggleAppFullscreen}
               className="px-2"
@@ -5147,7 +5196,43 @@ Images imported: ${importedImages}`);
                               </div>
                             </div>
 
-                            {/* 5. RESET GENERAL SETTINGS */}
+                            {/* 5. OFFLINE & PWA CACHE STATUS */}
+                            <div className="flex flex-col gap-1.5 p-2 bg-panel-bg border border-panel-border rounded-xs">
+                              <div className="flex items-center justify-between font-mono text-[10px] text-text-muted tracking-wider uppercase font-bold">
+                                <div className="flex items-center gap-1.5">
+                                  {isOnline ? (
+                                    <Wifi size={12} className="text-emerald-400" />
+                                  ) : (
+                                    <WifiOff size={12} className="text-amber-400 animate-pulse" />
+                                  )}
+                                  <span>{t("OFFLINE / PWA CACHE", "オフライン対応・キャッシュ")}</span>
+                                </div>
+                                <span className={cn(
+                                  "text-[9px] font-bold font-mono px-1.5 py-0.5 rounded-2xs border",
+                                  isOnline
+                                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                                    : "bg-amber-500/15 border-amber-500/40 text-amber-400"
+                                )}>
+                                  {isOnline ? t("ONLINE", "オンライン") : t("OFFLINE MODE", "オフライン動作中")}
+                                </span>
+                              </div>
+                              <div className="text-[9px] text-text-secondary leading-normal flex flex-col gap-0.5">
+                                <span>• 全画像データは端末内部（IndexedDB）に完全保存されています</span>
+                                <span>• アプリプログラム（Service Worker）もキャッシュされ、ネット非接続でも起動可能です</span>
+                              </div>
+                              {deferredInstallPrompt && (
+                                <button
+                                  type="button"
+                                  onClick={handleInstallPWA}
+                                  className="mt-1 w-full py-1 bg-accent/15 hover:bg-accent/25 border border-accent/40 text-accent font-mono text-[10px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer rounded-xs"
+                                >
+                                  <Download size={12} />
+                                  <span>{t("INSTALL AS DESKTOP APP", "アプリとして端末にインストール")}</span>
+                                </button>
+                              )}
+                            </div>
+
+                            {/* 6. RESET GENERAL SETTINGS */}
                             <div className="pt-1.5 border-t border-panel-border flex items-center justify-between">
                               <span className="text-[10px] text-text-muted font-mono">{t("GENERAL SETTINGS", "一般設定の初期化")}</span>
                               <button
