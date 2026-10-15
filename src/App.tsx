@@ -53,6 +53,7 @@ import {
   Square,
   AlertTriangle,
   Bookmark,
+  Zap,
   Pin,
   FolderPlus,
   FilePlus,
@@ -114,6 +115,28 @@ import { cn } from "./lib/utils";
 import { ReactSortable } from "react-sortablejs";
 
 type ViewMode = "grid-sq" | "grid-ma" | "list" | "free";
+
+export interface QuickStockRecord {
+  id: string;
+  name: string;
+  createdAt: number;
+  datasetId: string | null;
+  categoryId: string | null;
+  isCategoryImagesView?: boolean;
+  datasetName?: string;
+  categoryName?: string;
+  viewMode: ViewMode;
+  scale: number;
+  gap: number;
+  orientationFilter: "all" | "portrait" | "landscape";
+  sortField: "name" | "size" | "type" | "date" | "custom" | "random";
+  sortOrders: Record<string, "asc" | "desc">;
+  showHiddenImages: boolean;
+  searchQuery: string;
+  scrollTop: number;
+  scrollRatio: number;
+  anchorImageId?: string;
+}
 
 interface ImageMetadata {
   bg: "black" | "white" | "checkerboard";
@@ -1394,12 +1417,68 @@ export default function App() {
     const saved = localStorage.getItem("isTrackInfoCollapsed");
     return saved ? saved === "true" : true;
   });
-  const [bottomPanelTab, setBottomPanelTab] = useState<"command" | "general" | "appearance">(() => {
+  const [bottomPanelTab, setBottomPanelTab] = useState<"command" | "general" | "appearance" | "stock">(() => {
     const saved = localStorage.getItem("bottomPanelTab");
-    if (saved === "general" || saved === "appearance" || saved === "command") return saved;
+    if (saved === "general" || saved === "appearance" || saved === "command" || saved === "stock") return saved;
     if (saved === "settings") return "appearance";
     return "command";
   });
+
+  // クイックストック（閲覧状態・スクロール位置スナップショット）状態
+  const [quickStocks, setQuickStocks] = useState<QuickStockRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem("app_quick_stocks");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [activeStockId, setActiveStockId] = useState<string | null>(() => {
+    return localStorage.getItem("app_active_stock_id") || null;
+  });
+  const [stockDisplayMode, setStockDisplayMode] = useState<"list" | "tile">(() => {
+    const saved = localStorage.getItem("app_stock_display_mode");
+    return saved === "tile" ? "tile" : "list";
+  });
+  const [isStockPanelExpanded, setIsStockPanelExpanded] = useState<boolean>(() => {
+    return localStorage.getItem("app_stock_panel_expanded") === "true";
+  });
+  const [isQuickStockDrawerOpen, setIsQuickStockDrawerOpen] = useState(false);
+  const [editingStockId, setEditingStockId] = useState<string | null>(null);
+  const [editingStockName, setEditingStockName] = useState("");
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("app_quick_stocks", JSON.stringify(quickStocks));
+    } catch (e) {
+      console.error("Failed to save quick stocks", e);
+    }
+  }, [quickStocks]);
+
+  useEffect(() => {
+    if (activeStockId) {
+      localStorage.setItem("app_active_stock_id", activeStockId);
+    } else {
+      localStorage.removeItem("app_active_stock_id");
+    }
+  }, [activeStockId]);
+
+  useEffect(() => {
+    localStorage.setItem("app_stock_display_mode", stockDisplayMode);
+  }, [stockDisplayMode]);
+
+  useEffect(() => {
+    localStorage.setItem("app_stock_panel_expanded", String(isStockPanelExpanded));
+  }, [isStockPanelExpanded]);
+
+  const pendingScrollRestoreRef = useRef<{
+    scrollTop: number;
+    scrollRatio: number;
+    anchorImageId?: string;
+    maxAttempts: number;
+    count: number;
+  } | null>(null);
   type AppTheme = "NAVY" | "BLACK" | "TRUE_BLACK" | "RED" | "LIGHT" | "PAPER";
   const DEFAULT_THEME_FOLDER_COLORS: Record<AppTheme, string> = {
     NAVY: "#fbbf24",
@@ -2063,6 +2142,309 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // クイックストック（閲覧状態・スクロール位置スナップショット）復元処理
+  const applyScrollRestore = React.useCallback(() => {
+    if (!pendingScrollRestoreRef.current) return;
+    const { scrollTop, scrollRatio, anchorImageId } = pendingScrollRestoreRef.current;
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    let restored = false;
+
+    // 1. アンカー画像があればその要素を画面中央へ
+    if (anchorImageId) {
+      const anchorEl = document.getElementById(`image-card-${anchorImageId}`);
+      if (anchorEl) {
+        anchorEl.scrollIntoView({ block: "center", behavior: "instant" });
+        restored = true;
+      }
+    }
+
+    // 2. アンカー画像が見つからない、または微調整として scrollTop / scrollRatio で復元
+    if (!restored) {
+      const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+      if (maxScroll > 0) {
+        const targetTop = scrollTop <= maxScroll ? scrollTop : Math.round(scrollRatio * maxScroll);
+        container.scrollTo({ top: targetTop, behavior: "instant" });
+        if (Math.abs(container.scrollTop - targetTop) < 10) {
+          restored = true;
+        }
+      } else if (scrollTop > 0) {
+        container.scrollTop = scrollTop;
+      }
+    }
+
+    pendingScrollRestoreRef.current.count++;
+    if (pendingScrollRestoreRef.current.count < pendingScrollRestoreRef.current.maxAttempts) {
+      setTimeout(applyScrollRestore, 50);
+    } else {
+      pendingScrollRestoreRef.current = null;
+    }
+  }, []);
+
+  // 画像セット時や描画完了時にスクロール位置を確実に中段・下段へ適用
+  useEffect(() => {
+    if (pendingScrollRestoreRef.current) {
+      applyScrollRestore();
+      const t1 = setTimeout(applyScrollRestore, 40);
+      const t2 = setTimeout(applyScrollRestore, 120);
+      const t3 = setTimeout(applyScrollRestore, 250);
+      const t4 = setTimeout(applyScrollRestore, 450);
+      const t5 = setTimeout(applyScrollRestore, 700);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+        clearTimeout(t4);
+        clearTimeout(t5);
+      };
+    }
+  }, [images, sortedImages, applyScrollRestore]);
+
+  // 現在の表示状態・スクロール位置をストック保存
+  const handleCreateQuickStock = () => {
+    const container = scrollContainerRef.current;
+    const currentScrollTop = container ? container.scrollTop : 0;
+    const scrollHeight = container ? container.scrollHeight : 0;
+    const clientHeight = container ? container.clientHeight : 0;
+    const maxScroll = Math.max(1, scrollHeight - clientHeight);
+    const scrollRatio = Math.min(1, Math.max(0, currentScrollTop / maxScroll));
+
+    // 画面中央付近のアンカー画像を検出
+    let anchorImageId: string | undefined = undefined;
+    if (container && sortedImages.length > 0) {
+      const containerRect = container.getBoundingClientRect();
+      const centerY = containerRect.top + containerRect.height / 2;
+      let closestDist = Infinity;
+      for (const img of sortedImages) {
+        const el = document.getElementById(`image-card-${img.id}`);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          const itemCenterY = rect.top + rect.height / 2;
+          const dist = Math.abs(centerY - itemCenterY);
+          if (dist < closestDist) {
+            closestDist = dist;
+            anchorImageId = img.id;
+          }
+        }
+      }
+    }
+
+    const currentDs = datasets.find((d) => d.id === activeDatasetId);
+    const currentCat = categories.find((c) => c.id === activeCategoryId);
+
+    // スクロール位置の目安テキスト（例：最上部、中段 45%、最下部）
+    const pct = Math.round(scrollRatio * 100);
+    let posText = `${pct}%`;
+    if (pct <= 5) posText = language === "JP" ? "最上部" : "TOP";
+    else if (pct >= 95) posText = language === "JP" ? "最下部" : "BTM";
+    else posText = language === "JP" ? `中段 ${pct}%` : `MID ${pct}%`;
+
+    const baseName = currentDs?.name || (isCategoryImagesView ? `${currentCat?.name || "FOLDER"} (ALL)` : "EXPLORER");
+    const now = new Date();
+    const timeStr = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
+    const defaultName = `${baseName} [${posText}] ${timeStr}`;
+
+    const newStock: QuickStockRecord = {
+      id: "stock-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
+      name: defaultName,
+      createdAt: Date.now(),
+      datasetId: activeDatasetId,
+      categoryId: activeCategoryId,
+      isCategoryImagesView,
+      datasetName: currentDs?.name,
+      categoryName: currentCat?.name,
+      viewMode,
+      scale: scales[viewMode] || 140,
+      gap: gaps[viewMode] || 0,
+      orientationFilter,
+      sortField,
+      sortOrders: { ...sortOrders },
+      showHiddenImages,
+      searchQuery,
+      scrollTop: currentScrollTop,
+      scrollRatio,
+      anchorImageId,
+    };
+
+    setQuickStocks((prev) => [newStock, ...prev]);
+    setActiveStockId(newStock.id);
+    showNotification(language === "JP" ? `クイックストックに保存しました (${posText})` : `Quick stock saved (${posText})`);
+  };
+
+  // ストックを復元（データセット・フォルダー・設定・スクロール位置へピタッと復元）
+  const handleRestoreQuickStock = async (stock: QuickStockRecord) => {
+    setActiveStockId(stock.id);
+    setIsLoading(true);
+    try {
+      // 復元用スクロール情報をキューにセット
+      pendingScrollRestoreRef.current = {
+        scrollTop: stock.scrollTop,
+        scrollRatio: stock.scrollRatio,
+        anchorImageId: stock.anchorImageId,
+        maxAttempts: 12,
+        count: 0,
+      };
+
+      // 表示設定を復元
+      setViewMode(stock.viewMode);
+      setScales((prev) => ({ ...prev, [stock.viewMode]: stock.scale }));
+      setGaps((prev) => ({ ...prev, [stock.viewMode]: stock.gap }));
+      setOrientationFilter(stock.orientationFilter);
+      setSortField(stock.sortField);
+      setSortOrders((prev) => ({ ...prev, ...stock.sortOrders }));
+      setShowHiddenImages(stock.showHiddenImages);
+      setSearchQuery(stock.searchQuery);
+      setSearchInput(stock.searchQuery);
+
+      // データセット／フォルダーの移動と画像ロード
+      if (stock.isCategoryImagesView && stock.categoryId) {
+        await loadImagesForCategory(stock.categoryId);
+      } else if (stock.datasetId) {
+        setActiveDatasetId(stock.datasetId);
+        if (stock.categoryId) setActiveCategoryId(stock.categoryId);
+        setIsCategoryImagesView(false);
+        await loadImages(stock.datasetId);
+      } else {
+        // エクスプローラー等
+        setActiveDatasetId(null);
+        setIsCategoryImagesView(false);
+        if (stock.categoryId) setActiveCategoryId(stock.categoryId);
+      }
+
+      // 直後と遅延でスクロール適用を確実にキープ
+      setTimeout(applyScrollRestore, 30);
+      setTimeout(applyScrollRestore, 100);
+      setTimeout(applyScrollRestore, 250);
+      setTimeout(applyScrollRestore, 450);
+
+      showNotification(language === "JP" ? `「${stock.name}」の位置へジャンプしました` : `Restored: ${stock.name}`);
+    } catch (e) {
+      console.error("Failed to restore quick stock", e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ストックを現在の最新位置・設定で上書き保存
+  const handleUpdateQuickStock = (stockId?: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const targetId = stockId || activeStockId;
+    if (!targetId) {
+      showNotification(language === "JP" ? "更新対象のストックが選択されていません" : "No active stock selected");
+      return;
+    }
+
+    const container = scrollContainerRef.current;
+    const currentScrollTop = container ? container.scrollTop : 0;
+    const scrollHeight = container ? container.scrollHeight : 0;
+    const clientHeight = container ? container.clientHeight : 0;
+    const maxScroll = Math.max(1, scrollHeight - clientHeight);
+    const scrollRatio = Math.min(1, Math.max(0, currentScrollTop / maxScroll));
+
+    let anchorImageId: string | undefined = undefined;
+    if (container && sortedImages.length > 0) {
+      const containerRect = container.getBoundingClientRect();
+      const centerY = containerRect.top + containerRect.height / 2;
+      let closestDist = Infinity;
+      for (const img of sortedImages) {
+        const el = document.getElementById(`image-card-${img.id}`);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          const dist = Math.abs(centerY - (rect.top + rect.height / 2));
+          if (dist < closestDist) {
+            closestDist = dist;
+            anchorImageId = img.id;
+          }
+        }
+      }
+    }
+
+    const currentDs = datasets.find((d) => d.id === activeDatasetId);
+    const currentCat = categories.find((c) => c.id === activeCategoryId);
+
+    const pct = Math.round(scrollRatio * 100);
+    let posText = `${pct}%`;
+    if (pct <= 5) posText = language === "JP" ? "最上部" : "TOP";
+    else if (pct >= 95) posText = language === "JP" ? "最下部" : "BTM";
+    else posText = language === "JP" ? `中段 ${pct}%` : `MID ${pct}%`;
+
+    const targetStock = quickStocks.find((s) => s.id === targetId);
+
+    setQuickStocks((prev) =>
+      prev.map((s) => {
+        if (s.id !== targetId) return s;
+        return {
+          ...s,
+          datasetId: activeDatasetId,
+          categoryId: activeCategoryId,
+          isCategoryImagesView,
+          datasetName: currentDs?.name,
+          categoryName: currentCat?.name,
+          viewMode,
+          scale: scales[viewMode] || 140,
+          gap: gaps[viewMode] || 0,
+          orientationFilter,
+          sortField,
+          sortOrders: { ...sortOrders },
+          showHiddenImages,
+          searchQuery,
+          scrollTop: currentScrollTop,
+          scrollRatio,
+          anchorImageId,
+        };
+      })
+    );
+    setActiveStockId(targetId);
+    showNotification(
+      language === "JP"
+        ? `ストック「${targetStock?.name || ""}」を現在の位置 (${posText}) で更新しました`
+        : `Quick stock updated (${posText})`
+    );
+  };
+
+  // ストックの個別削除（ワンクリックで即座にサッと削除）
+  const handleDeleteQuickStock = (stockId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setQuickStocks((prev) => prev.filter((s) => s.id !== stockId));
+    if (activeStockId === stockId) {
+      setActiveStockId(null);
+    }
+    showNotification(language === "JP" ? "ストックを削除しました" : "Stock removed");
+  };
+
+  // ストックの順序移動（入れ替え）
+  const handleMoveQuickStock = (stockId: string, direction: "up" | "down", e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setQuickStocks((prev) => {
+      const idx = prev.findIndex((s) => s.id === stockId);
+      if (idx === -1) return prev;
+      if (direction === "up" && idx === 0) return prev;
+      if (direction === "down" && idx === prev.length - 1) return prev;
+      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+      const next = [...prev];
+      const item = next[idx];
+      next[idx] = next[targetIdx];
+      next[targetIdx] = item;
+      return next;
+    });
+  };
+
+  // ストックの名前変更
+  const handleRenameQuickStock = (stockId: string, newName: string) => {
+    if (!newName.trim()) return;
+    setQuickStocks((prev) =>
+      prev.map((s) => (s.id === stockId ? { ...s, name: newName.trim() } : s))
+    );
+  };
+
+  // ストック全削除
+  const handleClearAllQuickStocks = () => {
+    if (quickStocks.length === 0) return;
+    setQuickStocks([]);
+    showNotification(language === "JP" ? "全クイックストックをクリアしました" : "All quick stocks cleared");
   };
 
   const processFiles = async (
@@ -3352,6 +3734,16 @@ Images imported: ${importedImages}`);
           });
           return;
         }
+        if (key === "k" || key === "K") {
+          if (e.repeat) return;
+          e.preventDefault();
+          if (e.shiftKey) {
+            setIsQuickStockDrawerOpen((prev) => !prev);
+          } else {
+            handleCreateQuickStock();
+          }
+          return;
+        }
         if (key === "ArrowRight") {
           e.preventDefault();
           goToNextImage();
@@ -4242,6 +4634,28 @@ Images imported: ${importedImages}`);
                 <span>INSTALL</span>
               </SolidButton>
             )}
+            {/* QUICK STOCK BUTTON */}
+            <SolidButton
+              onClick={() => setIsQuickStockDrawerOpen((prev) => !prev)}
+              className={cn(
+                "px-2.5 py-0 h-6 text-[10px] flex items-center gap-1.5 font-mono cursor-pointer transition-all",
+                isQuickStockDrawerOpen
+                  ? "border-amber-400 bg-amber-500/25 text-amber-300 font-bold shadow-xs"
+                  : quickStocks.length > 0
+                  ? "border-amber-500/40 text-amber-400 hover:border-amber-400 hover:text-amber-300"
+                  : "border-panel-border text-text-secondary hover:text-text-primary"
+              )}
+              title={t("Toggle Quick Stock Drawer (Save & restore scroll states)", "クイックストック一覧を開閉（閲覧・スクロール位置保存）")}
+            >
+              <Zap size={12} className={cn("shrink-0", quickStocks.length > 0 ? "fill-amber-400 text-amber-400" : "")} />
+              <span>STOCK</span>
+              {quickStocks.length > 0 && (
+                <span className="bg-amber-500/30 text-amber-400 px-1 py-0 rounded text-[9px] font-bold">
+                  {quickStocks.length}
+                </span>
+              )}
+            </SolidButton>
+
             <SolidButton
               onClick={toggleAppFullscreen}
               className="px-2"
@@ -4819,6 +5233,40 @@ Images imported: ${importedImages}`);
                           <Palette size={11} />
                           <span>{t("COLOR", "外観・カラー")}</span>
                         </button>
+
+                        {/* 04 QUICK STOCK */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isTrackInfoCollapsed) {
+                              setIsTrackInfoCollapsed(false);
+                              setBottomPanelTab("stock");
+                            } else if (bottomPanelTab === "stock") {
+                              setIsTrackInfoCollapsed(true);
+                            } else {
+                              setBottomPanelTab("stock");
+                            }
+                          }}
+                          className={cn(
+                            "px-1.5 py-0.5 transition-all flex items-center gap-1 border rounded-xs cursor-pointer",
+                            !isTrackInfoCollapsed && bottomPanelTab === "stock"
+                              ? "bg-amber-500 text-black font-bold border-amber-500 shadow-xs"
+                              : "border-transparent text-text-secondary hover:text-text-primary hover:bg-white/5"
+                          )}
+                          title={t("Quick Stock (Save & restore scroll states)", "クイックストック（閲覧・スクロール位置保存）")}
+                        >
+                          <Zap size={11} className={!isTrackInfoCollapsed && bottomPanelTab === "stock" ? "fill-black" : "text-amber-400"} />
+                          <span>{t("STOCK", "ストック")}</span>
+                          {quickStocks.length > 0 && (
+                            <span className={cn(
+                              "text-[8px] px-1 py-0 rounded-full font-mono font-bold leading-none",
+                              !isTrackInfoCollapsed && bottomPanelTab === "stock" ? "bg-black/20 text-black" : "bg-amber-500/20 text-amber-400"
+                            )}>
+                              {quickStocks.length}
+                            </span>
+                          )}
+                        </button>
                       </div>
                     }
                     className={cn(
@@ -4907,6 +5355,20 @@ Images imported: ${importedImages}`);
                                 </kbd>
                                 <span className="text-text-secondary truncate">
                                   {t("Browser Fullscreen", "ブラウザ全画面切替")}
+                                </span>
+
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-amber-500/40 text-amber-400 text-center min-w-[24px]">
+                                  K
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Quick Stock Current Position", "現在位置をクイックストック保存")}
+                                </span>
+
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-amber-500/40 text-amber-400 text-center min-w-[24px]">
+                                  Shift + K
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Open Quick Stock Drawer", "ストック一覧パネルを開閉")}
                                 </span>
                               </div>
                             </div>
@@ -5561,6 +6023,176 @@ Images imported: ${importedImages}`);
                             </div>
                           </div>
                         )}
+
+                        {bottomPanelTab === "stock" && (
+                          <div className="flex flex-col gap-2.5 h-full w-full min-w-0 text-[11px]">
+                            {/* ACTION BAR: CREATE & CLEAR */}
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={handleCreateQuickStock}
+                                className="flex-1 py-1.5 px-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 hover:text-amber-300 border border-amber-500/50 hover:border-amber-400 font-mono text-[10px] font-bold flex items-center justify-center gap-1.5 rounded-xs transition-all shadow-xs cursor-pointer"
+                                title={t("Save current view and scroll position to Quick Stock", "現在の画面表示とスクロール位置をストックに保存")}
+                              >
+                                <Zap size={12} className="fill-amber-400 text-amber-400" />
+                                <span>{t("+ STORE CURRENT POSITION", "+ 現在の位置をストック")}</span>
+                              </button>
+                              {quickStocks.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={handleClearAllQuickStocks}
+                                  className="px-2 py-1.5 text-text-muted hover:text-red-400 border border-panel-border hover:border-red-400/40 text-[9px] font-mono transition-all rounded-xs cursor-pointer"
+                                  title={t("Clear all quick stocks", "全ストックを削除")}
+                                >
+                                  {t("CLEAR", "全消去")}
+                                </button>
+                              )}
+                            </div>
+
+                            {/* STOCKS LIST */}
+                            <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1.5 pr-0.5">
+                              {quickStocks.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-8 text-center text-text-muted font-mono text-[10px] gap-2 border border-dashed border-panel-border/60 rounded p-4">
+                                  <Zap size={20} className="text-amber-500/40" />
+                                  <span>{t("NO STOCKS SAVED", "ストックがありません")}</span>
+                                  <span className="text-[9px] text-text-muted/80 leading-relaxed">
+                                    {t("Save scroll positions at mid or bottom and jump back anytime.", "閲覧中の中段・下段の位置を何件でも記録し、いつでもワンクリックで再現できます。")}
+                                  </span>
+                                </div>
+                              ) : (
+                                quickStocks.map((stk, idx) => {
+                                  const isEditing = editingStockId === stk.id;
+                                  const pct = Math.round(stk.scrollRatio * 100);
+                                  return (
+                                    <div
+                                      key={stk.id}
+                                      className="group flex flex-col gap-1 p-2 bg-panel-bg/90 hover:bg-panel-bg border border-panel-border hover:border-amber-500/50 rounded-xs transition-all text-[10px] select-none"
+                                    >
+                                      {/* TOP: NAME & POSITION BADGE */}
+                                      <div className="flex items-center justify-between gap-1.5">
+                                        {isEditing ? (
+                                          <input
+                                            type="text"
+                                            autoFocus
+                                            value={editingStockName}
+                                            onChange={(e) => setEditingStockName(e.target.value)}
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") {
+                                                handleRenameQuickStock(stk.id, editingStockName);
+                                                setEditingStockId(null);
+                                              } else if (e.key === "Escape") {
+                                                setEditingStockId(null);
+                                              }
+                                            }}
+                                            onBlur={() => {
+                                              handleRenameQuickStock(stk.id, editingStockName);
+                                              setEditingStockId(null);
+                                            }}
+                                            className="flex-1 bg-black/40 border border-amber-500 px-1 py-0.5 text-text-primary text-[10px] rounded outline-none font-mono"
+                                          />
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleRestoreQuickStock(stk)}
+                                            className="flex-1 text-left font-mono font-bold text-text-primary hover:text-amber-400 truncate cursor-pointer transition-colors"
+                                            title={t("Click to jump to this position", "クリックしてこの位置へジャンプ")}
+                                          >
+                                            {stk.name}
+                                          </button>
+                                        )}
+
+                                        <span
+                                          className={cn(
+                                            "shrink-0 font-mono text-[9px] px-1.5 py-0.2 rounded font-bold uppercase",
+                                            pct <= 5
+                                              ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                                              : pct >= 95
+                                              ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
+                                              : "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                                          )}
+                                        >
+                                          {pct <= 5 ? "TOP" : pct >= 95 ? "BTM" : `${pct}%`}
+                                        </span>
+                                      </div>
+
+                                      {/* BOTTOM: META INFO & ACTIONS */}
+                                      <div className="flex items-center justify-between text-text-muted text-[9px] font-mono pt-0.5">
+                                        <div className="flex items-center gap-1.5 truncate">
+                                          <span className="truncate">{stk.datasetName || stk.categoryName || "ALL"}</span>
+                                          <span className="opacity-40">•</span>
+                                          <span className="uppercase">{stk.viewMode.replace("grid-", "")}</span>
+                                        </div>
+
+                                        <div className="flex items-center gap-1 shrink-0">
+                                          {/* MOVE UP */}
+                                          <button
+                                            type="button"
+                                            onClick={(e) => handleMoveQuickStock(stk.id, "up", e)}
+                                            disabled={idx === 0}
+                                            className="p-1 hover:text-text-primary disabled:opacity-20 transition-colors"
+                                            title={t("Move up in list", "上へ並び替え")}
+                                          >
+                                            <ArrowUp size={10} />
+                                          </button>
+                                          {/* MOVE DOWN */}
+                                          <button
+                                            type="button"
+                                            onClick={(e) => handleMoveQuickStock(stk.id, "down", e)}
+                                            disabled={idx === quickStocks.length - 1}
+                                            className="p-1 hover:text-text-primary disabled:opacity-20 transition-colors"
+                                            title={t("Move down in list", "下へ並び替え")}
+                                          >
+                                            <ArrowDown size={10} />
+                                          </button>
+                                          {/* OVERWRITE / UPDATE */}
+                                          <button
+                                            type="button"
+                                            onClick={(e) => handleUpdateQuickStock(stk.id, e)}
+                                            className="p-1 text-text-muted hover:text-amber-400 transition-colors"
+                                            title={t("Overwrite with current scroll position", "現在の位置で上書き更新")}
+                                          >
+                                            <RefreshCw size={10} />
+                                          </button>
+                                          {/* EDIT NAME */}
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setEditingStockId(stk.id);
+                                              setEditingStockName(stk.name);
+                                            }}
+                                            className="p-1 hover:text-text-primary transition-colors"
+                                            title={t("Rename stock", "名前を変更")}
+                                          >
+                                            <Edit2 size={10} />
+                                          </button>
+                                          {/* DELETE */}
+                                          <button
+                                            type="button"
+                                            onClick={(e) => handleDeleteQuickStock(stk.id, e)}
+                                            className="p-1 hover:text-red-400 transition-colors"
+                                            title={t("Delete stock", "削除")}
+                                          >
+                                            <X size={10} />
+                                          </button>
+                                          {/* JUMP BUTTON */}
+                                          <button
+                                            type="button"
+                                            onClick={() => handleRestoreQuickStock(stk)}
+                                            className="px-1.5 py-0.5 bg-accent/20 hover:bg-accent text-accent hover:text-accent-text border border-accent/40 rounded-xs font-bold text-[9px] transition-colors ml-0.5"
+                                            title={t("Restore this view and jump to scroll position", "この位置へ復元ジャンプ")}
+                                          >
+                                            JUMP
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </Panel>
@@ -6139,6 +6771,16 @@ Images imported: ${importedImages}`);
                         >
                           <FilePlus size={13} className="text-accent" />
                           <span>+ {t("NEW DATASET", "新規セット")}</span>
+                        </button>
+                        {/* Quick Stock Current Scroll Position */}
+                        <button
+                          type="button"
+                          onClick={handleCreateQuickStock}
+                          className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/15 border border-amber-500/40 hover:border-amber-400 text-amber-400 hover:text-amber-300 hover:bg-amber-500/25 text-[11px] font-bold transition-all rounded-[2px] shadow-xs cursor-pointer"
+                          title={t("Stock current view and scroll position", "現在の画面表示とスクロール位置をストック保存")}
+                        >
+                          <Zap size={13} className="fill-amber-400 text-amber-400" />
+                          <span>{t("STOCK POSITION", "位置をストック")}</span>
                         </button>
                         {/* Back to Explorer Quick Action Button */}
                         <button
@@ -8173,6 +8815,243 @@ Images imported: ${importedImages}`);
                 </SolidButton>
               </div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Quick Stock Drawer / Modal */}
+      <AnimatePresence>
+        {isQuickStockDrawerOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] bg-root-bg/70 backdrop-blur-xs flex items-center justify-center p-4"
+            onClick={() => setIsQuickStockDrawerOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 10 }}
+              transition={{ duration: 0.15 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-panel-bg border border-amber-500/40 w-[520px] max-w-[96vw] max-h-[85vh] flex flex-col font-mono shadow-[0_0_35px_rgba(245,158,11,0.15)] rounded-xs overflow-hidden"
+            >
+              {/* DRAWER HEADER */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-panel-border/80 bg-root-bg/60 shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-xs bg-amber-500/20 border border-amber-500/50 flex items-center justify-center">
+                    <Zap size={13} className="fill-amber-400 text-amber-400" />
+                  </div>
+                  <span className="text-sm font-bold tracking-wider text-text-primary uppercase">
+                    {t("QUICK STOCK", "クイックストック")}
+                  </span>
+                  <span className="text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/40 px-1.5 py-0.2 rounded-full font-bold">
+                    {quickStocks.length}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsQuickStockDrawerOpen(false)}
+                  className="w-7 h-7 flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-white/5 rounded-xs transition-colors cursor-pointer"
+                  title="CLOSE"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              {/* ACTION BAR */}
+              <div className="p-3 border-b border-panel-border/60 bg-panel-bg flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleCreateQuickStock();
+                  }}
+                  className="flex-1 py-2 px-3 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 hover:text-amber-300 border border-amber-500/50 hover:border-amber-400 text-xs font-bold flex items-center justify-center gap-2 rounded-xs transition-all shadow-xs cursor-pointer"
+                  title={t("Save current view and scroll position to Quick Stock", "現在の画面表示とスクロール位置をストックに保存")}
+                >
+                  <Zap size={14} className="fill-amber-400 text-amber-400" />
+                  <span>{t("+ STORE CURRENT SCROLL POSITION", "+ 現在の閲覧位置をストック保存")}</span>
+                </button>
+                {quickStocks.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearAllQuickStocks}
+                    className="px-2.5 py-2 text-text-muted hover:text-red-400 border border-panel-border hover:border-red-400/40 text-[10px] transition-all rounded-xs cursor-pointer"
+                    title={t("Clear all quick stocks", "全ストックを削除")}
+                  >
+                    {t("CLEAR ALL", "全消去")}
+                  </button>
+                )}
+              </div>
+
+              {/* STOCKS LIST CONTAINER */}
+              <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-[160px]">
+                {quickStocks.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center text-text-muted text-xs gap-2.5 border border-dashed border-panel-border/60 rounded p-6 my-auto">
+                    <Zap size={28} className="text-amber-500/40" />
+                    <span className="font-bold text-text-primary">{t("NO STOCKS SAVED", "ストックが記録されていません")}</span>
+                    <span className="text-[11px] text-text-muted/80 max-w-sm leading-relaxed">
+                      {t(
+                        "Click '+ STORE CURRENT SCROLL POSITION' or use the 'STOCK POSITION' button on the breadcrumbs bar to save your exact scroll state at mid or bottom. Jump back anytime with 1 click.",
+                        "一覧表示中に「+ 現在の閲覧位置をストック保存」またはパンくずバーの「位置をストック」を押すと、中段や下段のスクロール位置を何件でも記録できます。いつでもワンクリックでその場所へ復元できます。"
+                      )}
+                    </span>
+                  </div>
+                ) : (
+                  quickStocks.map((stk, idx) => {
+                    const isEditing = editingStockId === stk.id;
+                    const pct = Math.round(stk.scrollRatio * 100);
+                    return (
+                      <div
+                        key={stk.id}
+                        className="group flex flex-col gap-1.5 p-2.5 bg-root-bg/50 hover:bg-root-bg/80 border border-panel-border hover:border-amber-500/50 rounded-xs transition-all text-[11px] select-none"
+                      >
+                        {/* TOP ROW: NAME & POSITION BADGE */}
+                        <div className="flex items-center justify-between gap-2">
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              autoFocus
+                              value={editingStockName}
+                              onChange={(e) => setEditingStockName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handleRenameQuickStock(stk.id, editingStockName);
+                                  setEditingStockId(null);
+                                } else if (e.key === "Escape") {
+                                  setEditingStockId(null);
+                                }
+                              }}
+                              onBlur={() => {
+                                handleRenameQuickStock(stk.id, editingStockName);
+                                setEditingStockId(null);
+                              }}
+                              className="flex-1 bg-black/50 border border-amber-500 px-1.5 py-0.5 text-text-primary text-[11px] rounded outline-none"
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleRestoreQuickStock(stk);
+                                setIsQuickStockDrawerOpen(false);
+                              }}
+                              className="flex-1 text-left font-bold text-text-primary hover:text-amber-400 truncate cursor-pointer transition-colors"
+                              title={t("Click to jump to this position", "クリックしてこの位置へジャンプ")}
+                            >
+                              {stk.name}
+                            </button>
+                          )}
+
+                          <span
+                            className={cn(
+                              "shrink-0 text-[10px] px-2 py-0.5 rounded font-bold uppercase",
+                              pct <= 5
+                                ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                                : pct >= 95
+                                ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
+                                : "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                            )}
+                          >
+                            {pct <= 5 ? "TOP" : pct >= 95 ? "BTM" : `${pct}%`}
+                          </span>
+                        </div>
+
+                        {/* BOTTOM ROW: META & ACTIONS */}
+                        <div className="flex items-center justify-between text-text-muted text-[10px] pt-0.5">
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="truncate text-text-secondary font-bold">
+                              {stk.datasetName || stk.categoryName || "ALL"}
+                            </span>
+                            <span className="opacity-40">•</span>
+                            <span className="uppercase">{stk.viewMode.replace("grid-", "")}</span>
+                            <span className="opacity-40">•</span>
+                            <span>{new Date(stk.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {/* MOVE UP */}
+                            <button
+                              type="button"
+                              onClick={(e) => handleMoveQuickStock(stk.id, "up", e)}
+                              disabled={idx === 0}
+                              className="p-1 hover:text-text-primary disabled:opacity-20 transition-colors"
+                              title={t("Move up in list", "上へ並び替え")}
+                            >
+                              <ArrowUp size={12} />
+                            </button>
+                            {/* MOVE DOWN */}
+                            <button
+                              type="button"
+                              onClick={(e) => handleMoveQuickStock(stk.id, "down", e)}
+                              disabled={idx === quickStocks.length - 1}
+                              className="p-1 hover:text-text-primary disabled:opacity-20 transition-colors"
+                              title={t("Move down in list", "下へ並び替え")}
+                            >
+                              <ArrowDown size={12} />
+                            </button>
+                            {/* OVERWRITE */}
+                            <button
+                              type="button"
+                              onClick={(e) => handleUpdateQuickStock(stk.id, e)}
+                              className="p-1 text-text-muted hover:text-amber-400 transition-colors"
+                              title={t("Overwrite with current scroll position", "現在の位置で上書き更新")}
+                            >
+                              <RefreshCw size={12} />
+                            </button>
+                            {/* RENAME */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingStockId(stk.id);
+                                setEditingStockName(stk.name);
+                              }}
+                              className="p-1 hover:text-text-primary transition-colors"
+                              title={t("Rename stock", "名前を変更")}
+                            >
+                              <Edit2 size={12} />
+                            </button>
+                            {/* DELETE */}
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteQuickStock(stk.id, e)}
+                              className="p-1 hover:text-red-400 transition-colors"
+                              title={t("Delete stock", "削除")}
+                            >
+                              <X size={12} />
+                            </button>
+                            {/* JUMP BUTTON */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleRestoreQuickStock(stk);
+                                setIsQuickStockDrawerOpen(false);
+                              }}
+                              className="px-2.5 py-0.5 bg-accent/20 hover:bg-accent text-accent hover:text-accent-text border border-accent/40 rounded-xs font-bold text-[10px] transition-colors ml-1"
+                              title={t("Restore this view and jump to scroll position", "この位置へ復元ジャンプ")}
+                            >
+                              JUMP
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* DRAWER FOOTER */}
+              <div className="px-4 py-2.5 border-t border-panel-border/80 bg-root-bg/40 flex items-center justify-between text-[10px] text-text-muted shrink-0">
+                <span>{t("QUICK STOCK ENGINE", "クイックストック機能")}</span>
+                <SolidButton
+                  onClick={() => setIsQuickStockDrawerOpen(false)}
+                  className="px-3 py-1 text-[10px] bg-transparent border-panel-border text-text-secondary hover:text-text-primary"
+                >
+                  {t("CLOSE", "閉じる")}
+                </SolidButton>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
