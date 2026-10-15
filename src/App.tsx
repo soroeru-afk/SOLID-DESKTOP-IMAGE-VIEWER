@@ -1,12 +1,3 @@
-import { TopHeader } from "./components/TopHeader";
-import {
-  ExportModal,
-  CategoryAppearanceModal,
-  MoveTargetModal,
-  DatasetModal,
-  CategoryModal,
-  ActionConfirmModals,
-} from "./components/modals";
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   motion,
@@ -125,11 +116,27 @@ import { ReactSortable } from "react-sortablejs";
 
 type ViewMode = "grid-sq" | "grid-ma" | "list" | "free";
 
-export type { QuickStockRecord } from "./components/stock/types";
-import { QuickStockRecord } from "./components/stock/types";
-import { StockDrawer } from "./components/stock/StockDrawer";
-import { StockPanel } from "./components/stock/StockPanel";
-import { StockRibbon } from "./components/stock/StockRibbon";
+export interface QuickStockRecord {
+  id: string;
+  name: string;
+  createdAt: number;
+  datasetId: string | null;
+  categoryId: string | null;
+  isCategoryImagesView?: boolean;
+  datasetName?: string;
+  categoryName?: string;
+  viewMode: ViewMode;
+  scale: number;
+  gap: number;
+  orientationFilter: "all" | "portrait" | "landscape";
+  sortField: "name" | "size" | "type" | "date" | "custom" | "random";
+  sortOrders: Record<string, "asc" | "desc">;
+  showHiddenImages: boolean;
+  searchQuery: string;
+  scrollTop: number;
+  scrollRatio: number;
+  anchorImageId?: string;
+}
 
 interface ImageMetadata {
   bg: "black" | "white" | "checkerboard";
@@ -388,6 +395,7 @@ export default function App() {
   const [canvasBg, setCanvasBg] = useState<
     "theme" | "black" | "white" | "checker"
   >("white");
+  const isLightTheme = theme === "LIGHT" || theme === "PAPER";
   const cycleTheme = () => {
     const themes: Array<"NAVY" | "BLACK" | "TRUE_BLACK" | "RED" | "LIGHT" | "PAPER"> = ["NAVY", "BLACK", "TRUE_BLACK", "RED", "LIGHT", "PAPER"];
     setTheme((prev) => themes[(themes.indexOf(prev as any) + 1) % themes.length]);
@@ -1434,20 +1442,30 @@ export default function App() {
     const saved = localStorage.getItem("app_stock_display_mode");
     return saved === "tile" ? "tile" : "list";
   });
+  const [bottomPanelHeight, setBottomPanelHeight] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("app_bottom_panel_height");
+      if (saved) {
+        const val = parseInt(saved, 10);
+        if (!isNaN(val)) return Math.min(850, Math.max(160, val));
+      }
+    } catch (e) {}
+    return 330;
+  });
+  const [isResizingBottomPanel, setIsResizingBottomPanel] = useState(false);
+  const [jogControllerTheme, setJogControllerTheme] = useState<"white" | "dark" | "glass">(() => {
+    try {
+      const saved = localStorage.getItem("app_jog_controller_theme");
+      if (saved === "white" || saved === "dark" || saved === "glass") return saved;
+    } catch (e) {}
+    return "white";
+  });
   const [isStockPanelExpanded, setIsStockPanelExpanded] = useState<boolean>(() => {
     return localStorage.getItem("app_stock_panel_expanded") === "true";
   });
-  const [isStockRibbonVisible, setIsStockRibbonVisible] = useState<boolean>(() => {
-    return localStorage.getItem("app_stock_ribbon_visible") !== "false";
-  });
-  const [isDrawerExpanded, setIsDrawerExpanded] = useState<boolean>(false);
   const [isQuickStockDrawerOpen, setIsQuickStockDrawerOpen] = useState(false);
   const [editingStockId, setEditingStockId] = useState<string | null>(null);
   const [editingStockName, setEditingStockName] = useState("");
-
-  useEffect(() => {
-    localStorage.setItem("app_stock_ribbon_visible", String(isStockRibbonVisible));
-  }, [isStockRibbonVisible]);
 
   useEffect(() => {
     try {
@@ -1470,8 +1488,16 @@ export default function App() {
   }, [stockDisplayMode]);
 
   useEffect(() => {
+    localStorage.setItem("app_bottom_panel_height", bottomPanelHeight.toString());
+  }, [bottomPanelHeight]);
+
+  useEffect(() => {
     localStorage.setItem("app_stock_panel_expanded", String(isStockPanelExpanded));
   }, [isStockPanelExpanded]);
+
+  useEffect(() => {
+    localStorage.setItem("app_jog_controller_theme", jogControllerTheme);
+  }, [jogControllerTheme]);
 
   const pendingScrollRestoreRef = useRef<{
     scrollTop: number;
@@ -2275,53 +2301,8 @@ export default function App() {
     showNotification(language === "JP" ? `クイックストックに保存しました (${posText})` : `Quick stock saved (${posText})`);
   };
 
-  // ストックの参照先（データセットまたはフォルダー）が現在存在するかを安全検証
-  const checkStockStatus = (stock: QuickStockRecord): { exists: boolean; reason?: string } => {
-    if (stock.datasetId) {
-      const dsExists = datasets.some((d) => d.id === stock.datasetId);
-      if (!dsExists) {
-        return { exists: false, reason: language === "JP" ? "リスト削除済" : "DATASET DELETED" };
-      }
-    } else if (stock.isCategoryImagesView && stock.categoryId) {
-      const catExists = categories.some((c) => c.id === stock.categoryId);
-      if (!catExists) {
-        return { exists: false, reason: language === "JP" ? "フォルダ削除済" : "FOLDER DELETED" };
-      }
-    }
-    return { exists: true };
-  };
-
-  // 削除されたフォルダー・リストに紐づく無効ストックを一括消去・整理
-  const handleCleanupInvalidStocks = () => {
-    const validStocks = quickStocks.filter((s) => checkStockStatus(s).exists);
-    const removedCount = quickStocks.length - validStocks.length;
-    if (removedCount === 0) {
-      showNotification(language === "JP" ? "削除済みの無効なストックはありません" : "No invalid stocks found");
-      return;
-    }
-    setQuickStocks(validStocks);
-    if (activeStockId && !validStocks.some((s) => s.id === activeStockId)) {
-      setActiveStockId(null);
-    }
-    showNotification(
-      language === "JP"
-        ? `${removedCount}件の削除済みストックを整理しました`
-        : `Cleaned up ${removedCount} invalid stock(s)`
-    );
-  };
-
   // ストックを復元（データセット・フォルダー・設定・スクロール位置へピタッと復元）
   const handleRestoreQuickStock = async (stock: QuickStockRecord) => {
-    const status = checkStockStatus(stock);
-    if (!status.exists) {
-      showNotification(
-        language === "JP"
-          ? `移動先のデータはすでに削除されています (${status.reason})`
-          : `Target data no longer exists (${status.reason})`
-      );
-      return;
-    }
-
     setActiveStockId(stock.id);
     setIsLoading(true);
     try {
@@ -2875,19 +2856,11 @@ Images imported: ${importedImages}`);
 
   const confirmDeleteCategory = async () => {
     if (!categoryToDelete) return;
-    const catId = categoryToDelete.id;
-    await deleteCategory(catId);
-    if (activeCategoryId === catId) {
+    await deleteCategory(categoryToDelete.id);
+    if (activeCategoryId === categoryToDelete.id) {
       setActiveCategoryId(categoryToDelete.parentId || null);
       setIsCategoryImagesView(false);
     }
-    // 連動ストックのクリーンアップ（そのフォルダーの全画像ストック等）
-    setQuickStocks((prev) => prev.filter((s) => !(s.isCategoryImagesView && s.categoryId === catId)));
-    setActiveStockId((prev) => {
-      const activeStock = quickStocks.find((s) => s.id === prev);
-      if (activeStock && activeStock.isCategoryImagesView && activeStock.categoryId === catId) return null;
-      return prev;
-    });
     setShowDeleteCategoryModal(false);
     setCategoryToDelete(null);
     await loadDatasets();
@@ -2908,23 +2881,6 @@ Images imported: ${importedImages}`);
       if (activeDatasetId && datasetIds.includes(activeDatasetId)) {
         setActiveDatasetId(null);
       }
-      // 削除されたフォルダー・データセットに関連するストックを連動消去
-      const catSet = new Set(categoryIds);
-      const dsSet = new Set(datasetIds);
-      setQuickStocks((prev) =>
-        prev.filter((s) => {
-          if (s.datasetId && dsSet.has(s.datasetId)) return false;
-          if (s.isCategoryImagesView && s.categoryId && catSet.has(s.categoryId)) return false;
-          return true;
-        })
-      );
-      setActiveStockId((prev) => {
-        const activeStock = quickStocks.find((s) => s.id === prev);
-        if (!activeStock) return prev;
-        if (activeStock.datasetId && dsSet.has(activeStock.datasetId)) return null;
-        if (activeStock.isCategoryImagesView && activeStock.categoryId && catSet.has(activeStock.categoryId)) return null;
-        return prev;
-      });
       await loadDatasets();
       const total = categoryIds.length + datasetIds.length;
       showNotification(
@@ -3288,19 +3244,11 @@ Images imported: ${importedImages}`);
 
   const confirmDeleteDataset = async () => {
     if (!datasetToDelete) return;
-    const targetDsId = datasetToDelete;
     setIsLoading(true);
-    await deleteDataset(targetDsId);
-    if (activeDatasetId === targetDsId) {
+    await deleteDataset(datasetToDelete);
+    if (activeDatasetId === datasetToDelete) {
       setActiveDatasetId(null);
     }
-    // 削除されたデータセットに紐づくストックを連動消去
-    setQuickStocks((prev) => prev.filter((s) => s.datasetId !== targetDsId));
-    setActiveStockId((prev) => {
-      const activeStock = quickStocks.find((s) => s.id === prev);
-      if (activeStock && activeStock.datasetId === targetDsId) return null;
-      return prev;
-    });
     await loadDatasets();
     setShowDeleteDatasetModal(false);
     setDatasetToDelete(null);
@@ -4596,31 +4544,179 @@ Images imported: ${importedImages}`);
       </AnimatePresence>
 
       {/* Top Header */}
-      <TopHeader
-        itemScale={itemScale}
-        setItemScale={setItemScale}
-        gridGap={gridGap}
-        setGridGap={setGridGap}
-        canvasBg={canvasBg}
-        setCanvasBg={setCanvasBg}
-        appFont={appFont}
-        setAppFont={setAppFont}
-        theme={theme}
-        cycleTheme={cycleTheme}
-        language={language}
-        setLanguage={setLanguage}
-        isOnline={isOnline}
-        deferredInstallPrompt={deferredInstallPrompt}
-        handleInstallPWA={handleInstallPWA}
-        isQuickStockDrawerOpen={isQuickStockDrawerOpen}
-        setIsQuickStockDrawerOpen={setIsQuickStockDrawerOpen}
-        quickStocks={quickStocks}
-        isAppFullscreen={isAppFullscreen}
-        toggleAppFullscreen={toggleAppFullscreen}
-        sidebarPosition={sidebarPosition}
-        setSidebarPosition={setSidebarPosition}
-        t={t}
-      />
+      <header className="flex justify-between items-center shrink-0 h-10">
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 bg-panel-border flex items-center justify-center rounded-none text-accent">
+            <ScatterChart size={18} />
+          </div>
+          <div className="flex flex-col mr-8 pt-0.5">
+            <h1 className="font-sans font-semibold tracking-widest text-lg text-text-primary uppercase leading-none">
+              SOLID DESKTOP IMAGE VIEWER
+            </h1>
+            <span className="text-[10px] font-mono text-text-muted mt-1 uppercase tracking-widest opacity-80">
+              v1.1.0 OS
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4 h-full mr-4">
+          <div className="flex items-center gap-2 h-full">
+            <span className="text-[10px] uppercase font-mono tracking-widest text-text-muted">SIZE:</span>
+            <div className="w-40 flex items-center">
+              <input type="range" min="60" max="750" value={itemScale} onChange={(e) => setItemScale(Number(e.target.value))} />
+            </div>
+            <span className="text-[10px] font-mono text-text-primary w-10 text-right">{itemScale}px</span>
+          </div>
+
+          <div className="flex items-center gap-2 h-full">
+            <span className="text-[10px] uppercase font-mono tracking-widest text-text-muted">GAP:</span>
+            <div className="w-40 flex items-center">
+              <input type="range" min="0" max="120" value={gridGap} onChange={(e) => setGridGap(Number(e.target.value))} />
+            </div>
+            <span className="text-[10px] font-mono text-text-primary w-10 text-right">{gridGap}px</span>
+          </div>
+
+          <div className="flex items-center gap-2 h-full">
+            <span className="text-[10px] uppercase font-mono tracking-widest text-text-muted">
+              CANVAS:
+            </span>
+            <div className="flex gap-1 h-full py-2 items-center">
+              <SolidButton active={canvasBg === "theme"} onClick={() => setCanvasBg("theme")} className="w-10 h-6 px-0 py-0 text-[10px]">AUTO</SolidButton>
+              <SolidButton active={canvasBg === "black"} onClick={() => setCanvasBg("black")} className="w-10 h-6 px-0 py-0 text-[10px]">BLK</SolidButton>
+              <SolidButton active={canvasBg === "white"} onClick={() => setCanvasBg("white")} className="w-10 h-6 px-0 py-0 text-[10px]">WHT</SolidButton>
+              <SolidButton active={canvasBg === "checker"} onClick={() => setCanvasBg("checker")} className="w-10 h-6 px-0 py-0 text-[10px]">CHK</SolidButton>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 h-full">
+            <span className="text-[10px] uppercase font-mono tracking-widest text-text-muted">
+              FONT:
+            </span>
+            <select
+              value={appFont}
+              onChange={(e) => setAppFont(e.target.value as any)}
+              className="bg-panel-bg outline-none text-[10px] uppercase font-mono tracking-wider text-text-primary cursor-pointer border h-6 px-2 border-panel-border rounded"
+            >
+              <option value="GOTHIC">GOTHIC</option>
+              <option value="MARU">MARU</option>
+              <option value="MEIRYO">MEIRYO</option>
+              <option value="MONO">MONO</option>
+            </select>
+          </div>
+
+          <div className="flex items-center h-full">
+            <SolidButton
+              onClick={cycleTheme}
+              className={`h-6 px-3 py-0 text-[10px] flex items-center justify-start gap-2 w-[138px] whitespace-nowrap ${
+                theme === "TRUE_BLACK"
+                  ? "!border-neutral-600 hover:!border-neutral-500 hover:!bg-neutral-900"
+                  : ""
+              }`}
+            >
+              <Palette size={12} className="shrink-0" /> THEME: {theme === "TRUE_BLACK" ? "T-BLACK" : theme}
+            </SolidButton>
+          </div>
+
+          <div className="w-px h-6 bg-panel-border mx-1" />
+
+          <div className="flex bg-root-bg rounded border border-panel-border overflow-hidden text-[10px] font-mono leading-none h-6 hidden sm:flex">
+            <button
+              className={cn(
+                "px-2 transition-colors",
+                language === "EN"
+                  ? "bg-text-secondary text-root-bg"
+                  : "bg-panel-bg text-text-muted hover:text-text-primary",
+              )}
+              onClick={() => setLanguage("EN")}
+            >
+              EN
+            </button>
+            <button
+              className={cn(
+                "px-2 transition-colors",
+                language === "JP"
+                  ? "bg-text-secondary text-root-bg"
+                  : "bg-panel-bg text-text-muted hover:text-text-primary",
+              )}
+              onClick={() => setLanguage("JP")}
+            >
+              JP
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 h-full border-l border-panel-border pl-4">
+            {!isOnline && (
+              <div className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-500/15 border border-amber-500/40 text-amber-400 text-[10px] font-mono tracking-wider animate-pulse select-none">
+                <WifiOff size={11} />
+                <span>OFFLINE</span>
+              </div>
+            )}
+            {deferredInstallPrompt && (
+              <SolidButton
+                onClick={handleInstallPWA}
+                className="px-2.5 py-0 h-6 text-[10px] flex items-center gap-1.5 text-accent border-accent/40 bg-accent/10 hover:bg-accent/20"
+                title={t("Install app on this device", "この端末にアプリをインストール")}
+              >
+                <Download size={12} />
+                <span>INSTALL</span>
+              </SolidButton>
+            )}
+            {/* QUICK STOCK BUTTON */}
+            <SolidButton
+              onClick={() => setIsQuickStockDrawerOpen((prev) => !prev)}
+              className={cn(
+                "px-2.5 py-0 h-6 text-[10px] flex items-center gap-1.5 font-mono cursor-pointer transition-all",
+                isQuickStockDrawerOpen
+                  ? "border-accent bg-accent/20 text-accent font-bold shadow-xs"
+                  : quickStocks.length > 0
+                  ? "border-panel-border text-text-primary hover:border-accent hover:text-accent"
+                  : "border-panel-border text-text-secondary hover:text-text-primary"
+              )}
+              title={t("Toggle Quick Stock Drawer (Save & restore scroll states)", "クイックストック一覧を開閉（閲覧・スクロール位置保存）")}
+            >
+              <Zap size={12} className={cn("shrink-0", isQuickStockDrawerOpen ? "text-accent fill-accent" : "text-text-secondary")} />
+              <span>STOCK</span>
+              {quickStocks.length > 0 && (
+                <span className="bg-panel-border/60 text-text-muted px-1 py-0 rounded text-[9px] font-bold">
+                  {quickStocks.length}
+                </span>
+              )}
+            </SolidButton>
+
+            <SolidButton
+              onClick={toggleAppFullscreen}
+              className="px-2"
+              title="TOGGLE FULLSCREEN (F11)"
+            >
+              {isAppFullscreen ? (
+                <Minimize size={16} />
+              ) : (
+                <Maximize size={16} />
+              )}
+            </SolidButton>
+            <SolidButton
+              onClick={() =>
+                setSidebarPosition((p) => (p === "left" ? "right" : "left"))
+              }
+              className="px-2"
+              title="TOGGLE SIDEBAR POSITION"
+            >
+              {sidebarPosition === "left" ? (
+                <PanelLeft size={16} />
+              ) : (
+                <PanelRight size={16} />
+              )}
+            </SolidButton>
+            <SolidButton
+              onClick={() => window.open(window.location.href, '_blank')}
+              className="px-2 ml-2"
+              title="OPEN IN NEW TAB"
+            >
+              <ExternalLink size={16} />
+            </SolidButton>
+          </div>
+        </div>
+      </header>
 
       <div
         className={cn(
@@ -5187,12 +5283,12 @@ Images imported: ${importedImages}`);
                           )}
                           title={t("Quick Stock (Save & restore scroll states)", "クイックストック（閲覧・スクロール位置保存）")}
                         >
-                          <Zap size={11} className={!isTrackInfoCollapsed && bottomPanelTab === "stock" ? "text-accent-text" : "text-accent"} />
+                          <Zap size={11} className={!isTrackInfoCollapsed && bottomPanelTab === "stock" ? "fill-current" : "text-text-muted"} />
                           <span>{t("STOCK", "ストック")}</span>
                           {quickStocks.length > 0 && (
                             <span className={cn(
                               "text-[8px] px-1 py-0 rounded-full font-mono font-bold leading-none",
-                              !isTrackInfoCollapsed && bottomPanelTab === "stock" ? "bg-black/20 text-accent-text" : "bg-accent/20 text-accent"
+                              !isTrackInfoCollapsed && bottomPanelTab === "stock" ? "bg-black/20 text-accent-text" : "bg-panel-border/60 text-text-muted"
                             )}>
                               {quickStocks.length}
                             </span>
@@ -5200,16 +5296,31 @@ Images imported: ${importedImages}`);
                         </button>
                       </div>
                     }
+                    headerRight={
+                      !isTrackInfoCollapsed && (
+                        <div className="flex items-center gap-1 font-mono text-[9px] mr-1">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setBottomPanelHeight((prev) => (prev > 450 ? 330 : 540));
+                            }}
+                            className="px-1.5 py-0.5 border border-panel-border hover:border-accent hover:text-accent rounded-xs transition-colors cursor-pointer text-text-muted"
+                            title={t("Toggle wide panel height (or drag top/bottom border)", "パネルの高さを拡大・縮小（枠線のドラッグでも伸縮可能）")}
+                          >
+                            {bottomPanelHeight > 450 ? "COMPACT" : "WIDE"}
+                          </button>
+                        </div>
+                      )
+                    }
                     className={cn(
-                      "shrink-0 flex flex-col items-center min-w-0 w-full transition-all duration-300",
-                      isTrackInfoCollapsed
-                        ? "h-[34px]"
-                        : (!isTrackInfoCollapsed && bottomPanelTab === "stock" && isStockPanelExpanded)
-                        ? "h-[580px]"
-                        : "h-[330px]",
+                      "shrink-0 flex flex-col items-center min-w-0 w-full relative group/bpanel",
+                      !isResizingBottomPanel && "transition-all duration-200",
+                      isTrackInfoCollapsed ? "h-[34px]" : "",
                     )}
+                    style={!isTrackInfoCollapsed ? { height: `${bottomPanelHeight}px` } : undefined}
                     contentClassName={cn(
-                      "flex flex-col w-full min-w-0 transition-opacity duration-300",
+                      "flex flex-col w-full min-w-0 transition-opacity duration-300 relative",
                       isTrackInfoCollapsed
                         ? "opacity-0 p-0 pointer-events-none hidden"
                         : "opacity-100 p-3 flex-1 min-h-0 overflow-hidden",
@@ -5220,7 +5331,58 @@ Images imported: ${importedImages}`);
                     dragHandle
                   >
                     {!isTrackInfoCollapsed && (
-                      <div className="flex flex-col gap-3 h-full w-full min-w-0 overflow-y-auto pr-1 select-none text-[11px]">
+                      <div className="flex flex-col gap-3 h-full w-full min-w-0 overflow-y-auto pr-1 select-none text-[11px] relative">
+                        {/* TOP RESIZE HANDLE (DRAG UP TO EXPAND) */}
+                        <div
+                          className="absolute -top-3 left-0 right-0 h-4 cursor-row-resize z-40 flex items-center justify-center opacity-0 group-hover/bpanel:opacity-100 hover:!opacity-100 transition-opacity"
+                          title={t("Drag up to expand height, down to shrink (Double click to reset)", "上にドラッグして広げる、下にドラッグして縮める（ダブルクリックで切替）")}
+                          onDoubleClick={() => setBottomPanelHeight((prev) => (prev > 450 ? 330 : 540))}
+                          onPointerDown={(e) => {
+                            e.preventDefault();
+                            setIsResizingBottomPanel(true);
+                            const startY = e.clientY;
+                            const startH = bottomPanelHeight;
+                            const onMove = (ev: PointerEvent) => {
+                              const delta = startY - ev.clientY;
+                              setBottomPanelHeight(Math.min(850, Math.max(160, startH + delta)));
+                            };
+                            const onUp = () => {
+                              setIsResizingBottomPanel(false);
+                              window.removeEventListener("pointermove", onMove);
+                              window.removeEventListener("pointerup", onUp);
+                            };
+                            window.addEventListener("pointermove", onMove);
+                            window.addEventListener("pointerup", onUp);
+                          }}
+                        >
+                          <div className="w-16 h-1 rounded-full bg-panel-border/80 hover:bg-accent transition-colors shadow-xs" />
+                        </div>
+
+                        {/* BOTTOM RESIZE HANDLE (DRAG DOWN TO EXPAND) */}
+                        <div
+                          className="absolute -bottom-3 left-0 right-0 h-4 cursor-row-resize z-40 flex items-center justify-center opacity-0 group-hover/bpanel:opacity-100 hover:!opacity-100 transition-opacity"
+                          title={t("Drag down to expand height, up to shrink (Double click to reset)", "下にドラッグして広げる、上にドラッグして縮める（ダブルクリックで切替）")}
+                          onDoubleClick={() => setBottomPanelHeight((prev) => (prev > 450 ? 330 : 540))}
+                          onPointerDown={(e) => {
+                            e.preventDefault();
+                            setIsResizingBottomPanel(true);
+                            const startY = e.clientY;
+                            const startH = bottomPanelHeight;
+                            const onMove = (ev: PointerEvent) => {
+                              const delta = ev.clientY - startY;
+                              setBottomPanelHeight(Math.min(850, Math.max(160, startH + delta)));
+                            };
+                            const onUp = () => {
+                              setIsResizingBottomPanel(false);
+                              window.removeEventListener("pointermove", onMove);
+                              window.removeEventListener("pointerup", onUp);
+                            };
+                            window.addEventListener("pointermove", onMove);
+                            window.addEventListener("pointerup", onUp);
+                          }}
+                        >
+                          <div className="w-16 h-1 rounded-full bg-panel-border/80 hover:bg-accent transition-colors shadow-xs" />
+                        </div>
                         {bottomPanelTab === "command" && (
                           <>
                             {/* 一覧画面 (LIST / GRID) */}
@@ -5292,14 +5454,14 @@ Images imported: ${importedImages}`);
                                   {t("Browser Fullscreen", "ブラウザ全画面切替")}
                                 </span>
 
-                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-amber-500/40 text-amber-400 text-center min-w-[24px]">
                                   K
                                 </kbd>
                                 <span className="text-text-secondary truncate">
                                   {t("Quick Stock Current Position", "現在位置をクイックストック保存")}
                                 </span>
 
-                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-amber-500/40 text-amber-400 text-center min-w-[24px]">
                                   Shift + K
                                 </kbd>
                                 <span className="text-text-secondary truncate">
@@ -5960,28 +6122,262 @@ Images imported: ${importedImages}`);
                         )}
 
                         {bottomPanelTab === "stock" && (
-                          <StockPanel
-                            quickStocks={quickStocks}
-                            activeStockId={activeStockId}
-                            checkStockStatus={checkStockStatus}
-                            isStockPanelExpanded={isStockPanelExpanded}
-                            setIsStockPanelExpanded={setIsStockPanelExpanded}
-                            stockDisplayMode={stockDisplayMode}
-                            setStockDisplayMode={setStockDisplayMode}
-                            onCreateStock={handleCreateQuickStock}
-                            onClearAllStocks={handleClearAllQuickStocks}
-                            onCleanupInvalidStocks={handleCleanupInvalidStocks}
-                            editingStockId={editingStockId}
-                            setEditingStockId={setEditingStockId}
-                            editingStockName={editingStockName}
-                            setEditingStockName={setEditingStockName}
-                            onRenameStock={handleRenameQuickStock}
-                            onRestoreStock={handleRestoreQuickStock}
-                            onUpdateStock={handleUpdateQuickStock}
-                            onMoveStock={handleMoveQuickStock}
-                            onDeleteStock={handleDeleteQuickStock}
-                            t={t}
-                          />
+                          <div className="flex flex-col gap-2.5 h-full w-full min-w-0 text-[11px]">
+                            {/* ACTION BAR: CREATE, VIEW MODE (LIST/TILE), CLEAR */}
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={handleCreateQuickStock}
+                                className="flex-1 py-1.5 px-2 bg-panel-bg hover:bg-white/5 text-text-primary border border-panel-border hover:border-accent font-mono text-[10px] font-bold flex items-center justify-center gap-1.5 rounded-xs transition-all shadow-xs cursor-pointer"
+                                title={t("Save current view and scroll position to Quick Stock", "現在の画面表示とスクロール位置をストックに保存")}
+                              >
+                                <Zap size={12} className="text-text-secondary" />
+                                <span>{t("+ STORE POSITION", "+ 位置をストック")}</span>
+                              </button>
+
+                              {/* LIST / TILE MODE TOGGLE */}
+                              <div className="flex items-center border border-panel-border rounded-xs overflow-hidden bg-panel-bg shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => setStockDisplayMode("list")}
+                                  className={cn(
+                                    "px-2 py-1 flex items-center gap-1 text-[9px] font-mono transition-colors cursor-pointer",
+                                    stockDisplayMode === "list"
+                                      ? "bg-accent text-accent-text font-bold"
+                                      : "text-text-muted hover:text-text-primary hover:bg-white/5"
+                                  )}
+                                  title={t("List view", "リスト表示")}
+                                >
+                                  <List size={11} />
+                                  <span>LIST</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setStockDisplayMode("tile")}
+                                  className={cn(
+                                    "px-2 py-1 flex items-center gap-1 text-[9px] font-mono transition-colors cursor-pointer",
+                                    stockDisplayMode === "tile"
+                                      ? "bg-accent text-accent-text font-bold"
+                                      : "text-text-muted hover:text-text-primary hover:bg-white/5"
+                                  )}
+                                  title={t("Tile view (Compact squares)", "タイル表示（四角いストックマーク）")}
+                                >
+                                  <LayoutGrid size={11} />
+                                  <span>TILE</span>
+                                </button>
+                              </div>
+
+                              {quickStocks.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={handleClearAllQuickStocks}
+                                  className="px-2 py-1 text-text-muted hover:text-red-400 border border-panel-border hover:border-red-400/40 text-[9px] font-mono transition-all rounded-xs cursor-pointer shrink-0"
+                                  title={t("Clear all quick stocks", "全ストックを削除")}
+                                >
+                                  {t("CLEAR", "全消去")}
+                                </button>
+                              )}
+                            </div>
+
+                            {/* STOCKS CONTAINER (LIST OR TILE) */}
+                            <div className="flex-1 min-h-0 overflow-y-auto pr-0.5">
+                              {quickStocks.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-8 text-center text-text-muted font-mono text-[10px] gap-2 border border-dashed border-panel-border/60 rounded p-4">
+                                  <Zap size={20} className="text-text-muted/40" />
+                                  <span>{t("NO STOCKS SAVED", "ストックがありません")}</span>
+                                  <span className="text-[9px] text-text-muted/80 leading-relaxed">
+                                    {t("Save scroll positions at mid or bottom and jump back anytime.", "閲覧中の中段・下段の位置を何件でも記録し、いつでもワンクリックで再現できます。")}
+                                  </span>
+                                </div>
+                              ) : stockDisplayMode === "tile" ? (
+                                /* TILE VIEW: COMPACT SQUARE PINS GRID */
+                                <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 p-1">
+                                  {quickStocks.map((stk, idx) => {
+                                    const pct = Math.round(stk.scrollRatio * 100);
+                                    const isActive = activeStockId === stk.id;
+                                    return (
+                                      <button
+                                        key={stk.id}
+                                        type="button"
+                                        onClick={() => handleRestoreQuickStock(stk)}
+                                        className={cn(
+                                          "group relative aspect-square flex flex-col items-center justify-center rounded-[3px] border-2 transition-all cursor-pointer select-none shadow-xs",
+                                          isActive
+                                            ? "border-accent bg-accent/15 ring-2 ring-accent/30 shadow-md"
+                                            : "border-panel-border bg-panel-bg hover:border-accent hover:bg-white/5 hover:shadow-md"
+                                        )}
+                                        title={`#${idx + 1} ${stk.name}\n${stk.datasetName || stk.categoryName || "ALL"} • ${pct}% (${new Date(stk.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`}
+                                      >
+                                        {/* PIN MARK ICON */}
+                                        <Pin
+                                          size={18}
+                                          className={cn(
+                                            "transition-transform duration-150 group-hover:scale-115",
+                                            isActive
+                                              ? "text-accent fill-accent"
+                                              : "text-text-primary fill-current opacity-90"
+                                          )}
+                                        />
+
+                                        {/* TOP-LEFT INDEX */}
+                                        <span className="absolute top-1 left-1.5 text-[8px] font-mono text-text-muted font-bold leading-none">
+                                          #{idx + 1}
+                                        </span>
+
+                                        {/* BOTTOM-RIGHT PERCENT / POS */}
+                                        <span className="absolute bottom-1 right-1 text-[8px] font-mono px-1 py-0.2 rounded font-bold leading-none bg-root-bg/90 text-text-secondary border border-panel-border/60">
+                                          {pct <= 5 ? "TOP" : pct >= 95 ? "BTM" : `${pct}%`}
+                                        </span>
+
+                                        {/* HOVER DELETE BUTTON */}
+                                        <span
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteQuickStock(stk.id);
+                                          }}
+                                          className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:scale-110 transition-all shadow-xs z-10 cursor-pointer"
+                                          title={t("Delete stock", "ストックを削除")}
+                                        >
+                                          <X size={9} />
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                /* LIST VIEW */
+                                <div className="flex flex-col gap-1.5">
+                                  {quickStocks.map((stk, idx) => {
+                                  const isEditing = editingStockId === stk.id;
+                                  const pct = Math.round(stk.scrollRatio * 100);
+                                  return (
+                                    <div
+                                      key={stk.id}
+                                      className="group flex flex-col gap-1 p-2 bg-panel-bg/90 hover:bg-panel-bg border border-panel-border hover:border-accent rounded-xs transition-all text-[10px] select-none"
+                                    >
+                                      {/* TOP: NAME & POSITION BADGE */}
+                                      <div className="flex items-center justify-between gap-1.5">
+                                        {isEditing ? (
+                                          <input
+                                            type="text"
+                                            autoFocus
+                                            value={editingStockName}
+                                            onChange={(e) => setEditingStockName(e.target.value)}
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") {
+                                                handleRenameQuickStock(stk.id, editingStockName);
+                                                setEditingStockId(null);
+                                              } else if (e.key === "Escape") {
+                                                setEditingStockId(null);
+                                              }
+                                            }}
+                                            onBlur={() => {
+                                              handleRenameQuickStock(stk.id, editingStockName);
+                                              setEditingStockId(null);
+                                            }}
+                                            className="flex-1 bg-black/40 border border-accent px-1 py-0.5 text-text-primary text-[10px] rounded outline-none font-mono"
+                                          />
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleRestoreQuickStock(stk)}
+                                            className="flex-1 text-left font-mono font-bold text-text-primary hover:text-accent truncate cursor-pointer transition-colors"
+                                            title={t("Click to jump to this position", "クリックしてこの位置へジャンプ")}
+                                          >
+                                            {stk.name}
+                                          </button>
+                                        )}
+                                        <span
+                                          className={cn(
+                                            "shrink-0 font-mono text-[9px] px-1.5 py-0.2 rounded font-bold uppercase",
+                                            pct <= 5
+                                              ? "bg-panel-border/50 text-text-secondary border border-panel-border"
+                                              : pct >= 95
+                                              ? "bg-panel-border/50 text-text-secondary border border-panel-border"
+                                              : "bg-panel-border/40 text-text-secondary border border-panel-border"
+                                          )}
+                                        >
+                                          {pct <= 5 ? "TOP" : pct >= 95 ? "BTM" : `${pct}%`}
+                                        </span>
+                                      </div>
+
+                                      {/* BOTTOM: META INFO & ACTIONS */}
+                                      <div className="flex items-center justify-between text-text-muted text-[9px] font-mono pt-0.5">
+                                        <div className="flex items-center gap-1.5 truncate">
+                                          <span className="truncate">{stk.datasetName || stk.categoryName || "ALL"}</span>
+                                          <span className="opacity-40">•</span>
+                                          <span className="uppercase">{stk.viewMode.replace("grid-", "")}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1 shrink-0">
+                                          {/* MOVE UP */}
+                                          <button
+                                            type="button"
+                                            onClick={(e) => handleMoveQuickStock(stk.id, "up", e)}
+                                            disabled={idx === 0}
+                                            className="p-1 hover:text-text-primary disabled:opacity-20 transition-colors"
+                                            title={t("Move up in list", "上へ並び替え")}
+                                          >
+                                            <ArrowUp size={10} />
+                                          </button>
+                                          {/* MOVE DOWN */}
+                                          <button
+                                            type="button"
+                                            onClick={(e) => handleMoveQuickStock(stk.id, "down", e)}
+                                            disabled={idx === quickStocks.length - 1}
+                                            className="p-1 hover:text-text-primary disabled:opacity-20 transition-colors"
+                                            title={t("Move down in list", "下へ並び替え")}
+                                          >
+                                            <ArrowDown size={10} />
+                                          </button>
+                                          {/* OVERWRITE / UPDATE */}
+                                          <button
+                                            type="button"
+                                            onClick={(e) => handleUpdateQuickStock(stk.id, e)}
+                                            className="p-1 text-text-muted hover:text-accent transition-colors"
+                                            title={t("Overwrite with current scroll position", "現在の位置で上書き更新")}
+                                          >
+                                            <RefreshCw size={10} />
+                                          </button>
+                                          {/* EDIT NAME */}
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setEditingStockId(stk.id);
+                                              setEditingStockName(stk.name);
+                                            }}
+                                            className="p-1 hover:text-text-primary transition-colors"
+                                            title={t("Rename stock", "名前を変更")}
+                                          >
+                                            <Edit2 size={10} />
+                                          </button>
+                                          {/* DELETE */}
+                                          <button
+                                            type="button"
+                                            onClick={(e) => handleDeleteQuickStock(stk.id, e)}
+                                            className="p-1 hover:text-red-400 transition-colors"
+                                            title={t("Delete stock", "削除")}
+                                          >
+                                            <X size={10} />
+                                          </button>
+                                          {/* JUMP BUTTON */}
+                                          <button
+                                            type="button"
+                                            onClick={() => handleRestoreQuickStock(stk)}
+                                            className="px-1.5 py-0.5 bg-accent/20 hover:bg-accent text-accent hover:text-accent-text border border-accent/40 rounded-xs font-bold text-[9px] transition-colors ml-0.5"
+                                            title={t("Restore this view and jump to scroll position", "この位置へ復元ジャンプ")}
+                                          >
+                                            JUMP
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         )}
                       </div>
                     )}
@@ -6396,8 +6792,7 @@ Images imported: ${importedImages}`);
               const canCreateSubcategory = true; // Unlimited folder nesting
 
               return (
-                <>
-                  <div className="w-full bg-panel-bg border-b border-panel-border px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs font-mono shrink-0 select-none z-30 shadow-xs">
+                <div className="w-full bg-panel-bg border-b border-panel-border px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs font-mono shrink-0 select-none z-30 shadow-xs">
                   {/* Breadcrumbs matching CategoryExplorer / Dataset view style exactly */}
                   <div className="flex items-center flex-wrap gap-1.5">
                     {/* Root Crumb */}
@@ -6563,43 +6958,14 @@ Images imported: ${importedImages}`);
                           <FilePlus size={13} className="text-accent" />
                           <span>+ {t("NEW DATASET", "新規セット")}</span>
                         </button>
-                        {/* Active Stock Indicator & Direct Overwrite Button */}
-                        {(() => {
-                          const activeStock = quickStocks.find((s) => s.id === activeStockId);
-                          if (!activeStock) return null;
-                          const pct = Math.round(activeStock.scrollRatio * 100);
-                          const posText = pct <= 5 ? "TOP" : pct >= 95 ? "BTM" : `${pct}%`;
-
-                          return (
-                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-xs bg-accent/10 border border-accent/40 font-mono text-[10px]">
-                              <Pin size={11} className="text-accent shrink-0" />
-                              <span className="font-bold text-text-primary truncate max-w-[150px] sm:max-w-[200px]" title={activeStock.name}>
-                                {activeStock.name}
-                              </span>
-                              <span className="text-[9px] px-1 py-0 bg-accent/20 text-accent font-bold rounded">
-                                {posText}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={(e) => handleUpdateQuickStock(activeStock.id, e)}
-                                className="px-2 py-0.5 bg-accent text-accent-text hover:bg-accent/90 rounded-2xs font-bold flex items-center gap-1 transition-colors cursor-pointer ml-0.5"
-                                title={t("Overwrite this stock with current scroll position", "現在のスクロール位置でこのストックを更新")}
-                              >
-                                <RefreshCw size={10} />
-                                <span>{t("UPDATE", "更新")}</span>
-                              </button>
-                            </div>
-                          );
-                        })()}
-
                         {/* Quick Stock Current Scroll Position */}
                         <button
                           type="button"
                           onClick={handleCreateQuickStock}
-                          className="flex items-center gap-1.5 px-2.5 py-1 bg-panel-bg border border-panel-border hover:border-accent text-text-secondary hover:text-text-primary text-[11px] font-bold transition-all rounded-[2px] shadow-xs cursor-pointer"
+                          className="flex items-center gap-1.5 px-2.5 py-1 bg-panel-bg border border-panel-border hover:border-accent text-text-secondary hover:text-text-primary transition-colors cursor-pointer rounded-[2px]"
                           title={t("Stock current view and scroll position", "現在の画面表示とスクロール位置をストック保存")}
                         >
-                          <Zap size={13} className="text-accent" />
+                          <Zap size={13} className="text-text-secondary" />
                           <span>{t("STOCK POSITION", "位置をストック")}</span>
                         </button>
                         {/* Back to Explorer Quick Action Button */}
@@ -6619,22 +6985,6 @@ Images imported: ${importedImages}`);
                     )}
                   </div>
                 </div>
-
-                {!isExplorer && (
-                  <StockRibbon
-                    isVisible={isStockRibbonVisible}
-                    onClose={() => setIsStockRibbonVisible(false)}
-                    quickStocks={quickStocks}
-                    activeStockId={activeStockId}
-                    checkStockStatus={checkStockStatus}
-                    onCreateStock={handleCreateQuickStock}
-                    onRestoreStock={handleRestoreQuickStock}
-                    onUpdateStock={handleUpdateQuickStock}
-                    onDeleteStock={handleDeleteQuickStock}
-                    t={t}
-                  />
-                )}
-                </>
               );
             })()}
 
@@ -6951,29 +7301,37 @@ Images imported: ${importedImages}`);
                 <div data-scroll-controls="true" className="absolute bottom-6 right-8 z-[60] flex flex-col items-end gap-1.5 select-none">
                   {/* Floating Drag / Wheel HUD (Appears during drag or wheel) */}
                   {(jogDragState.active || wheelHudVisible) && (
-                    <div className="absolute right-full mr-3 bottom-0 whitespace-nowrap bg-black/90 dark:bg-black/90 backdrop-blur-md text-white border border-gray-600/80 px-3 py-1.5 shadow-2xl flex flex-col items-end pointer-events-none animate-in fade-in zoom-in-95 duration-100">
+                    <div
+                      className={cn(
+                        "absolute right-full mr-3 bottom-0 whitespace-nowrap backdrop-blur-md px-3 py-1.5 shadow-2xl flex flex-col items-end pointer-events-none animate-in fade-in zoom-in-95 duration-100",
+                        isLightTheme
+                          ? "bg-white/95 text-gray-900 border border-gray-300 shadow-xl"
+                          : "bg-black/90 text-white border border-gray-600/80"
+                      )}
+                    >
                       <div className="flex items-center gap-1.5 font-mono text-[12px] font-bold tracking-tight tabular-nums">
                         {(jogDragState.active ? jogDragState.dir : autoScrollDir) === "up" ? (
-                          <span className="text-amber-400 flex items-center gap-0.5">
+                          <span className={cn("flex items-center gap-0.5", isLightTheme ? "text-amber-600" : "text-amber-400")}>
                             <ChevronUp size={13} className="stroke-[3]" />
                             UP
                           </span>
                         ) : (jogDragState.active ? jogDragState.dir : autoScrollDir) === "down" ? (
-                          <span className="text-sky-400 flex items-center gap-0.5">
+                          <span className={cn("flex items-center gap-0.5", isLightTheme ? "text-sky-600" : "text-sky-400")}>
                             <ChevronDown size={13} className="stroke-[3]" />
                             DOWN
                           </span>
                         ) : (
-                          <span className="text-gray-300">STOPPED</span>
+                          <span className={isLightTheme ? "text-gray-500" : "text-gray-300"}>STOPPED</span>
                         )}
-                        <span className="text-white">
-                          {jogDragState.active ? jogDragState.currentSpeed : autoScrollPxPerSec} <span className="text-[10px] text-gray-400">px/s</span>
+                        <span className={isLightTheme ? "text-gray-900" : "text-white"}>
+                          {jogDragState.active ? jogDragState.currentSpeed : autoScrollPxPerSec}{" "}
+                          <span className={cn("text-[10px]", isLightTheme ? "text-gray-500" : "text-gray-400")}>px/s</span>
                         </span>
-                        <span className="text-[11px] text-amber-300 font-mono">
+                        <span className={cn("text-[11px] font-mono", isLightTheme ? "text-amber-700" : "text-amber-300")}>
                           ({((jogDragState.active ? jogDragState.currentSpeed : autoScrollPxPerSec) / 250).toFixed(1)}x)
                         </span>
                       </div>
-                      <div className="text-[9px] font-mono text-gray-400 tracking-wider mt-0.5">
+                      <div className={cn("text-[9px] font-mono tracking-wider mt-0.5", isLightTheme ? "text-gray-500" : "text-gray-400")}>
                         WHEEL: SPEED • DRAG: SPEED • CLICK: STOP
                       </div>
                     </div>
@@ -6982,7 +7340,12 @@ Images imported: ${importedImages}`);
                   {/* Vertical Scroll Nav Bar & Jog Shuttle */}
                   <div
                     onWheel={handleJogWheel}
-                    className="flex flex-col items-center bg-white/95 dark:bg-[#18181b]/95 backdrop-blur-md border border-gray-300/80 dark:border-gray-700/80 shadow-md w-11 rounded-none overflow-hidden"
+                    className={cn(
+                      "flex flex-col items-center backdrop-blur-md shadow-md w-11 rounded-none overflow-hidden transition-colors",
+                      isLightTheme
+                        ? "bg-white/95 border border-gray-300 text-gray-700"
+                        : "bg-[#18181b]/95 border border-gray-700/80 text-gray-300"
+                    )}
                   >
                     {/* Scroll To Top */}
                     <button
@@ -6991,7 +7354,12 @@ Images imported: ${importedImages}`);
                         setAutoScrollDir(null);
                         scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
                       }}
-                      className="w-full h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
+                      className={cn(
+                        "w-full h-7 flex items-center justify-center transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
+                        isLightTheme
+                          ? "text-gray-600 hover:text-black hover:bg-gray-100"
+                          : "text-gray-300 hover:text-white hover:bg-gray-800"
+                      )}
                       title="SCROLL TO TOP (一番上へジャンプ)"
                     >
                       <ChevronsUp size={14} />
@@ -7002,10 +7370,11 @@ Images imported: ${importedImages}`);
                       type="button"
                       onClick={() => setAutoScrollDir((d) => (d === "up" ? null : "up"))}
                       className={cn(
-                        "w-full h-7 flex items-center justify-center transition-colors cursor-pointer border-t border-gray-200 dark:border-gray-700/60 outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
+                        "w-full h-7 flex items-center justify-center transition-colors cursor-pointer outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
+                        isLightTheme ? "border-t border-gray-200" : "border-t border-gray-700/60",
                         autoScrollDir === "up"
-                          ? "bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold"
-                          : "text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+                          ? (isLightTheme ? "bg-amber-500/20 text-amber-700 font-bold" : "bg-amber-500/20 text-amber-400 font-bold")
+                          : (isLightTheme ? "text-gray-600 hover:text-black hover:bg-gray-100" : "text-gray-300 hover:text-white hover:bg-gray-800")
                       )}
                       title="AUTO SCROLL UP (上へ自動スクロール開始/停止)"
                     >
@@ -7020,12 +7389,13 @@ Images imported: ${importedImages}`);
                       onPointerCancel={handleJogPointerCancel}
                       onWheel={handleJogWheel}
                       className={cn(
-                        "w-full h-36 relative flex flex-col items-center justify-between py-2 cursor-ns-resize border-y border-gray-200 dark:border-gray-700/70 select-none transition-colors touch-none",
+                        "w-full h-36 relative flex flex-col items-center justify-between py-2 cursor-ns-resize select-none transition-colors touch-none",
+                        isLightTheme ? "border-y border-gray-200" : "border-y border-gray-700/70",
                         jogDragState.active || wheelHudVisible
-                          ? "bg-gray-200/90 dark:bg-gray-800/90"
+                          ? (isLightTheme ? "bg-gray-100" : "bg-gray-800/90")
                           : autoScrollDir !== null
-                          ? "bg-amber-500/10 dark:bg-amber-500/15"
-                          : "hover:bg-gray-100/80 dark:hover:bg-gray-800/50"
+                          ? "bg-amber-500/15"
+                          : (isLightTheme ? "bg-white hover:bg-gray-50" : "hover:bg-gray-800/50")
                       )}
                       title="ホイール回転 / 上下ドラッグ: 向き＆速度を無段階調整 / クリック: 停止"
                     >
@@ -7047,8 +7417,8 @@ Images imported: ${importedImages}`);
                         className={cn(
                           "flex flex-col items-center transition-colors pointer-events-none",
                           autoScrollDir === "up" || jogDragState.dir === "up"
-                            ? "text-amber-500 font-bold"
-                            : "text-gray-400 dark:text-gray-500"
+                            ? (isLightTheme ? "text-amber-600 font-bold" : "text-amber-500 font-bold")
+                            : (isLightTheme ? "text-gray-400" : "text-gray-500")
                         )}
                       >
                         <ChevronUp
@@ -7063,11 +7433,14 @@ Images imported: ${importedImages}`);
                       {/* Center Knurled Grip & State Badge */}
                       <div className="flex flex-col items-center justify-center gap-0.5 pointer-events-none z-10">
                         <div className="flex items-center gap-0.5">
-                          <div className="w-1 h-3.5 bg-gray-400 dark:bg-gray-500" />
-                          <div className="w-1 h-3.5 bg-gray-400 dark:bg-gray-500" />
-                          <div className="w-1 h-3.5 bg-gray-400 dark:bg-gray-500" />
+                          <div className={cn("w-1 h-3.5", isLightTheme ? "bg-gray-400" : "bg-gray-500")} />
+                          <div className={cn("w-1 h-3.5", isLightTheme ? "bg-gray-400" : "bg-gray-500")} />
+                          <div className={cn("w-1 h-3.5", isLightTheme ? "bg-gray-400" : "bg-gray-500")} />
                         </div>
-                        <span className="font-mono text-[8px] font-bold tracking-tighter text-gray-500 dark:text-gray-400 uppercase mt-0.5">
+                        <span className={cn(
+                          "font-mono text-[8px] font-bold tracking-tighter uppercase mt-0.5",
+                          isLightTheme ? "text-gray-600" : "text-gray-400"
+                        )}>
                           {jogDragState.active
                             ? "DRAG"
                             : autoScrollDir !== null
@@ -7081,8 +7454,8 @@ Images imported: ${importedImages}`);
                         className={cn(
                           "flex flex-col items-center transition-colors pointer-events-none",
                           autoScrollDir === "down" || jogDragState.dir === "down"
-                            ? "text-sky-500 font-bold"
-                            : "text-gray-400 dark:text-gray-500"
+                            ? (isLightTheme ? "text-sky-600 font-bold" : "text-sky-500 font-bold")
+                            : (isLightTheme ? "text-gray-400" : "text-gray-500")
                         )}
                       >
                         <ChevronDown
@@ -7100,10 +7473,11 @@ Images imported: ${importedImages}`);
                       type="button"
                       onClick={() => setAutoScrollDir((d) => (d === "down" ? null : "down"))}
                       className={cn(
-                        "w-full h-7 flex items-center justify-center transition-colors cursor-pointer border-b border-gray-200 dark:border-gray-700/60 outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
+                        "w-full h-7 flex items-center justify-center transition-colors cursor-pointer outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
+                        isLightTheme ? "border-b border-gray-200" : "border-b border-gray-700/60",
                         autoScrollDir === "down"
-                          ? "bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold"
-                          : "text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+                          ? (isLightTheme ? "bg-sky-500/20 text-sky-700 font-bold" : "bg-sky-500/20 text-sky-400 font-bold")
+                          : (isLightTheme ? "text-gray-600 hover:text-black hover:bg-gray-100" : "text-gray-300 hover:text-white hover:bg-gray-800")
                       )}
                       title="AUTO SCROLL DOWN (下へ自動スクロール開始/停止)"
                     >
@@ -7122,7 +7496,12 @@ Images imported: ${importedImages}`);
                           });
                         }
                       }}
-                      className="w-full h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
+                      className={cn(
+                        "w-full h-7 flex items-center justify-center transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
+                        isLightTheme
+                          ? "text-gray-600 hover:text-black hover:bg-gray-100"
+                          : "text-gray-300 hover:text-white hover:bg-gray-800"
+                      )}
                       title="SCROLL TO BOTTOM (一番下へジャンプ)"
                     >
                       <ChevronsDown size={14} />
@@ -7132,7 +7511,12 @@ Images imported: ${importedImages}`);
                   {/* Horizontal Speed Control Bar (Bottom) */}
                   <div
                     onWheel={handleJogWheel}
-                    className="flex items-center bg-white/95 dark:bg-[#18181b]/95 backdrop-blur-md border border-gray-300/80 dark:border-gray-700/80 shadow-md h-7 px-1 rounded-none"
+                    className={cn(
+                      "flex items-center backdrop-blur-md shadow-md h-7 px-1 rounded-none transition-colors",
+                      isLightTheme
+                        ? "bg-white/95 border border-gray-300 text-gray-800 shadow-sm"
+                        : "bg-[#18181b]/95 border border-gray-700/80 text-gray-200"
+                    )}
                   >
                     <button
                       type="button"
@@ -7142,7 +7526,9 @@ Images imported: ${importedImages}`);
                         "w-5 h-5 flex items-center justify-center text-[12px] font-bold transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
                         autoScrollSpeed <= 1 && autoScrollPxPerSec <= 100
                           ? "opacity-30 cursor-not-allowed text-gray-400"
-                          : "hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 cursor-pointer"
+                          : isLightTheme
+                          ? "hover:bg-gray-100 text-gray-700 cursor-pointer"
+                          : "hover:bg-gray-700 text-gray-200 cursor-pointer"
                       )}
                       title="SPEED DOWN (-)"
                     >
@@ -7150,7 +7536,10 @@ Images imported: ${importedImages}`);
                     </button>
 
                     <span
-                      className="font-mono font-bold text-[10px] tabular-nums px-1 text-gray-800 dark:text-gray-200 pointer-events-none min-w-[34px] text-center select-none"
+                      className={cn(
+                        "font-mono font-bold text-[10px] tabular-nums px-1 pointer-events-none min-w-[34px] text-center select-none",
+                        isLightTheme ? "text-gray-800" : "text-gray-200"
+                      )}
                       title={`${autoScrollPxPerSec} px/s`}
                     >
                       {(autoScrollPxPerSec / 250).toFixed(1)}x
@@ -7164,7 +7553,9 @@ Images imported: ${importedImages}`);
                         "w-5 h-5 flex items-center justify-center text-[12px] font-bold transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
                         autoScrollSpeed >= 4 && autoScrollPxPerSec >= 1000
                           ? "opacity-30 cursor-not-allowed text-gray-400"
-                          : "hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 cursor-pointer"
+                          : isLightTheme
+                          ? "hover:bg-gray-100 text-gray-700 cursor-pointer"
+                          : "hover:bg-gray-700 text-gray-200 cursor-pointer"
                       )}
                       title="SPEED UP (+)"
                     >
@@ -7817,139 +8208,1173 @@ Images imported: ${importedImages}`);
         )}
       </AnimatePresence>
 
-      {/* Dataset & Category Creation / Rename Modals */}
-      <DatasetModal
-        isOpen={showNewDatasetModal}
-        editingDatasetId={editingDatasetId}
-        datasetNameInput={datasetNameInput}
-        setDatasetNameInput={setDatasetNameInput}
-        targetCategoryIdForNewDataset={targetCategoryIdForNewDataset}
-        setTargetCategoryIdForNewDataset={setTargetCategoryIdForNewDataset}
-        categories={categories}
-        onClose={() => setShowNewDatasetModal(false)}
-        onSubmit={submitDatasetForm}
-        onOpenNewCategoryModal={handleOpenNewCategoryModal}
-        t={t}
-      />
+      {/* New/Rename Dataset Modal */}
+      <AnimatePresence>
+        {showNewDatasetModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+          >
+            <div className="bg-panel-bg border border-panel-border p-6 font-mono w-[440px] shadow-2xl">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-text-primary uppercase flex items-center gap-2 font-bold text-sm">
+                  <Layers size={18} className="text-accent" />
+                  {editingDatasetId ? t("RENAME DATASET", "データセット名の変更") : t("NEW DATASET", "新規データセットの作成")}
+                </h2>
+                {!editingDatasetId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowNewDatasetModal(false);
+                      handleOpenNewCategoryModal(targetCategoryIdForNewDataset);
+                    }}
+                    className="text-[10px] text-folder-icon hover:underline flex items-center gap-1 cursor-pointer"
+                    title={t("Switch to Create Folder", "フォルダー作成に切り替え")}
+                  >
+                    <FolderPlus size={12} />
+                    <span>{t("CREATE FOLDER INSTEAD", "フォルダー作成はこちら")}</span>
+                  </button>
+                )}
+              </div>
 
-      <CategoryModal
-        isOpen={showNewCategoryModal}
-        editingCategoryId={editingCategoryId}
-        categoryNameInput={categoryNameInput}
-        setCategoryNameInput={setCategoryNameInput}
-        newCategoryParentId={newCategoryParentId}
-        setNewCategoryParentId={setNewCategoryParentId}
-        categories={categories}
-        onClose={() => setShowNewCategoryModal(false)}
-        onSubmit={submitCategoryForm}
-        onAddDatasetClick={handleAddDatasetClick}
-        t={t}
-      />
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-[10px] text-text-muted mb-1 font-bold uppercase">
+                    {t("DATASET NAME", "データセット名")}
+                  </label>
+                  <input
+                    autoFocus
+                    type="text"
+                    value={datasetNameInput}
+                    onChange={(e) => setDatasetNameInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && submitDatasetForm()}
+                    className="w-full bg-root-bg border border-panel-border text-text-primary px-3 py-2 text-xs font-mono outline-none focus:border-accent"
+                    placeholder={t("ENTER DATASET NAME...", "データセット名を入力...")}
+                  />
+                </div>
 
-      {/* Move Target Selection Modal */}
-      <MoveTargetModal
-        isOpen={showMoveItemModal}
-        itemToMove={itemToMove}
-        categories={categories}
-        onClose={() => {
-          setShowMoveItemModal(false);
-          setItemToMove(null);
-        }}
-        onMoveCategoryParent={handleMoveCategoryParent}
-        onMoveDatasetToCategory={handleMoveDatasetToCategory}
-        t={t}
-      />
+                <div>
+                  <label className="block text-[10px] text-text-muted mb-1 font-bold uppercase">
+                    {t("FOLDER LOCATION", "作成先（所属フォルダー）の選択")}
+                  </label>
+                  <select
+                    value={targetCategoryIdForNewDataset || ""}
+                    onChange={(e) => setTargetCategoryIdForNewDataset(e.target.value || null)}
+                    className="w-full bg-root-bg border border-panel-border text-text-primary px-3 py-2 text-xs font-mono outline-none focus:border-accent cursor-pointer"
+                  >
+                    <option value="">📁 {t("ALL IMAGE DATA (ROOT LEVEL)", "ALL IMAGE DATA (ルート / トップ階層)")}</option>
+                    {(() => {
+                      const renderCategoryOptions = (parentId: string | null = null, depth: number = 0): React.ReactNode => {
+                        const subCats = categories.filter((c) => (c.parentId || null) === parentId);
+                        return subCats.map((cat) => (
+                          <React.Fragment key={cat.id}>
+                            <option value={cat.id}>
+                              {depth === 0 ? "📁 " : `${"  ".repeat(depth)}└─ 📁 `}{cat.name}
+                            </option>
+                            {renderCategoryOptions(cat.id, depth + 1)}
+                          </React.Fragment>
+                        ));
+                      };
 
-      {/* Standard Action Confirm Modals (Delete Category, Rename File, Clear All, Overwrite, Delete Images, Delete Dataset) */}
-      <ActionConfirmModals
-        showDeleteCategoryModal={showDeleteCategoryModal}
-        onCloseDeleteCategory={() => setShowDeleteCategoryModal(false)}
-        onConfirmDeleteCategory={confirmDeleteCategory}
-        showRenameFileModal={showRenameFileModal}
-        onCloseRenameFile={() => setShowRenameFileModal(false)}
-        fileNameInput={fileNameInput}
-        setFileNameInput={setFileNameInput}
-        onSubmitFileRename={submitFileRenameForm}
-        showClearAllModal={showClearAllModal}
-        onCloseClearAll={() => setShowClearAllModal(false)}
-        onConfirmClearAll={confirmClearAll}
-        totalImagesCount={totalImagesCount}
-        overwriteFiles={overwriteFiles}
-        onCloseOverwrite={() => setOverwriteFiles(null)}
-        onConfirmOverwrite={confirmOverwrite}
-        showDeleteImageModal={showDeleteImageModal}
-        imageToDeleteContext={imageToDeleteContext}
-        onCloseDeleteImage={() => {
-          setShowDeleteImageModal(false);
-          setImageToDeleteContext(null);
-        }}
-        onConfirmDeleteImage={() => {
-          if (imageToDeleteContext === 'selected') {
-            executeDeleteSelectedImages();
-          } else if (imageToDeleteContext === 'fullscreen') {
-            performDeleteFullscreenImage();
-          }
-        }}
-        showDeleteDatasetModal={showDeleteDatasetModal}
-        onCloseDeleteDataset={() => {
-          setShowDeleteDatasetModal(false);
-          setDatasetToDelete(null);
-        }}
-        onConfirmDeleteDataset={confirmDeleteDataset}
-        t={t}
-        language={language}
-      />
+                      return renderCategoryOptions(null, 0);
+                    })()}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <SolidButton
+                  onClick={() => setShowNewDatasetModal(false)}
+                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
+                >
+                  {t("CANCEL", "キャンセル")}
+                </SolidButton>
+                <SolidButton
+                  onClick={submitDatasetForm}
+                  className="text-accent hover:text-accent"
+                >
+                  {t("CONFIRM", "確定")}
+                </SolidButton>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* New/Rename Category Modal */}
+      <AnimatePresence>
+        {showNewCategoryModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+          >
+            <div className="bg-panel-bg border border-panel-border p-6 font-mono w-[440px] shadow-2xl">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-text-primary uppercase flex items-center gap-2 font-bold text-sm">
+                  <Folder size={18} className="text-folder-icon" />
+                  {editingCategoryId ? t("RENAME CATEGORY", "フォルダー名の変更") : t("NEW CATEGORY", "新規フォルダーの作成")}
+                </h2>
+                {!editingCategoryId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowNewCategoryModal(false);
+                      handleAddDatasetClick(newCategoryParentId);
+                    }}
+                    className="text-[10px] text-accent hover:underline flex items-center gap-1 cursor-pointer"
+                    title={t("Switch to Create Dataset", "データセット作成に切り替え")}
+                  >
+                    <FilePlus size={12} />
+                    <span>{t("CREATE DATASET INSTEAD", "セット作成はこちら")}</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-[10px] text-text-muted mb-1 font-bold uppercase">
+                    {t("FOLDER NAME", "フォルダー名")}
+                  </label>
+                  <input
+                    autoFocus
+                    type="text"
+                    value={categoryNameInput}
+                    onChange={(e) => setCategoryNameInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && submitCategoryForm()}
+                    className="w-full bg-root-bg border border-panel-border text-text-primary px-3 py-2 text-xs font-mono outline-none focus:border-accent"
+                    placeholder={t("ENTER CATEGORY NAME...", "フォルダー名を入力...")}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-text-muted mb-1 font-bold uppercase">
+                    {t("LOCATION / PARENT FOLDER", "作成先（親フォルダー）の選択")}
+                  </label>
+                  <select
+                    value={newCategoryParentId || ""}
+                    onChange={(e) => setNewCategoryParentId(e.target.value || null)}
+                    className="w-full bg-root-bg border border-panel-border text-text-primary px-3 py-2 text-xs font-mono outline-none focus:border-accent cursor-pointer"
+                  >
+                    <option value="">📁 {t("ALL IMAGE DATA (ROOT LEVEL)", "ALL IMAGE DATA (ルート / トップ階層)")}</option>
+                    {(() => {
+                      const isDescendant = (catId: string, potentialChildId: string): boolean => {
+                        if (catId === potentialChildId) return true;
+                        const children = categories.filter((c) => c.parentId === potentialChildId);
+                        for (const ch of children) {
+                          if (isDescendant(catId, ch.id)) return true;
+                        }
+                        return false;
+                      };
+
+                      const renderCategoryOptions = (parentId: string | null = null, depth: number = 0): React.ReactNode => {
+                        const subCats = categories.filter((c) => (c.parentId || null) === parentId);
+                        return subCats.map((cat) => {
+                          const isSelfOrChild = editingCategoryId && isDescendant(cat.id, editingCategoryId);
+                          return (
+                            <React.Fragment key={cat.id}>
+                              <option value={cat.id} disabled={!!isSelfOrChild}>
+                                {depth === 0 ? "📁 " : `${"  ".repeat(depth)}└─ 📁 `}{cat.name}
+                              </option>
+                              {renderCategoryOptions(cat.id, depth + 1)}
+                            </React.Fragment>
+                          );
+                        });
+                      };
+
+                      return renderCategoryOptions(null, 0);
+                    })()}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <SolidButton
+                  onClick={() => setShowNewCategoryModal(false)}
+                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
+                >
+                  {t("CANCEL", "キャンセル")}
+                </SolidButton>
+                <SolidButton
+                  onClick={submitCategoryForm}
+                  className="text-accent hover:text-accent"
+                >
+                  {t("CONFIRM", "確定")}
+                </SolidButton>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Category Confirmation Modal */}
+      <AnimatePresence>
+        {showDeleteCategoryModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+          >
+            <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[420px] shadow-[0_0_30px_rgba(239,68,68,0.2)]">
+              <h2 className="text-red-500 mb-4 flex items-center gap-2">
+                <Trash2 size={20} /> {t("DELETE CATEGORY", "カテゴリーの削除")}
+              </h2>
+              <p className="text-text-primary text-xs mb-6 leading-relaxed">
+                {t(
+                  "Are you sure you want to delete this category? Any datasets inside will be moved to the parent level.",
+                  "このカテゴリーを削除しますか？含まれるデータセットは親階層（またはルート）に移動されます。"
+                )}
+              </p>
+              <div className="flex justify-end gap-3">
+                <SolidButton
+                  onClick={() => setShowDeleteCategoryModal(false)}
+                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
+                >
+                  {t("CANCEL", "キャンセル")}
+                </SolidButton>
+                <button
+                  onClick={confirmDeleteCategory}
+                  className="px-4 py-2 border border-red-500 text-red-500 hover:bg-red-500/10 uppercase transition-colors outline-none"
+                >
+                  {t("DELETE", "削除")}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Move Target Selection Modal (For Folder or Dataset) */}
+      <AnimatePresence>
+        {showMoveItemModal && itemToMove && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+          >
+            <div className="bg-panel-bg border border-panel-border p-6 font-mono w-[460px] max-h-[85vh] flex flex-col shadow-2xl">
+              <h2 className="text-text-primary mb-2 uppercase flex items-center gap-2 text-sm font-bold">
+                <FolderOpen size={18} className="text-accent" />
+                {itemToMove.type === "category"
+                  ? t("MOVE FOLDER TO...", "フォルダーの移動先を選択")
+                  : t("MOVE DATASET TO...", "データセットの移動先フォルダーを選択")}
+              </h2>
+              <p className="text-xs text-text-muted mb-4">
+                {t("TARGET: ", "対象: ")}
+                <span className="text-text-primary font-bold">{itemToMove.item.name}</span>
+              </p>
+
+              <div className="flex-1 overflow-y-auto border border-panel-border bg-root-bg p-2 flex flex-col gap-1 mb-5 max-h-[320px] scrollbar-dark">
+                {/* Option 1: Root / Top level */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (itemToMove.type === "category") {
+                      handleMoveCategoryParent(itemToMove.item.id, null);
+                    } else {
+                      handleMoveDatasetToCategory(itemToMove.item.id, null);
+                    }
+                    setShowMoveItemModal(false);
+                    setItemToMove(null);
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs font-mono flex items-center justify-between border border-panel-border/50 hover:border-accent hover:bg-accent/15 transition-colors group text-text-primary"
+                >
+                  <div className="flex items-center gap-2">
+                    <Folders size={14} className="text-accent -translate-y-[1px]" />
+                    <span className="font-bold">{t("ALL IMAGE DATA (ROOT / UNCLASSIFIED)", "ALL IMAGE DATA (ルート / 未分類)")}</span>
+                  </div>
+                  <span className="text-[10px] text-accent opacity-0 group-hover:opacity-100 font-bold">
+                    {t("SELECT →", "選択 →")}
+                  </span>
+                </button>
+
+                {/* Option List: Category Tree Nodes */}
+                {(() => {
+                  // Recursive check for descendants if moving a category
+                  const isDescendantCat = (catId: string, potentialChildId: string): boolean => {
+                    if (catId === potentialChildId) return true;
+                    const children = categories.filter((c) => c.parentId === potentialChildId);
+                    for (const ch of children) {
+                      if (isDescendantCat(catId, ch.id)) return true;
+                    }
+                    return false;
+                  };
+
+                  const renderTreeOptions = (parentId: string | null, depth: number): React.ReactNode => {
+                    const subCats = categories.filter((c) => (c.parentId || null) === parentId);
+                    return subCats.map((cat) => {
+                      // Disabled if category itself or child of it (to prevent cycle)
+                      const isSelfOrChild =
+                        itemToMove.type === "category" &&
+                        (cat.id === itemToMove.item.id || isDescendantCat(cat.id, itemToMove.item.id));
+                      
+                      const isCurrentParent =
+                        itemToMove.type === "category"
+                          ? (itemToMove.item as CategoryRecord).parentId === cat.id
+                          : (itemToMove.item as DatasetRecord).categoryId === cat.id;
+
+                      return (
+                        <React.Fragment key={cat.id}>
+                          <button
+                            type="button"
+                            disabled={isSelfOrChild || isCurrentParent}
+                            onClick={() => {
+                              if (itemToMove.type === "category") {
+                                handleMoveCategoryParent(itemToMove.item.id, cat.id);
+                              } else {
+                                handleMoveDatasetToCategory(itemToMove.item.id, cat.id);
+                              }
+                              setShowMoveItemModal(false);
+                              setItemToMove(null);
+                            }}
+                            style={{ paddingLeft: `${Math.max(12, depth * 16 + 12)}px` }}
+                            className={cn(
+                              "w-full text-left pr-3 py-2 text-xs font-mono flex items-center justify-between border transition-colors group",
+                              isSelfOrChild
+                                ? "opacity-30 cursor-not-allowed border-transparent text-text-muted"
+                                : isCurrentParent
+                                ? "border-accent/40 bg-accent/10 text-accent cursor-default font-bold"
+                                : "border-panel-border/30 hover:border-accent hover:bg-accent/15 text-text-primary"
+                            )}
+                          >
+                            <div className="flex items-center gap-2 truncate min-w-0">
+                              <Folder size={14} className="text-folder-icon shrink-0" />
+                              <span className="truncate">{cat.name}</span>
+                              {isCurrentParent && (
+                                <span className="text-[9px] text-accent bg-accent/20 px-1 py-0.5 rounded font-mono shrink-0">
+                                  {t("CURRENT", "現在位置")}
+                                </span>
+                              )}
+                            </div>
+                            {!isSelfOrChild && !isCurrentParent && (
+                              <span className="text-[10px] text-accent opacity-0 group-hover:opacity-100 font-bold shrink-0">
+                                {t("MOVE HERE →", "ここへ移動 →")}
+                              </span>
+                            )}
+                          </button>
+                          {renderTreeOptions(cat.id, depth + 1)}
+                        </React.Fragment>
+                      );
+                    });
+                  };
+
+                  return renderTreeOptions(null, 0);
+                })()}
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <SolidButton
+                  onClick={() => {
+                    setShowMoveItemModal(false);
+                    setItemToMove(null);
+                  }}
+                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
+                >
+                  {t("CANCEL", "キャンセル")}
+                </SolidButton>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Rename File Modal */}
+      <AnimatePresence>
+        {showRenameFileModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+          >
+            <div className="bg-panel-bg border border-panel-border p-6 font-mono w-[400px]">
+              <h2 className="text-text-primary mb-4 uppercase">
+                RENAME FILE
+              </h2>
+              <input
+                autoFocus
+                type="text"
+                value={fileNameInput}
+                onChange={(e) => setFileNameInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && submitFileRenameForm()}
+                className="w-full bg-root-bg border border-panel-border text-text-primary px-3 py-2 mb-6 outline-none focus:border-accent"
+                placeholder="ENTER FILE NAME..."
+              />
+              <div className="flex justify-end gap-3">
+                <SolidButton
+                  onClick={() => setShowRenameFileModal(false)}
+                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
+                >
+                  CANCEL
+                </SolidButton>
+                <SolidButton
+                  onClick={submitFileRenameForm}
+                  className="text-accent hover:text-accent"
+                >
+                  CONFIRM
+                </SolidButton>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+
+
+      {/* Clear All Modal */}
+      <AnimatePresence>
+        {showClearAllModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+          >
+            <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(239,68,68,0.2)]">
+              <h2 className="text-red-500 mb-4 flex items-center gap-2">
+                <Trash2 size={20} /> CLEAR ENTIRE DATABASE
+              </h2>
+              <p className="text-text-secondary text-sm mb-6 uppercase leading-relaxed">
+                Warning: This will delete all datasets and all{" "}
+                {totalImagesCount} stored images. This action cannot be undone.
+                Are you sure?
+              </p>
+              <div className="flex justify-end gap-3">
+                <SolidButton
+                  onClick={() => setShowClearAllModal(false)}
+                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
+                >
+                  CANCEL
+                </SolidButton>
+                <button
+                  onClick={confirmClearAll}
+                  className="px-4 py-2 border border-red-500 text-red-500 hover:bg-red-500/10  uppercase transition-colors outline-none"
+                >
+                  CONFIRM CLEAR
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      
+
+      {/* Overwrite Confirmation Modal */}
+      <AnimatePresence>
+        {overwriteFiles && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+          >
+            <div className="bg-panel-bg border border-orange-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(249,115,22,0.2)]">
+              <h2 className="text-orange-500 mb-4 uppercase">
+                {t("UPDATE EXISTING FILES", "既存のファイルを更新")}
+              </h2>
+              <p className="text-text-primary text-xs mb-6 leading-relaxed">
+                {t(
+                  `${overwriteFiles.files.length} file(s) already exist. Do you want to overwrite and update them?`,
+                  `同じ名前の画像が ${overwriteFiles.files.length} 件あります。これらを新しい画像で上書き更新しますか？`
+                )}
+              </p>
+              <div className="flex justify-end gap-3">
+                <SolidButton
+                  onClick={() => setOverwriteFiles(null)}
+                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
+                >
+                  {t("CANCEL", "キャンセル")}
+                </SolidButton>
+                <SolidButton
+                  onClick={confirmOverwrite}
+                  className="text-orange-500 hover:text-orange-400 border-orange-900/50"
+                >
+                  {t("UPDATE", "更新する")}
+                </SolidButton>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Image(s) Modal */}
+      <AnimatePresence>
+        {showDeleteImageModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+          >
+            <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(239,68,68,0.2)]">
+              <h2 className="text-red-500 mb-4 flex items-center gap-2">
+                <Trash2 size={20} /> {imageToDeleteContext === 'selected' ? "DELETE IMAGES" : "DELETE IMAGE"}
+              </h2>
+              <p className="text-text-secondary text-sm mb-6 uppercase leading-relaxed">
+                {language === "JP" 
+                  ? "完全に削除してもよろしいですか？この操作は元に戻せません。"
+                  : "Are you sure you want to permanently delete? This action cannot be undone."}
+              </p>
+              <div className="flex justify-end gap-3">
+                <SolidButton
+                  onClick={() => {
+                    setShowDeleteImageModal(false);
+                    setImageToDeleteContext(null);
+                  }}
+                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
+                >
+                  {t("CANCEL", "キャンセル")}
+                </SolidButton>
+                <SolidButton
+                  onClick={() => {
+                    if (imageToDeleteContext === 'selected') {
+                      executeDeleteSelectedImages();
+                    } else if (imageToDeleteContext === 'fullscreen') {
+                      performDeleteFullscreenImage();
+                    }
+                  }}
+                  className="bg-red-500/10 text-red-500 hover:text-red-400 hover:bg-red-500/20 border-red-500/30 hover:border-red-500/50"
+                >
+                  {t("DELETE", "削除する")}
+                </SolidButton>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Dataset Modal */}
+      <AnimatePresence>
+        {showDeleteDatasetModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+          >
+            <div className="bg-panel-bg border border-red-500/50 p-6 font-mono w-[400px] shadow-[0_0_30px_rgba(239,68,68,0.2)]">
+              <h2 className="text-red-500 mb-4 uppercase">
+                DELETE DATASET
+              </h2>
+              <p className="text-text-primary text-xs mb-6">
+                Are you sure you want to delete this dataset? This action cannot be undone.
+              </p>
+              <div className="flex justify-end gap-3">
+                <SolidButton
+                  onClick={() => {
+                    setShowDeleteDatasetModal(false);
+                    setDatasetToDelete(null);
+                  }}
+                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
+                >
+                  CANCEL
+                </SolidButton>
+                <SolidButton
+                  onClick={confirmDeleteDataset}
+                  className="text-red-500 hover:text-red-400 border-red-900/50"
+                >
+                  DELETE DATASET
+                </SolidButton>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Export Datasets Modal */}
-      <ExportModal
-        isOpen={showExportModal}
-        onClose={() => setShowExportModal(false)}
-        datasets={datasets}
-        datasetCounts={datasetCounts}
-        selectedExportDatasetIds={selectedExportDatasetIds}
-        setSelectedExportDatasetIds={setSelectedExportDatasetIds}
-        onExport={handleExportDatasets}
-        t={t}
-      />
+      <AnimatePresence>
+        {showExportModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+          >
+            <div className="bg-panel-bg border border-accent/50 p-6 font-mono w-[480px] max-w-[90vw] shadow-[0_0_30px_rgba(59,130,246,0.2)]">
+              <h2 className="text-accent mb-2 flex items-center gap-2 text-sm uppercase">
+                <Download size={18} /> {t("EXPORT DATASETS", "データセットのエクスポート")}
+              </h2>
+              <p className="text-text-secondary text-xs mb-4 leading-relaxed">
+                {t(
+                  "Select the datasets to backup and export:",
+                  "バックアップ（エクスポート）するリストを選択してください："
+                )}
+              </p>
+
+              <div className="flex items-center justify-between text-[11px] mb-2 px-1">
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedExportDatasetIds(datasets.map(d => d.id))}
+                    className="text-accent hover:underline"
+                  >
+                    {t("SELECT ALL", "すべて選択")}
+                  </button>
+                  <span className="text-text-muted">|</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedExportDatasetIds([])}
+                    className="text-text-muted hover:text-text-primary hover:underline"
+                  >
+                    {t("DESELECT ALL", "全解除")}
+                  </button>
+                </div>
+                <span className="text-text-secondary font-mono">
+                  {selectedExportDatasetIds.length} / {datasets.length} {t("selected", "件選択中")}
+                </span>
+              </div>
+
+              <div className="max-h-[340px] overflow-y-auto flex flex-col gap-1 pr-1 border border-panel-border/60 p-2 bg-root-bg/40 rounded-[2px] scrollbar-dark mb-6">
+                {datasets.map((ds) => {
+                  const isChecked = selectedExportDatasetIds.includes(ds.id);
+                  const count = datasetCounts[ds.id] || 0;
+                  return (
+                    <div
+                      key={ds.id}
+                      onClick={() => {
+                        setSelectedExportDatasetIds(prev =>
+                          isChecked ? prev.filter(id => id !== ds.id) : [...prev, ds.id]
+                        );
+                      }}
+                      className={cn(
+                        "flex items-center justify-between px-3 py-2 text-xs font-mono cursor-pointer border rounded-[2px] transition-colors select-none",
+                        isChecked
+                          ? "bg-accent/10 border-accent/50 text-text-primary"
+                          : "border-transparent text-text-muted hover:bg-panel-border/30 hover:text-text-primary"
+                      )}
+                    >
+                      <div className="flex items-center gap-2.5 truncate min-w-0 pr-2">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {}} // handled by parent onClick
+                          className="accent-accent cursor-pointer"
+                        />
+                        <span className="truncate">{ds.name}</span>
+                      </div>
+                      <span className="text-[10px] font-mono text-text-muted shrink-0">
+                        {count} {t("images", "枚")}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <SolidButton
+                  onClick={() => setShowExportModal(false)}
+                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
+                >
+                  {t("CANCEL", "キャンセル")}
+                </SolidButton>
+                <SolidButton
+                  onClick={() => {
+                    if (selectedExportDatasetIds.length === 0) return;
+                    setShowExportModal(false);
+                    handleExportDatasets(selectedExportDatasetIds);
+                  }}
+                  disabled={selectedExportDatasetIds.length === 0}
+                  className={cn(
+                    "text-accent hover:text-accent border-accent/50",
+                    selectedExportDatasetIds.length === 0 && "opacity-40 cursor-not-allowed"
+                  )}
+                >
+                  {t(
+                    `EXPORT (${selectedExportDatasetIds.length})`,
+                    `エクスポート (${selectedExportDatasetIds.length}件)`
+                  )}
+                </SolidButton>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Category Appearance Modal (Color & Icon) */}
-      <CategoryAppearanceModal
-        target={colorCategoryModalTarget}
-        onClose={() => setColorCategoryModalTarget(null)}
-        colorCategoryInput={colorCategoryInput}
-        setColorCategoryInput={setColorCategoryInput}
-        categoryIconInput={categoryIconInput}
-        setCategoryIconInput={setCategoryIconInput}
-        setCategories={setCategories}
-        t={t}
-        language={language}
-      />
+      <AnimatePresence>
+        {colorCategoryModalTarget && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-8 backdrop-blur-sm"
+          >
+            <div className="bg-panel-bg border border-accent/50 p-6 font-mono w-[460px] max-w-[92vw] shadow-[0_0_30px_rgba(59,130,246,0.2)]">
+              <h2 className="text-accent mb-2 flex items-center gap-2 text-sm uppercase font-bold">
+                <Palette size={18} /> {t("SET FOLDER APPEARANCE", "フォルダーの外観設定")}
+              </h2>
+              <p className="text-text-secondary text-xs mb-4 leading-relaxed">
+                {t(
+                  `Customize icon variation and color for folder "${colorCategoryModalTarget.name}":`,
+                  `フォルダー「${colorCategoryModalTarget.name}」の表示アイコンと個別カラーを設定します：`
+                )}
+              </p>
+
+              {/* 1. Folder Icon Variation Selector */}
+              <div className="mb-5 border-b border-panel-border/60 pb-4">
+                <span className="block text-[11px] font-mono text-text-muted mb-2 font-bold uppercase tracking-wider">
+                  {t("FOLDER ICON VARIATION", "フォルダーアイコンの種類")}:
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  {FOLDER_ICON_OPTIONS.map((opt) => {
+                    const isSelected = categoryIconInput === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setCategoryIconInput(opt.id)}
+                        className={cn(
+                          "flex items-center gap-2 p-2 border text-xs font-mono transition-all rounded-[2px] cursor-pointer text-left select-none",
+                          isSelected
+                            ? "bg-accent/20 border-accent text-accent font-bold ring-1 ring-accent"
+                            : "bg-root-bg/40 border-panel-border/80 text-text-secondary hover:text-text-primary hover:border-text-muted"
+                        )}
+                      >
+                        <FolderIconComponent
+                          iconType={opt.id}
+                          size={16}
+                          style={{ color: colorCategoryInput || undefined }}
+                          className="shrink-0"
+                        />
+                        <span className="truncate text-[10px]">{language === "JP" ? opt.labelJp : opt.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 2. Folder Color Selector */}
+              <div className="flex flex-col gap-3 mb-6">
+                <span className="block text-[11px] font-mono text-text-muted font-bold uppercase tracking-wider">
+                  {t("FOLDER ICON COLOR", "アイコンの個別カラー")}:
+                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {[
+                    { name: "アンバー", hex: "#fbbf24" },
+                    { name: "スカイ", hex: "#38bdf8" },
+                    { name: "ブルー", hex: "#3b82f6" },
+                    { name: "エメラルド", hex: "#10b981" },
+                    { name: "ローズ", hex: "#f43f5e" },
+                    { name: "パープル", hex: "#a855f7" },
+                    { name: "シルバー", hex: "#9ca3af" },
+                    { name: "ホワイト", hex: "#ffffff" },
+                    { name: "シアン", hex: "#06b6d4" },
+                    { name: "ピンク", hex: "#ec4899" },
+                  ].map((c) => (
+                    <button
+                      key={c.hex}
+                      type="button"
+                      onClick={() => setColorCategoryInput(c.hex)}
+                      title={c.name}
+                      className={cn(
+                        "w-6 h-6 rounded border transition-transform flex items-center justify-center cursor-pointer hover:scale-110",
+                        colorCategoryInput.toLowerCase() === c.hex.toLowerCase()
+                          ? "border-text-primary ring-2 ring-accent ring-offset-1 scale-105"
+                          : "border-black/30"
+                      )}
+                      style={{ backgroundColor: c.hex }}
+                    >
+                      {colorCategoryInput.toLowerCase() === c.hex.toLowerCase() && (
+                        <Check size={12} className="text-black drop-shadow-xs" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-between border-t border-panel-border/60 pt-3">
+                  <label className="flex items-center gap-2 text-xs text-text-muted cursor-pointer">
+                    <span>{t("Custom Color", "カスタムカラー")}:</span>
+                    <input
+                      type="color"
+                      value={colorCategoryInput || "#fbbf24"}
+                      onChange={(e) => setColorCategoryInput(e.target.value)}
+                      className="w-6 h-6 border-0 bg-transparent cursor-pointer p-0"
+                    />
+                    <span className="font-mono text-[11px] text-text-primary uppercase">{colorCategoryInput || "THEME"}</span>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setColorCategoryInput("");
+                    }}
+                    className={cn(
+                      "px-2 py-1 text-[10px] border transition-colors",
+                      !colorCategoryInput
+                        ? "bg-accent/20 border-accent text-accent font-bold"
+                        : "border-panel-border text-text-muted hover:text-text-primary"
+                    )}
+                  >
+                    {t("Clear (Use Theme)", "標準色に戻す")}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 border-t border-panel-border/60 pt-4">
+                <SolidButton
+                  onClick={() => setColorCategoryModalTarget(null)}
+                  className="bg-transparent border-transparent text-text-secondary hover:text-text-primary shadow-none"
+                >
+                  {t("CANCEL", "キャンセル")}
+                </SolidButton>
+                <SolidButton
+                  onClick={async () => {
+                    if (colorCategoryModalTarget) {
+                      await updateCategoryColor(colorCategoryModalTarget.id, colorCategoryInput || null);
+                      await updateCategoryIcon(
+                        colorCategoryModalTarget.id,
+                        categoryIconInput === "folder" ? null : categoryIconInput
+                      );
+                      const updatedCats = await getAllCategories();
+                      setCategories(updatedCats);
+                      setColorCategoryModalTarget(null);
+                    }
+                  }}
+                  className="text-accent hover:text-accent border-accent/50"
+                >
+                  {t("SAVE SETTINGS", "設定を保存")}
+                </SolidButton>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Quick Stock Drawer / Modal */}
-      <StockDrawer
-        isOpen={isQuickStockDrawerOpen}
-        onClose={() => setIsQuickStockDrawerOpen(false)}
-        quickStocks={quickStocks}
-        activeStockId={activeStockId}
-        checkStockStatus={checkStockStatus}
-        isDrawerExpanded={isDrawerExpanded}
-        setIsDrawerExpanded={setIsDrawerExpanded}
-        stockDisplayMode={stockDisplayMode}
-        setStockDisplayMode={setStockDisplayMode}
-        onCreateStock={handleCreateQuickStock}
-        onClearAllStocks={handleClearAllQuickStocks}
-        onCleanupInvalidStocks={handleCleanupInvalidStocks}
-        editingStockId={editingStockId}
-        setEditingStockId={setEditingStockId}
-        editingStockName={editingStockName}
-        setEditingStockName={setEditingStockName}
-        onRenameStock={handleRenameQuickStock}
-        onRestoreStock={handleRestoreQuickStock}
-        onUpdateStock={handleUpdateQuickStock}
-        onMoveStock={handleMoveQuickStock}
-        onDeleteStock={handleDeleteQuickStock}
-        t={t}
-      />
+      <AnimatePresence>
+        {isQuickStockDrawerOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] bg-root-bg/70 backdrop-blur-xs flex items-center justify-center p-4"
+            onClick={() => setIsQuickStockDrawerOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 10 }}
+              transition={{ duration: 0.15 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-panel-bg border border-panel-border w-[520px] max-w-[96vw] max-h-[85vh] flex flex-col font-mono shadow-2xl rounded-xs overflow-hidden"
+            >
+              {/* DRAWER HEADER */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-panel-border/80 bg-root-bg/60 shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-xs bg-panel-bg border border-panel-border flex items-center justify-center">
+                    <Zap size={13} className="text-text-secondary" />
+                  </div>
+                  <span className="text-sm font-bold tracking-wider text-text-primary uppercase">
+                    {t("QUICK STOCK", "クイックストック")}
+                  </span>
+                  <span className="text-[10px] bg-panel-border/40 text-text-muted border border-panel-border px-1.5 py-0.2 rounded-full font-bold">
+                    {quickStocks.length}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsQuickStockDrawerOpen(false)}
+                  className="w-7 h-7 flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-white/5 rounded-xs transition-colors cursor-pointer"
+                  title="CLOSE"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              {/* ACTION BAR */}
+              <div className="p-3 border-b border-panel-border/60 bg-panel-bg flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleCreateQuickStock();
+                  }}
+                  className="flex-1 py-2 px-3 bg-panel-bg hover:bg-white/5 text-text-primary border border-panel-border hover:border-accent text-xs font-bold flex items-center justify-center gap-2 rounded-xs transition-all shadow-xs cursor-pointer"
+                  title={t("Save current view and scroll position to Quick Stock", "現在の画面表示とスクロール位置をストックに保存")}
+                >
+                  <Zap size={14} className="text-text-secondary" />
+                  <span>{t("+ STORE CURRENT SCROLL POSITION", "+ 現在の閲覧位置をストック保存")}</span>
+                </button>
+
+                {/* LIST / TILE MODE TOGGLE */}
+                <div className="flex items-center border border-panel-border rounded-xs overflow-hidden bg-root-bg shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setStockDisplayMode("list")}
+                    className={cn(
+                      "px-2.5 py-1.5 flex items-center gap-1.5 text-[10px] font-mono transition-colors cursor-pointer",
+                      stockDisplayMode === "list"
+                        ? "bg-accent text-accent-text font-bold"
+                        : "text-text-muted hover:text-text-primary hover:bg-white/5"
+                    )}
+                    title={t("List view", "リスト表示")}
+                  >
+                    <List size={12} />
+                    <span>LIST</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStockDisplayMode("tile")}
+                    className={cn(
+                      "px-2.5 py-1.5 flex items-center gap-1.5 text-[10px] font-mono transition-colors cursor-pointer",
+                      stockDisplayMode === "tile"
+                        ? "bg-accent text-accent-text font-bold"
+                        : "text-text-muted hover:text-text-primary hover:bg-white/5"
+                    )}
+                    title={t("Tile view (Compact squares)", "タイル表示（四角いストックマーク）")}
+                  >
+                    <LayoutGrid size={12} />
+                    <span>TILE</span>
+                  </button>
+                </div>
+
+                {quickStocks.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearAllQuickStocks}
+                    className="px-2.5 py-2 text-text-muted hover:text-red-400 border border-panel-border hover:border-red-400/40 text-[10px] transition-all rounded-xs cursor-pointer"
+                    title={t("Clear all quick stocks", "全ストックを削除")}
+                  >
+                    {t("CLEAR ALL", "全消去")}
+                  </button>
+                )}
+              </div>
+
+              {/* STOCKS LIST CONTAINER */}
+              <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-[160px]">
+                {quickStocks.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center text-text-muted text-xs gap-2.5 border border-dashed border-panel-border/60 rounded p-6 my-auto">
+                    <Zap size={28} className="text-text-muted/40" />
+                    <span className="font-bold text-text-primary">{t("NO STOCKS SAVED", "ストックが記録されていません")}</span>
+                    <span className="text-[11px] text-text-muted/80 max-w-sm leading-relaxed">
+                      {t(
+                        "Click '+ STORE CURRENT SCROLL POSITION' or use the 'STOCK POSITION' button on the breadcrumbs bar to save your exact scroll state at mid or bottom. Jump back anytime with 1 click.",
+                        "一覧表示中に「+ 現在の閲覧位置をストック保存」またはパンくずバーの「位置をストック」を押すと、中段や下段のスクロール位置を何件でも記録できます。いつでもワンクリックでその場所へ復元できます。"
+                      )}
+                    </span>
+                  </div>
+                ) : stockDisplayMode === "tile" ? (
+                  /* TILE VIEW: COMPACT SQUARE PINS GRID */
+                  <div className="grid grid-cols-4 sm:grid-cols-6 gap-2.5 p-1">
+                    {quickStocks.map((stk, idx) => {
+                      const pct = Math.round(stk.scrollRatio * 100);
+                      const isActive = activeStockId === stk.id;
+                      return (
+                        <button
+                          key={stk.id}
+                          type="button"
+                          onClick={() => {
+                            handleRestoreQuickStock(stk);
+                            setIsQuickStockDrawerOpen(false);
+                          }}
+                          className={cn(
+                            "group relative aspect-square flex flex-col items-center justify-center rounded-[3px] border-2 transition-all cursor-pointer select-none shadow-xs",
+                            isActive
+                              ? "border-accent bg-accent/15 ring-2 ring-accent/30 shadow-md"
+                              : "border-panel-border bg-root-bg hover:border-accent hover:bg-white/5 hover:shadow-md"
+                          )}
+                          title={`#${idx + 1} ${stk.name}\n${stk.datasetName || stk.categoryName || "ALL"} • ${pct}% (${new Date(stk.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`}
+                        >
+                          {/* PIN MARK ICON */}
+                          <Pin
+                            size={20}
+                            className={cn(
+                              "transition-transform duration-150 group-hover:scale-115",
+                              isActive
+                                ? "text-accent fill-accent"
+                                : "text-text-primary fill-current opacity-90"
+                            )}
+                          />
+
+                          {/* TOP-LEFT INDEX */}
+                          <span className="absolute top-1 left-1.5 text-[9px] font-mono text-text-muted font-bold leading-none">
+                            #{idx + 1}
+                          </span>
+
+                          {/* BOTTOM-RIGHT PERCENT / POS */}
+                          <span className="absolute bottom-1 right-1 text-[9px] font-mono px-1 py-0.2 rounded font-bold leading-none bg-panel-bg/90 text-text-secondary border border-panel-border/60">
+                            {pct <= 5 ? "TOP" : pct >= 95 ? "BTM" : `${pct}%`}
+                          </span>
+
+                          {/* HOVER DELETE BUTTON */}
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteQuickStock(stk.id);
+                            }}
+                            className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:scale-110 transition-all shadow-xs z-10 cursor-pointer"
+                            title={t("Delete stock", "ストックを削除")}
+                          >
+                            <X size={9} />
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* LIST VIEW */
+                  <div className="flex flex-col gap-2">
+                    {quickStocks.map((stk, idx) => {
+                    const isEditing = editingStockId === stk.id;
+                    const pct = Math.round(stk.scrollRatio * 100);
+                    return (
+                      <div
+                        key={stk.id}
+                        className="group flex flex-col gap-1.5 p-2.5 bg-root-bg/50 hover:bg-root-bg/80 border border-panel-border hover:border-accent rounded-xs transition-all text-[11px] select-none"
+                      >
+                        {/* TOP ROW: NAME & POSITION BADGE */}
+                        <div className="flex items-center justify-between gap-2">
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              autoFocus
+                              value={editingStockName}
+                              onChange={(e) => setEditingStockName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handleRenameQuickStock(stk.id, editingStockName);
+                                  setEditingStockId(null);
+                                } else if (e.key === "Escape") {
+                                  setEditingStockId(null);
+                                }
+                              }}
+                              onBlur={() => {
+                                handleRenameQuickStock(stk.id, editingStockName);
+                                setEditingStockId(null);
+                              }}
+                              className="flex-1 bg-black/50 border border-accent px-1.5 py-0.5 text-text-primary text-[11px] rounded outline-none"
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleRestoreQuickStock(stk);
+                                setIsQuickStockDrawerOpen(false);
+                              }}
+                              className="flex-1 text-left font-bold text-text-primary hover:text-accent truncate cursor-pointer transition-colors"
+                              title={t("Click to jump to this position", "クリックしてこの位置へジャンプ")}
+                            >
+                              {stk.name}
+                            </button>
+                          )}
+                          <span
+                            className={cn(
+                              "shrink-0 text-[10px] px-2 py-0.5 rounded font-bold uppercase",
+                              pct <= 5
+                                ? "bg-panel-border/50 text-text-secondary border border-panel-border"
+                                : pct >= 95
+                                ? "bg-panel-border/50 text-text-secondary border border-panel-border"
+                                : "bg-panel-border/40 text-text-secondary border border-panel-border"
+                            )}
+                          >
+                            {pct <= 5 ? "TOP" : pct >= 95 ? "BTM" : `${pct}%`}
+                          </span>
+                        </div>
+
+                        {/* BOTTOM ROW: META & ACTIONS */}
+                        <div className="flex items-center justify-between text-text-muted text-[10px] pt-0.5">
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="truncate text-text-secondary font-bold">
+                              {stk.datasetName || stk.categoryName || "ALL"}
+                            </span>
+                            <span className="opacity-40">•</span>
+                            <span className="uppercase">{stk.viewMode.replace("grid-", "")}</span>
+                            <span className="opacity-40">•</span>
+                            <span>{new Date(stk.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {/* MOVE UP */}
+                            <button
+                              type="button"
+                              onClick={(e) => handleMoveQuickStock(stk.id, "up", e)}
+                              disabled={idx === 0}
+                              className="p-1 hover:text-text-primary disabled:opacity-20 transition-colors"
+                              title={t("Move up in list", "上へ並び替え")}
+                            >
+                              <ArrowUp size={12} />
+                            </button>
+                            {/* MOVE DOWN */}
+                            <button
+                              type="button"
+                              onClick={(e) => handleMoveQuickStock(stk.id, "down", e)}
+                              disabled={idx === quickStocks.length - 1}
+                              className="p-1 hover:text-text-primary disabled:opacity-20 transition-colors"
+                              title={t("Move down in list", "下へ並び替え")}
+                            >
+                              <ArrowDown size={12} />
+                            </button>
+                            {/* OVERWRITE */}
+                            <button
+                              type="button"
+                              onClick={(e) => handleUpdateQuickStock(stk.id, e)}
+                              className="p-1 text-text-muted hover:text-accent transition-colors"
+                              title={t("Overwrite with current scroll position", "現在の位置で上書き更新")}
+                            >
+                              <RefreshCw size={12} />
+                            </button>
+                            {/* RENAME */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingStockId(stk.id);
+                                setEditingStockName(stk.name);
+                              }}
+                              className="p-1 hover:text-text-primary transition-colors"
+                              title={t("Rename stock", "名前を変更")}
+                            >
+                              <Edit2 size={12} />
+                            </button>
+                            {/* DELETE */}
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteQuickStock(stk.id, e)}
+                              className="p-1 hover:text-red-400 transition-colors"
+                              title={t("Delete stock", "削除")}
+                            >
+                              <X size={12} />
+                            </button>
+                            {/* JUMP BUTTON */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleRestoreQuickStock(stk);
+                                setIsQuickStockDrawerOpen(false);
+                              }}
+                              className="px-2.5 py-0.5 bg-accent/20 hover:bg-accent text-accent hover:text-accent-text border border-accent/40 rounded-xs font-bold text-[10px] transition-colors ml-1"
+                              title={t("Restore this view and jump to scroll position", "この位置へ復元ジャンプ")}
+                            >
+                              JUMP
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  </div>
+                )}
+              </div>
+
+              {/* DRAWER FOOTER */}
+              <div className="px-4 py-2.5 border-t border-panel-border/80 bg-root-bg/40 flex items-center justify-between text-[10px] text-text-muted shrink-0">
+                <span>{t("QUICK STOCK ENGINE", "クイックストック機能")}</span>
+                <SolidButton
+                  onClick={() => setIsQuickStockDrawerOpen(false)}
+                  className="px-3 py-1 text-[10px] bg-transparent border-panel-border text-text-secondary hover:text-text-primary"
+                >
+                  {t("CLOSE", "閉じる")}
+                </SolidButton>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <footer className="flex justify-between text-[10px] font-mono text-text-muted uppercase tracking-widest shrink-0">
         <span>SYSTEM_READY_</span>

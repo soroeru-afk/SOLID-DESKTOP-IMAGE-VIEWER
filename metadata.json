@@ -1,6 +1,8 @@
 {
-  "name": "■ SOLID DESKTOP IMAGE VIEWER",
+  "name": "■ SOLID DESKTOP IMAGE VIEWER - EXPORT  VERSION",
   "description": "High-end local image viewer with File System Access API and IndexedDB caching. Features physical inertia animations and multiple layout formations.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

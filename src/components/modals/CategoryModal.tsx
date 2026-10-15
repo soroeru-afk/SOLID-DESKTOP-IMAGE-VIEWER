@@ -1,36 +1,66 @@
 import React from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { Folder, FilePlus } from "lucide-react";
 import { SolidButton } from "../ui";
-import { CategoryRecord } from "../../lib/db";
 
-export interface CategoryModalProps {
+export interface CategoryItem {
+  id: string;
+  name: string;
+  parentId?: string | null;
+}
+
+interface CategoryModalProps {
   isOpen: boolean;
+  onClose: () => void;
   editingCategoryId: string | null;
   categoryNameInput: string;
-  setCategoryNameInput: (name: string) => void;
+  setCategoryNameInput: (val: string) => void;
   newCategoryParentId: string | null;
-  setNewCategoryParentId: (id: string | null) => void;
-  categories: CategoryRecord[];
-  onClose: () => void;
-  onSubmit: () => void;
-  onAddDatasetClick: (parentId: string | null) => void;
-  t: (en: string, jp: string) => string;
+  setNewCategoryParentId: (val: string | null) => void;
+  categories: CategoryItem[];
+  onConfirm: () => void;
+  onSwitchToCreateDataset?: (parentId: string | null) => void;
+  t: (en: string, ja: string) => string;
 }
 
 export const CategoryModal: React.FC<CategoryModalProps> = ({
   isOpen,
+  onClose,
   editingCategoryId,
   categoryNameInput,
   setCategoryNameInput,
   newCategoryParentId,
   setNewCategoryParentId,
   categories,
-  onClose,
-  onSubmit,
-  onAddDatasetClick,
+  onConfirm,
+  onSwitchToCreateDataset,
   t,
 }) => {
+  const isDescendant = (catId: string, potentialChildId: string): boolean => {
+    if (catId === potentialChildId) return true;
+    const children = categories.filter((c) => c.parentId === potentialChildId);
+    for (const ch of children) {
+      if (isDescendant(catId, ch.id)) return true;
+    }
+    return false;
+  };
+
+  const renderCategoryOptions = (parentId: string | null = null, depth: number = 0): React.ReactNode => {
+    const subCats = categories.filter((c) => (c.parentId || null) === parentId);
+    return subCats.map((cat) => {
+      const isSelfOrChild = editingCategoryId && isDescendant(cat.id, editingCategoryId);
+      return (
+        <React.Fragment key={cat.id}>
+          <option value={cat.id} disabled={!!isSelfOrChild}>
+            {depth === 0 ? "📁 " : `${"  ".repeat(depth)}└─ 📁 `}
+            {cat.name}
+          </option>
+          {renderCategoryOptions(cat.id, depth + 1)}
+        </React.Fragment>
+      );
+    });
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -46,12 +76,12 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                 <Folder size={18} className="text-folder-icon" />
                 {editingCategoryId ? t("RENAME CATEGORY", "フォルダー名の変更") : t("NEW CATEGORY", "新規フォルダーの作成")}
               </h2>
-              {!editingCategoryId && (
+              {!editingCategoryId && onSwitchToCreateDataset && (
                 <button
                   type="button"
                   onClick={() => {
                     onClose();
-                    onAddDatasetClick(newCategoryParentId);
+                    onSwitchToCreateDataset(newCategoryParentId);
                   }}
                   className="text-[10px] text-accent hover:underline flex items-center gap-1 cursor-pointer"
                   title={t("Switch to Create Dataset", "データセット作成に切り替え")}
@@ -61,7 +91,6 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                 </button>
               )}
             </div>
-
             <div className="space-y-4 mb-6">
               <div>
                 <label className="block text-[10px] text-text-muted mb-1 font-bold uppercase">
@@ -72,12 +101,11 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                   type="text"
                   value={categoryNameInput}
                   onChange={(e) => setCategoryNameInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && onSubmit()}
+                  onKeyDown={(e) => e.key === "Enter" && onConfirm()}
                   className="w-full bg-root-bg border border-panel-border text-text-primary px-3 py-2 text-xs font-mono outline-none focus:border-accent"
                   placeholder={t("ENTER CATEGORY NAME...", "フォルダー名を入力...")}
                 />
               </div>
-
               <div>
                 <label className="block text-[10px] text-text-muted mb-1 font-bold uppercase">
                   {t("LOCATION / PARENT FOLDER", "作成先（親フォルダー）の選択")}
@@ -88,37 +116,10 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                   className="w-full bg-root-bg border border-panel-border text-text-primary px-3 py-2 text-xs font-mono outline-none focus:border-accent cursor-pointer"
                 >
                   <option value="">📁 {t("ALL IMAGE DATA (ROOT LEVEL)", "ALL IMAGE DATA (ルート / トップ階層)")}</option>
-                  {(() => {
-                    const isDescendant = (catId: string, potentialChildId: string): boolean => {
-                      if (catId === potentialChildId) return true;
-                      const children = categories.filter((c) => c.parentId === potentialChildId);
-                      for (const ch of children) {
-                        if (isDescendant(catId, ch.id)) return true;
-                      }
-                      return false;
-                    };
-
-                    const renderCategoryOptions = (parentId: string | null = null, depth: number = 0): React.ReactNode => {
-                      const subCats = categories.filter((c) => (c.parentId || null) === parentId);
-                      return subCats.map((cat) => {
-                        const isSelfOrChild = editingCategoryId && isDescendant(cat.id, editingCategoryId);
-                        return (
-                          <React.Fragment key={cat.id}>
-                            <option value={cat.id} disabled={!!isSelfOrChild}>
-                              {depth === 0 ? "📁 " : `${"  ".repeat(depth)}└─ 📁 `}{cat.name}
-                            </option>
-                            {renderCategoryOptions(cat.id, depth + 1)}
-                          </React.Fragment>
-                        );
-                      });
-                    };
-
-                    return renderCategoryOptions(null, 0);
-                  })()}
+                  {renderCategoryOptions(null, 0)}
                 </select>
               </div>
             </div>
-
             <div className="flex justify-end gap-3">
               <SolidButton
                 onClick={onClose}
@@ -126,10 +127,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
               >
                 {t("CANCEL", "キャンセル")}
               </SolidButton>
-              <SolidButton
-                onClick={onSubmit}
-                className="text-accent hover:text-accent"
-              >
+              <SolidButton onClick={onConfirm} className="text-accent hover:text-accent">
                 {t("CONFIRM", "確定")}
               </SolidButton>
             </div>

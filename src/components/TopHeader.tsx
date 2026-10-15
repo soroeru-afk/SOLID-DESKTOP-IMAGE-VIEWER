@@ -11,34 +11,33 @@ import {
   PanelRight,
   ExternalLink,
 } from "lucide-react";
-import { cn } from "../lib/utils";
 import { SolidButton } from "./ui";
-import { QuickStockRecord } from "./stock/types";
+import { cn } from "../lib/utils";
 
-export interface TopHeaderProps {
+interface TopHeaderProps {
   itemScale: number;
   setItemScale: (val: number) => void;
   gridGap: number;
   setGridGap: (val: number) => void;
   canvasBg: "theme" | "black" | "white" | "checker";
   setCanvasBg: (val: "theme" | "black" | "white" | "checker") => void;
-  appFont: "GOTHIC" | "MARU" | "MEIRYO" | "MONO";
-  setAppFont: (val: "GOTHIC" | "MARU" | "MEIRYO" | "MONO") => void;
+  appFont: string;
+  setAppFont: (val: any) => void;
   theme: string;
   cycleTheme: () => void;
   language: "EN" | "JP";
-  setLanguage: (lang: "EN" | "JP") => void;
+  setLanguage: (val: "EN" | "JP") => void;
   isOnline: boolean;
   deferredInstallPrompt: any;
   handleInstallPWA: () => void;
+  quickStocksCount: number;
   isQuickStockDrawerOpen: boolean;
   setIsQuickStockDrawerOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  quickStocks: QuickStockRecord[];
   isAppFullscreen: boolean;
   toggleAppFullscreen: () => void;
   sidebarPosition: "left" | "right";
   setSidebarPosition: React.Dispatch<React.SetStateAction<"left" | "right">>;
-  t: (en: string, jp: string) => string;
+  t: (en: string, ja: string) => string;
 }
 
 export const TopHeader: React.FC<TopHeaderProps> = ({
@@ -57,9 +56,9 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   isOnline,
   deferredInstallPrompt,
   handleInstallPWA,
+  quickStocksCount,
   isQuickStockDrawerOpen,
   setIsQuickStockDrawerOpen,
-  quickStocks,
   isAppFullscreen,
   toggleAppFullscreen,
   sidebarPosition,
@@ -86,38 +85,54 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
         <div className="flex items-center gap-2 h-full">
           <span className="text-[10px] uppercase font-mono tracking-widest text-text-muted">SIZE:</span>
           <div className="w-40 flex items-center">
-            <input type="range" min="60" max="750" value={itemScale} onChange={(e) => setItemScale(Number(e.target.value))} />
+            <input
+              type="range"
+              min="60"
+              max="750"
+              value={itemScale}
+              onChange={(e) => setItemScale(Number(e.target.value))}
+            />
           </div>
-          <span className="text-[10px] font-mono text-text-primary w-10 text-right">{itemScale}px</span>
+          <span className="text-[10px] font-mono text-text-primary w-10 text-right tabular-nums">{itemScale}px</span>
         </div>
 
         <div className="flex items-center gap-2 h-full">
           <span className="text-[10px] uppercase font-mono tracking-widest text-text-muted">GAP:</span>
           <div className="w-40 flex items-center">
-            <input type="range" min="0" max="120" value={gridGap} onChange={(e) => setGridGap(Number(e.target.value))} />
+            <input
+              type="range"
+              min="0"
+              max="120"
+              value={gridGap}
+              onChange={(e) => setGridGap(Number(e.target.value))}
+            />
           </div>
-          <span className="text-[10px] font-mono text-text-primary w-10 text-right">{gridGap}px</span>
+          <span className="text-[10px] font-mono text-text-primary w-10 text-right tabular-nums">{gridGap}px</span>
         </div>
 
         <div className="flex items-center gap-2 h-full">
-          <span className="text-[10px] uppercase font-mono tracking-widest text-text-muted">
-            CANVAS:
-          </span>
+          <span className="text-[10px] uppercase font-mono tracking-widest text-text-muted">CANVAS:</span>
           <div className="flex gap-1 h-full py-2 items-center">
-            <SolidButton active={canvasBg === "theme"} onClick={() => setCanvasBg("theme")} className="w-10 h-6 px-0 py-0 text-[10px]">AUTO</SolidButton>
-            <SolidButton active={canvasBg === "black"} onClick={() => setCanvasBg("black")} className="w-10 h-6 px-0 py-0 text-[10px]">BLK</SolidButton>
-            <SolidButton active={canvasBg === "white"} onClick={() => setCanvasBg("white")} className="w-10 h-6 px-0 py-0 text-[10px]">WHT</SolidButton>
-            <SolidButton active={canvasBg === "checker"} onClick={() => setCanvasBg("checker")} className="w-10 h-6 px-0 py-0 text-[10px]">CHK</SolidButton>
+            <SolidButton active={canvasBg === "theme"} onClick={() => setCanvasBg("theme")} className="w-10 h-6 px-0 py-0 text-[10px]">
+              AUTO
+            </SolidButton>
+            <SolidButton active={canvasBg === "black"} onClick={() => setCanvasBg("black")} className="w-10 h-6 px-0 py-0 text-[10px]">
+              BLK
+            </SolidButton>
+            <SolidButton active={canvasBg === "white"} onClick={() => setCanvasBg("white")} className="w-10 h-6 px-0 py-0 text-[10px]">
+              WHT
+            </SolidButton>
+            <SolidButton active={canvasBg === "checker"} onClick={() => setCanvasBg("checker")} className="w-10 h-6 px-0 py-0 text-[10px]">
+              CHK
+            </SolidButton>
           </div>
         </div>
 
         <div className="flex items-center gap-2 h-full">
-          <span className="text-[10px] uppercase font-mono tracking-widest text-text-muted">
-            FONT:
-          </span>
+          <span className="text-[10px] uppercase font-mono tracking-widest text-text-muted">FONT:</span>
           <select
             value={appFont}
-            onChange={(e) => setAppFont(e.target.value as any)}
+            onChange={(e) => setAppFont(e.target.value)}
             className="bg-panel-bg outline-none text-[10px] uppercase font-mono tracking-wider text-text-primary cursor-pointer border h-6 px-2 border-panel-border rounded"
           >
             <option value="GOTHIC">GOTHIC</option>
@@ -145,10 +160,10 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
         <div className="flex bg-root-bg rounded border border-panel-border overflow-hidden text-[10px] font-mono leading-none h-6 hidden sm:flex">
           <button
             className={cn(
-              "px-2 transition-colors",
+              "px-2 transition-colors cursor-pointer",
               language === "EN"
-                ? "bg-text-secondary text-root-bg"
-                : "bg-panel-bg text-text-muted hover:text-text-primary",
+                ? "bg-text-secondary text-root-bg font-bold"
+                : "bg-panel-bg text-text-muted hover:text-text-primary"
             )}
             onClick={() => setLanguage("EN")}
           >
@@ -156,10 +171,10 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           </button>
           <button
             className={cn(
-              "px-2 transition-colors",
+              "px-2 transition-colors cursor-pointer",
               language === "JP"
-                ? "bg-text-secondary text-root-bg"
-                : "bg-panel-bg text-text-muted hover:text-text-primary",
+                ? "bg-text-secondary text-root-bg font-bold"
+                : "bg-panel-bg text-text-muted hover:text-text-primary"
             )}
             onClick={() => setLanguage("JP")}
           >
@@ -174,69 +189,59 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
               <span>OFFLINE</span>
             </div>
           )}
+
           {deferredInstallPrompt && (
             <SolidButton
               onClick={handleInstallPWA}
-              className="px-2.5 py-0 h-6 text-[10px] flex items-center gap-1.5 text-accent border-accent/40 bg-accent/10 hover:bg-accent/20"
+              className="px-2.5 py-0 h-6 text-[10px] flex items-center gap-1.5 text-accent border-accent/40 bg-accent/10 hover:bg-accent/20 cursor-pointer"
               title={t("Install app on this device", "この端末にアプリをインストール")}
             >
               <Download size={12} />
               <span>INSTALL</span>
             </SolidButton>
           )}
+
           {/* QUICK STOCK BUTTON */}
           <SolidButton
-            active={isQuickStockDrawerOpen}
             onClick={() => setIsQuickStockDrawerOpen((prev) => !prev)}
             className={cn(
               "px-2.5 py-0 h-6 text-[10px] flex items-center gap-1.5 font-mono cursor-pointer transition-all",
               isQuickStockDrawerOpen
-                ? "bg-accent text-accent-text border-accent font-bold shadow-xs"
-                : quickStocks.length > 0
-                ? "border-accent/40 text-text-primary hover:border-accent hover:text-accent"
+                ? "border-amber-400 bg-amber-500/25 text-amber-300 font-bold shadow-xs"
+                : quickStocksCount > 0
+                ? "border-amber-500/40 text-amber-400 hover:border-amber-400 hover:text-amber-300"
                 : "border-panel-border text-text-secondary hover:text-text-primary"
             )}
             title={t("Toggle Quick Stock Drawer (Save & restore scroll states)", "クイックストック一覧を開閉（閲覧・スクロール位置保存）")}
           >
-            <Zap size={12} className={cn("shrink-0", quickStocks.length > 0 ? "text-accent" : "text-text-muted")} />
+            <Zap size={12} className={cn("shrink-0", quickStocksCount > 0 ? "fill-amber-400 text-amber-400" : "")} />
             <span>STOCK</span>
-            {quickStocks.length > 0 && (
-              <span className={cn(
-                "px-1 py-0 rounded text-[9px] font-bold font-mono",
-                isQuickStockDrawerOpen ? "bg-black/20 text-accent-text" : "bg-accent/20 text-accent"
-              )}>
-                {quickStocks.length}
+            {quickStocksCount > 0 && (
+              <span className="bg-amber-500/30 text-amber-400 px-1 py-0 rounded text-[9px] font-bold">
+                {quickStocksCount}
               </span>
             )}
           </SolidButton>
 
           <SolidButton
             onClick={toggleAppFullscreen}
-            className="px-2"
+            className="px-2 cursor-pointer"
             title="TOGGLE FULLSCREEN (F11)"
           >
-            {isAppFullscreen ? (
-              <Minimize size={16} />
-            ) : (
-              <Maximize size={16} />
-            )}
+            {isAppFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
           </SolidButton>
+
           <SolidButton
-            onClick={() =>
-              setSidebarPosition((p) => (p === "left" ? "right" : "left"))
-            }
-            className="px-2"
+            onClick={() => setSidebarPosition((p) => (p === "left" ? "right" : "left"))}
+            className="px-2 cursor-pointer"
             title="TOGGLE SIDEBAR POSITION"
           >
-            {sidebarPosition === "left" ? (
-              <PanelLeft size={16} />
-            ) : (
-              <PanelRight size={16} />
-            )}
+            {sidebarPosition === "left" ? <PanelLeft size={16} /> : <PanelRight size={16} />}
           </SolidButton>
+
           <SolidButton
-            onClick={() => window.open(window.location.href, '_blank')}
-            className="px-2 ml-2"
+            onClick={() => window.open(window.location.href, "_blank")}
+            className="px-2 ml-2 cursor-pointer"
             title="OPEN IN NEW TAB"
           >
             <ExternalLink size={16} />

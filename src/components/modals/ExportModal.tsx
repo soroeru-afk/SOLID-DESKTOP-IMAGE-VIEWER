@@ -1,19 +1,23 @@
 import React from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { Download } from "lucide-react";
-import { cn } from "../../lib/utils";
 import { SolidButton } from "../ui";
-import { DatasetRecord } from "../../lib/db";
+import { cn } from "../../lib/utils";
 
-export interface ExportModalProps {
+export interface DatasetExportItem {
+  id: string;
+  name: string;
+}
+
+interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  datasets: DatasetRecord[];
+  datasets: DatasetExportItem[];
   datasetCounts: Record<string, number>;
   selectedExportDatasetIds: string[];
   setSelectedExportDatasetIds: React.Dispatch<React.SetStateAction<string[]>>;
-  onExport: (targetIds: string[]) => void;
-  t: (en: string, jp: string) => string;
+  onExport: (selectedIds: string[]) => void;
+  t: (en: string, ja: string) => string;
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({
@@ -50,58 +54,57 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setSelectedExportDatasetIds(datasets.map(d => d.id))}
-                  className="text-accent hover:underline"
+                  onClick={() => setSelectedExportDatasetIds(datasets.map((d) => d.id))}
+                  className="text-accent hover:underline cursor-pointer"
                 >
                   {t("SELECT ALL", "すべて選択")}
                 </button>
-                <span className="text-text-secondary/40">|</span>
+                <span className="text-text-muted">|</span>
                 <button
                   type="button"
                   onClick={() => setSelectedExportDatasetIds([])}
-                  className="text-text-secondary hover:text-text-primary hover:underline"
+                  className="text-text-muted hover:text-text-primary hover:underline cursor-pointer"
                 >
-                  {t("CLEAR", "解除")}
+                  {t("DESELECT ALL", "全解除")}
                 </button>
               </div>
-              <span className="text-text-secondary">
-                {selectedExportDatasetIds.length} / {datasets.length} {t("SELECTED", "件選択中")}
+              <span className="text-text-secondary font-mono">
+                {selectedExportDatasetIds.length} / {datasets.length} {t("selected", "件選択中")}
               </span>
             </div>
 
-            <div className="max-h-[260px] overflow-y-auto space-y-1 pr-1 mb-5 border border-border-main p-2 bg-root-bg/40">
-              {datasets.map(d => {
-                const isChecked = selectedExportDatasetIds.includes(d.id);
-                const count = datasetCounts[d.id] || 0;
+            <div className="max-h-[340px] overflow-y-auto flex flex-col gap-1 pr-1 border border-panel-border/60 p-2 bg-root-bg/40 rounded-[2px] scrollbar-dark mb-6">
+              {datasets.map((ds) => {
+                const isChecked = selectedExportDatasetIds.includes(ds.id);
+                const count = datasetCounts[ds.id] || 0;
                 return (
-                  <label
-                    key={d.id}
+                  <div
+                    key={ds.id}
+                    onClick={() => {
+                      setSelectedExportDatasetIds((prev) =>
+                        isChecked ? prev.filter((id) => id !== ds.id) : [...prev, ds.id]
+                      );
+                    }}
                     className={cn(
-                      "flex items-center justify-between p-2 cursor-pointer transition-colors border text-xs select-none",
+                      "flex items-center justify-between px-3 py-2 text-xs font-mono cursor-pointer border rounded-[2px] transition-colors select-none",
                       isChecked
-                        ? "bg-accent/10 border-accent/40 text-text-primary"
-                        : "bg-panel-bg/40 border-border-main/50 text-text-secondary hover:bg-hover-bg"
+                        ? "bg-accent/10 border-accent/50 text-text-primary"
+                        : "border-transparent text-text-muted hover:bg-panel-border/30 hover:text-text-primary"
                     )}
                   >
-                    <div className="flex items-center gap-2.5 truncate pr-2">
+                    <div className="flex items-center gap-2.5 truncate min-w-0 pr-2">
                       <input
                         type="checkbox"
                         checked={isChecked}
-                        onChange={() => {
-                          if (isChecked) {
-                            setSelectedExportDatasetIds(prev => prev.filter(id => id !== d.id));
-                          } else {
-                            setSelectedExportDatasetIds(prev => [...prev, d.id]);
-                          }
-                        }}
-                        className="rounded border-border-main bg-root-bg text-accent focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                        onChange={() => {}} // handled by parent onClick
+                        className="accent-accent cursor-pointer"
                       />
-                      <span className="truncate">{d.name}</span>
+                      <span className="truncate">{ds.name}</span>
                     </div>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-root-bg border border-border-main text-text-secondary font-mono flex-shrink-0">
-                      {count} {t("ITEMS", "件")}
+                    <span className="text-[10px] font-mono text-text-muted shrink-0">
+                      {count} {t("images", "枚")}
                     </span>
-                  </label>
+                  </div>
                 );
               })}
             </div>
