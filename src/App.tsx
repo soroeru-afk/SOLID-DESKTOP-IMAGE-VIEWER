@@ -5964,11 +5964,13 @@ Images imported: ${importedImages}`);
                             quickStocks={quickStocks}
                             activeStockId={activeStockId}
                             checkStockStatus={checkStockStatus}
+                            isStockPanelExpanded={isStockPanelExpanded}
+                            setIsStockPanelExpanded={setIsStockPanelExpanded}
                             stockDisplayMode={stockDisplayMode}
                             setStockDisplayMode={setStockDisplayMode}
                             onCreateStock={handleCreateQuickStock}
                             onClearAllStocks={handleClearAllQuickStocks}
-                            onCleanupInvalidStocks={cleanupInvalidStocks}
+                            onCleanupInvalidStocks={handleCleanupInvalidStocks}
                             editingStockId={editingStockId}
                             setEditingStockId={setEditingStockId}
                             editingStockName={editingStockName}
@@ -7936,7 +7938,7 @@ Images imported: ${importedImages}`);
         setStockDisplayMode={setStockDisplayMode}
         onCreateStock={handleCreateQuickStock}
         onClearAllStocks={handleClearAllQuickStocks}
-        onCleanupInvalidStocks={cleanupInvalidStocks}
+        onCleanupInvalidStocks={handleCleanupInvalidStocks}
         editingStockId={editingStockId}
         setEditingStockId={setEditingStockId}
         editingStockName={editingStockName}

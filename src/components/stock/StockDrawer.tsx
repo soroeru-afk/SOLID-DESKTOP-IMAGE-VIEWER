@@ -13,6 +13,7 @@ import {
   ArrowUp,
   ArrowDown,
   Edit2,
+  LayoutGrid,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { SolidButton } from "../ui";
@@ -73,6 +74,7 @@ export const StockDrawer: React.FC<StockDrawerProps> = ({
   };
   const handleCreateQuickStock = onCreateStock;
   const handleClearAllQuickStocks = onClearAllStocks;
+  const handleCleanupInvalidStocks = onCleanupInvalidStocks;
   const cleanupInvalidStocks = onCleanupInvalidStocks;
   const handleRenameQuickStock = onRenameStock;
   const handleRestoreQuickStock = onRestoreStock;

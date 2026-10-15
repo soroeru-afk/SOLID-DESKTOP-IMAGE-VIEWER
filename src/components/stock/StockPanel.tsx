@@ -10,6 +10,9 @@ import {
   ArrowUp,
   ArrowDown,
   Edit2,
+  LayoutGrid,
+  ChevronsDown,
+  ChevronsUp,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { QuickStockRecord } from "./types";
@@ -18,6 +21,8 @@ export interface StockPanelProps {
   quickStocks: QuickStockRecord[];
   activeStockId: string | null;
   checkStockStatus: (stock: QuickStockRecord) => { exists: boolean; reason?: string };
+  isStockPanelExpanded: boolean;
+  setIsStockPanelExpanded: React.Dispatch<React.SetStateAction<boolean>>;
   stockDisplayMode: "list" | "tile";
   setStockDisplayMode: React.Dispatch<React.SetStateAction<"list" | "tile">>;
   onCreateStock: () => void;
@@ -39,6 +44,8 @@ export const StockPanel: React.FC<StockPanelProps> = ({
   quickStocks,
   activeStockId,
   checkStockStatus,
+  isStockPanelExpanded,
+  setIsStockPanelExpanded,
   stockDisplayMode,
   setStockDisplayMode,
   onCreateStock,
@@ -57,6 +64,7 @@ export const StockPanel: React.FC<StockPanelProps> = ({
 }) => {
   const handleCreateQuickStock = onCreateStock;
   const handleClearAllQuickStocks = onClearAllStocks;
+  const handleCleanupInvalidStocks = onCleanupInvalidStocks;
   const cleanupInvalidStocks = onCleanupInvalidStocks;
   const handleRenameQuickStock = onRenameStock;
   const handleRestoreQuickStock = onRestoreStock;
