@@ -36,6 +36,7 @@ import {
   Plus,
   Minus,
   RotateCw,
+  RotateCcw,
   RefreshCw,
   MonitorSmartphone,
   Edit2,
@@ -67,6 +68,7 @@ import {
   Keyboard,
   Wifi,
   WifiOff,
+  Undo,
 } from "lucide-react";
 import {
   ImageRecord,
@@ -1230,6 +1232,22 @@ export default function App() {
   const [isAppFullscreen, setIsAppFullscreen] = useState(false);
   const [portraitMode, setPortraitMode] = useState<"off" | "left" | "right">("off");
 
+  // SCATTER (スケーター) 表示上限枚数 (10枚〜100枚可変設定・既定30枚)
+  const [scatterLimit, setScatterLimit] = useState<number>(() => {
+    const saved = localStorage.getItem("scatterLimit");
+    if (saved) {
+      const num = parseInt(saved, 10);
+      if (!isNaN(num) && num >= 10 && num <= 100) return num;
+    }
+    return 30; // 重なりや埋もれを防ぐ最適なデフォルト30枚
+  });
+
+  const handleUpdateScatterLimit = (limit: number) => {
+    const clamped = Math.min(100, Math.max(10, limit));
+    setScatterLimit(clamped);
+    localStorage.setItem("scatterLimit", clamped.toString());
+  };
+
   const handleToggleZoomFill = React.useCallback((e?: React.MouseEvent | KeyboardEvent) => {
     if (e) {
       e.stopPropagation();
@@ -1368,6 +1386,30 @@ export default function App() {
   const [favoriteDatasetId, setFavoriteDatasetId] = useState<string | null>(() => localStorage.getItem("favoriteDatasetId"));
   const [fullscreenFavorited, setFullscreenFavorited] = useState<Set<string>>(new Set());
   const [isCurrentFavorited, setIsCurrentFavorited] = useState(false);
+  const [favoritedKeys, setFavoritedKeys] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!favoriteDatasetId) {
+      setFavoritedKeys(new Set());
+      return;
+    }
+    getImagesByDataset(favoriteDatasetId).then((favImages) => {
+      if (!isMounted) return;
+      const keys = new Set<string>();
+      favImages.forEach((fi) => {
+        keys.add(`${fi.name}-${fi.size}-${fi.lastModified}`);
+        if ((fi as any).originalDatasetId) {
+          keys.add(fi.id);
+        }
+      });
+      setFavoritedKeys(keys);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [favoriteDatasetId, images, datasets, activeDatasetId]);
+
   const [homeViewMode, setHomeViewMode] = useState<"text" | "popup" | "card" | "cover" | "list">(
     () => {
       const saved = localStorage.getItem("homeViewMode");
@@ -2022,6 +2064,27 @@ export default function App() {
     });
   }, [images, sortField, sortOrders, randomSeed, searchQuery, orientationFilter, showHiddenImages]);
 
+  // SCATTER (スケーター) モード時の軽量化サンプリング (10枚〜100枚の上限可変設定 & シャッフル)
+  const scatterImages = useMemo(() => {
+    if (viewMode !== "free") return sortedImages;
+    if (sortedImages.length <= scatterLimit) return sortedImages;
+
+    const total = sortedImages.length;
+    const step = total / scatterLimit;
+    const sampled: LoadedImage[] = [];
+    for (let i = 0; i < scatterLimit; i++) {
+      const idx = Math.min(total - 1, Math.floor(i * step));
+      sampled.push(sortedImages[idx]);
+    }
+
+    const shuffled = [...sampled];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  }, [sortedImages, viewMode, scatterLimit, randomSeed]);
+
   const masonryColumns = useMemo(() => {
     if (viewMode !== "grid-ma") return [];
     const availableWidth = containerWidth - 32 - 16;
@@ -2170,6 +2233,21 @@ export default function App() {
         !dsList.find((d) => d.id === activeDatasetId)
       ) {
         setActiveDatasetId(null);
+      }
+
+      let favId = favoriteDatasetId;
+      if (!favId || !dsList.some((d) => d.id === favId)) {
+        const existingFav = dsList.find(
+          (d) =>
+            d.name.includes("★") ||
+            d.name.toUpperCase().includes("FAVORITE") ||
+            d.name.toUpperCase().includes("FAV") ||
+            d.name.includes("お気に入り") ||
+            d.name.includes("推し")
+        );
+        if (existingFav) {
+          setFavoriteDatasetId(existingFav.id);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -3559,17 +3637,30 @@ Images imported: ${importedImages}`);
   };
 
   const handleToggleFavoriteImage = async (targetImg: ImageRecord) => {
-    if (!favoriteDatasetId) {
-      showNotification(
-        language === "JP"
-          ? "お気に入りフォルダーが設定されていません。サイドバーの☆マークでリストをお気に入りに設定してください。"
-          : "No favorite dataset is designated. Please star a dataset in the sidebar."
+    let favId = favoriteDatasetId;
+    if (!favId) {
+      // Find existing favorite dataset by name or create one
+      const existing = datasets.find(
+        (d) =>
+          d.name.includes("★") ||
+          d.name.toUpperCase().includes("FAVORITE") ||
+          d.name.toUpperCase().includes("FAV") ||
+          d.name.includes("お気に入り") ||
+          d.name.includes("推し")
       );
-      return;
+      if (existing) {
+        favId = existing.id;
+        setFavoriteDatasetId(existing.id);
+      } else {
+        const newDs = await createDataset("★ FAVORITES");
+        favId = newDs.id;
+        setFavoriteDatasetId(newDs.id);
+        await loadDatasets();
+      }
     }
 
     // 1. When currently inside the favorite dataset
-    if (activeDatasetId === favoriteDatasetId) {
+    if (activeDatasetId === favId) {
       setIsLoading(true);
       await deleteImage(targetImg.id);
 
@@ -3586,10 +3677,10 @@ Images imported: ${importedImages}`);
     }
 
     // 2. When in another dataset
-    const favImages = await getImagesByDataset(favoriteDatasetId);
+    const favImages = await getImagesByDataset(favId);
     const existing = favImages.find(
       (fi) =>
-        fi.id === `${favoriteDatasetId}-${targetImg.name}-${targetImg.lastModified}-${targetImg.size}` ||
+        fi.id === `${favId}-${targetImg.name}-${targetImg.lastModified}-${targetImg.size}` ||
         (fi.name === targetImg.name &&
           fi.size === targetImg.size &&
           fi.lastModified === targetImg.lastModified)
@@ -3611,7 +3702,7 @@ Images imported: ${importedImages}`);
     } else {
       // Image is not yet in favorite dataset -> ADD it!
       setIsLoading(true);
-      await copyImagesToDataset([targetImg.id], favoriteDatasetId);
+      await copyImagesToDataset([targetImg.id], favId);
       setIsCurrentFavorited(true);
       setFullscreenFavorited((prev) => {
         const next = new Set(prev);
@@ -3638,6 +3729,121 @@ Images imported: ${importedImages}`);
     await loadDatasets();
     setIsLoading(false);
     showNotification(language === "JP" ? "お気に入りから解除しました" : "Removed from favorites");
+  };
+
+  const findOriginalDatasetForImage = async (img: LoadedImage | ImageRecord): Promise<{ dataset: DatasetRecord; image: ImageRecord } | null> => {
+    // 1. Check if originalDatasetId is explicitly set and exists
+    if ((img as any).originalDatasetId && (img as any).originalDatasetId !== img.datasetId) {
+      const origDs = datasets.find((d) => d.id === (img as any).originalDatasetId);
+      if (origDs) {
+        const allDbImages = await getImagesByDataset(origDs.id);
+        const match = allDbImages.find(
+          (i) => i.name === img.name && i.size === img.size && i.lastModified === img.lastModified
+        );
+        if (match) return { dataset: origDs, image: match };
+        if (allDbImages.length > 0) return { dataset: origDs, image: allDbImages[0] };
+      }
+    }
+
+    // 2. Search across all images in IndexedDB for an image with matching name, size, lastModified in another dataset
+    const allImages = await getAllImages();
+    const match = allImages.find(
+      (i) =>
+        i.datasetId !== img.datasetId &&
+        i.name === img.name &&
+        i.size === img.size &&
+        i.lastModified === img.lastModified
+    );
+
+    if (match) {
+      const origDs = datasets.find((d) => d.id === match.datasetId);
+      if (origDs) {
+        return { dataset: origDs, image: match };
+      }
+    }
+
+    // 3. Fallback: if img.datasetId is a valid non-favorite dataset
+    if (favoriteDatasetId && img.datasetId !== favoriteDatasetId) {
+      const currentDs = datasets.find((d) => d.id === img.datasetId);
+      if (currentDs) {
+        return { dataset: currentDs, image: img };
+      }
+    }
+
+    return null;
+  };
+
+  const handleJumpToOriginalLocation = async (img: LoadedImage | ImageRecord, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await findOriginalDatasetForImage(img);
+      if (!result) {
+        showNotification(
+          language === "JP"
+            ? "元のフォルダー（データセット）が見つかりませんでした"
+            : "Original dataset/folder not found"
+        );
+        return;
+      }
+
+      const { dataset: targetDs, image: targetImg } = result;
+
+      // 1. Expand parent category if the dataset is in a category/folder
+      if (targetDs.categoryId) {
+        setActiveCategoryId(targetDs.categoryId);
+        setExpandedCategoryIds((prev) => {
+          const next = new Set(prev);
+          let cId: string | null | undefined = targetDs.categoryId;
+          while (cId) {
+            next.add(cId);
+            const cat = categories.find((c) => c.id === cId);
+            cId = cat?.parentId;
+          }
+          return next;
+        });
+      }
+
+      // 2. Close fullscreen and category view
+      setIsFullscreen(false);
+      setIsCategoryImagesView(false);
+
+      // 3. Set active dataset
+      setActiveDatasetId(targetDs.id);
+
+      // 4. Load dataset images
+      await loadImages(targetDs.id);
+
+      // 5. Select target image and scroll to it
+      const targetLoaded: LoadedImage = {
+        ...targetImg,
+        url: URL.createObjectURL(targetImg.data),
+        randomX: Math.random() * 80 - 40,
+        randomY: Math.random() * 80 - 40,
+        randomRotation: Math.random() * 30 - 15,
+      };
+
+      setSelectedImage(targetLoaded);
+
+      showNotification(
+        language === "JP"
+          ? `「${targetDs.name}」の元の場所へジャンプしました`
+          : `Jumped to location: ${targetDs.name}`
+      );
+    } catch (err) {
+      console.error("Failed to jump to original location", err);
+      showNotification(
+        language === "JP"
+          ? "元の場所への移動に失敗しました"
+          : "Failed to jump to location"
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleCustomMove = async (direction: "top" | "bottom" | "up" | "down") => {
@@ -4459,6 +4665,16 @@ Images imported: ${importedImages}`);
   ) => {
     const currentDs = datasets.find(d => d.id === activeDatasetId);
     const isCover = currentDs?.coverImageId === img.id;
+    const imgKey = `${img.name}-${img.size}-${img.lastModified}`;
+    const isFavorited =
+      (activeDatasetId && favoriteDatasetId && activeDatasetId === favoriteDatasetId) ||
+      favoritedKeys.has(imgKey) ||
+      favoritedKeys.has(img.id);
+
+    const isFavoriteDatasetView =
+      activeDatasetId && favoriteDatasetId && activeDatasetId === favoriteDatasetId;
+    const showOriginButton =
+      !isSelectionMode && (isFavoriteDatasetView || Boolean((img as any).originalDatasetId));
 
     return (
       <motion.div
@@ -4670,10 +4886,40 @@ Images imported: ${importedImages}`);
                     </button>
                   )
                 )}
+                {/* Favorite Star Button in List View (Not shown when viewing the favorite dataset itself) */}
+                {favoriteDatasetId && activeDatasetId !== favoriteDatasetId && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggleFavoriteImage(img);
+                    }}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                    className={cn(
+                      "p-1 flex items-center justify-center rounded transition-opacity flex-shrink-0 cursor-pointer",
+                      isFavorited
+                        ? "text-white opacity-90 hover:opacity-100"
+                        : "text-text-muted/50 hover:text-white opacity-30 group-hover/name:opacity-80"
+                    )}
+                    title={isFavorited ? t("Remove from favorites", "お気に入りから解除") : t("Add to favorites", "お気に入りに追加")}
+                  >
+                    <Star size={12} strokeWidth={1.5} className="fill-none text-current" />
+                  </button>
+                )}
+
+                {showOriginButton && (
+                  <button
+                    onClick={(e) => handleJumpToOriginalLocation(img, e)}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                    className="p-1 flex items-center justify-center text-text-muted hover:text-white transition-opacity flex-shrink-0 opacity-0 group-hover/name:opacity-100 cursor-pointer"
+                    title={t("Jump to original dataset/folder location", "この画像が本来入っている元のフォルダー（データセット）の場所へジャンプ")}
+                  >
+                    <RotateCcw size={12} strokeWidth={1.8} />
+                  </button>
+                )}
                 <button
                   onClick={(e) => handleRenameFileClick(e, img.id, img.name)}
                   onDoubleClick={(e) => e.stopPropagation()}
-                  className="text-text-muted hover:text-accent transition-colors flex-shrink-0 opacity-0 group-hover/name:opacity-100 px-2 flex items-center justify-center"
+                  className="text-text-muted hover:text-accent transition-colors flex-shrink-0 opacity-0 group-hover/name:opacity-100 px-2 flex items-center justify-center cursor-pointer"
                   title="RENAME FILE"
                 >
                   <Edit2 size={14} />
@@ -4712,6 +4958,39 @@ Images imported: ${importedImages}`);
           </div>
           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
         </div>
+      )}
+
+      {/* Favorite Star Button on Image Cards (Not shown when viewing the favorite dataset itself) */}
+      {favoriteDatasetId && activeDatasetId !== favoriteDatasetId && !isSelectionMode && viewMode !== "list" && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            handleToggleFavoriteImage(img);
+          }}
+          onDoubleClick={(e) => e.stopPropagation()}
+          className={cn(
+            "absolute top-2 z-20 w-6 h-6 flex items-center justify-center rounded-full transition-all duration-150 backdrop-blur-xs cursor-pointer select-none",
+            showOriginButton ? "right-[72px]" : "right-2",
+            isFavorited
+              ? "bg-black/40 border border-white/30 text-white opacity-80 hover:opacity-100"
+              : "bg-black/20 hover:bg-black/40 border border-white/10 hover:border-white/25 text-white/40 hover:text-white opacity-25 group-hover:opacity-75"
+          )}
+          title={isFavorited ? t("Remove from favorites", "お気に入りから解除") : t("Add to favorites", "お気に入りに追加")}
+        >
+          <Star size={12} strokeWidth={1.5} className="fill-none text-current" />
+        </button>
+      )}
+
+      {/* Jump to Original Location Button (ONLY shown when viewing Favorite Dataset or favorited item) */}
+      {!isSelectionMode && viewMode !== "list" && showOriginButton && (
+        <button
+          onClick={(e) => handleJumpToOriginalLocation(img, e)}
+          onDoubleClick={(e) => e.stopPropagation()}
+          className="absolute top-2 right-2 z-20 w-6 h-6 flex items-center justify-center rounded-full transition-all duration-150 backdrop-blur-xs cursor-pointer select-none bg-black/30 hover:bg-black/60 border border-white/20 text-white/70 hover:text-white opacity-0 group-hover:opacity-100 shadow-sm"
+          title={t("Jump to original dataset/folder location", "この画像が本来入っている元のフォルダー（データセット）の場所へジャンプ")}
+        >
+          <RotateCcw size={12} strokeWidth={1.8} />
+        </button>
       )}
 
       {/* Cover Image Indicator / Set Button */}
@@ -5137,7 +5416,48 @@ Images imported: ${importedImages}`);
               </SolidButton>
             </div>
 
-
+            {/* SCATTER DISPLAY COUNT LIMIT CONTROLS */}
+            {viewMode === "free" && (
+              <div className="mt-3 p-2.5 bg-panel-bg/90 border border-accent/30 rounded flex flex-col gap-2 font-mono text-[10px] shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-text-muted uppercase tracking-wider font-bold flex items-center gap-1">
+                    <ScatterChart size={12} className="text-accent" />
+                    {t("SCATTER DISPLAY MAX", "SCATTER表示枚数上限")}
+                  </span>
+                  <span className="text-accent font-bold text-xs">{scatterLimit}枚</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min="10"
+                    max="100"
+                    step="5"
+                    value={scatterLimit}
+                    onChange={(e) => handleUpdateScatterLimit(Number(e.target.value))}
+                    className="flex-1 h-1.5 bg-panel-border rounded-lg appearance-none cursor-pointer accent-accent"
+                    title={t("Adjust SCATTER max display count (10 - 100 images)", "SCATTER表示上限枚数を調整 (10枚〜100枚)")}
+                  />
+                </div>
+                <div className="flex justify-between items-center gap-1 pt-0.5">
+                  {[10, 20, 30, 50, 75, 100].map((num) => (
+                    <button
+                      key={num}
+                      type="button"
+                      onClick={() => handleUpdateScatterLimit(num)}
+                      className={cn(
+                        "flex-1 py-1 text-[9px] font-bold rounded transition-all text-center border cursor-pointer",
+                        scatterLimit === num
+                          ? "bg-accent border-accent text-accent-text shadow-xs"
+                          : "bg-panel-bg border-panel-border/80 text-text-muted hover:text-text-primary hover:border-text-muted"
+                      )}
+                      title={`Set limit to ${num} images`}
+                    >
+                      {num}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="mt-4 pt-4 border-t border-panel-border flex flex-col gap-2">
               <span className="text-[10px] font-mono text-text-muted uppercase tracking-widest mb-1">
@@ -7578,17 +7898,61 @@ Images imported: ${importedImages}`);
 
                     return (
                       <>
-                        {/* Search Results Header */}
-                        {searchQuery.trim() && (
-                          <div className="absolute top-4 left-0 w-full z-50 flex items-center justify-center pointer-events-none mb-6">
-                            <div className="bg-panel-bg/70 backdrop-blur-md border border-panel-border/50 shadow-lg rounded-full px-6 py-2.5 flex items-center gap-3">
-                              <span className="font-mono text-accent uppercase tracking-widest text-xs font-bold drop-shadow-md">
-                                SEARCH RESULTS: "{searchQuery}"
+                        {/* SCATTER Mode Capping Badge & Limit Adjuster (10〜100枚の可変調整) */}
+                        {viewMode === "free" && (
+                          <div className="absolute top-3 right-4 z-40 flex items-center gap-2 pointer-events-auto">
+                            <div className="bg-panel-bg/95 backdrop-blur-md border border-accent/40 shadow-lg rounded-full px-3.5 py-1.5 flex items-center gap-3 font-mono text-[10px] text-text-primary select-none">
+                              <ScatterChart size={13} className="text-accent shrink-0" />
+                              <span className="shrink-0">
+                                SCATTER: <strong className="text-accent font-bold text-xs">{scatterImages.length}</strong> / {sortedImages.length} {t("IMAGES", "枚")}
                               </span>
-                              <div className="w-px h-4 bg-panel-border" />
-                              <span className="font-mono text-text-muted text-[10px] uppercase tracking-widest drop-shadow-md">
-                                {sortedImages.length} {sortedImages.length === 1 ? 'MATCH' : 'MATCHES'}
-                              </span>
+
+                              {/* Limit Slider & Presets */}
+                              <div className="flex items-center gap-1.5 border-l border-panel-border/80 pl-2.5">
+                                <span className="text-text-muted text-[9px] uppercase tracking-wider">{t("MAX:", "上限:")}</span>
+                                <input
+                                  type="range"
+                                  min="10"
+                                  max="100"
+                                  step="5"
+                                  value={scatterLimit}
+                                  onChange={(e) => handleUpdateScatterLimit(Number(e.target.value))}
+                                  className="w-16 h-1.5 bg-panel-border rounded-lg appearance-none cursor-pointer accent-accent"
+                                  title={t("Adjust SCATTER max display count (10 - 100 images)", "SCATTER表示上限枚数を調整 (10枚〜100枚)")}
+                                />
+                                <span className="w-8 text-right font-bold text-accent text-[10px]">{scatterLimit}枚</span>
+
+                                {/* Quick Presets */}
+                                <div className="flex items-center gap-1 ml-0.5">
+                                  {[10, 30, 50, 100].map((num) => (
+                                    <button
+                                      key={num}
+                                      type="button"
+                                      onClick={() => handleUpdateScatterLimit(num)}
+                                      className={cn(
+                                        "px-1.5 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer",
+                                        scatterLimit === num
+                                          ? "bg-accent text-accent-text shadow-xs"
+                                          : "bg-panel-border/60 hover:bg-panel-border text-text-muted hover:text-text-primary"
+                                      )}
+                                      title={`Preset: ${num} images`}
+                                    >
+                                      {num}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {sortedImages.length > scatterLimit && (
+                                <button
+                                  type="button"
+                                  onClick={() => setRandomSeed((prev) => prev + 1)}
+                                  className="ml-1 px-2.5 py-0.5 bg-accent/20 hover:bg-accent text-accent hover:text-accent-text rounded-full transition-all font-bold text-[9px] cursor-pointer shadow-xs active:scale-95 shrink-0"
+                                  title={t("Reshuffle sampled images", "別パターンを再抽出・シャッフル")}
+                                >
+                                  ↻ {t("RESHUFFLE", "再シャッフル")}
+                                </button>
+                              )}
                             </div>
                           </div>
                         )}
@@ -7716,7 +8080,8 @@ Images imported: ${importedImages}`);
                               ));
                             }
 
-                            return sortedImages.map((img, i) => {
+                            const renderList = viewMode === "free" ? scatterImages : sortedImages;
+                            return renderList.map((img, i) => {
                               const isSelected = selectedImage?.id === img.id;
                               const isMultiSelected =
                                 isSelectionMode && selectedImageIds.has(img.id);
@@ -8521,114 +8886,133 @@ Images imported: ${importedImages}`);
                   <Download size={18} />
                 </button>
               </div>
-              {/* Favorite Button in Fullscreen */}
-              {favoriteDatasetId && selectedImage && (
+              {/* Fullscreen Top Right Toolbar Group (Flex container to avoid overlapping buttons) */}
+              <div className="absolute top-6 right-6 z-50 flex items-center gap-2.5 pointer-events-auto">
+                {/* Jump to Original Location Button in Fullscreen */}
+                {selectedImage && (activeDatasetId === favoriteDatasetId || isCurrentFavorited || Boolean((selectedImage as any).originalDatasetId)) && (
+                  <button
+                    onClick={(e) => handleJumpToOriginalLocation(selectedImage, e)}
+                    className={cn(
+                      "w-12 h-12 flex items-center justify-center rounded-full transition-all hover:scale-105 outline-none focus:outline-none backdrop-blur-md border shadow-md cursor-pointer",
+                      isFullscreenDarkText
+                        ? "bg-white/20 border-black/15 text-black hover:bg-white/40"
+                        : "bg-black/30 border-white/20 text-white hover:bg-black/50"
+                    )}
+                    title={t("Jump to original dataset/folder location", "この画像が本来入っている元のフォルダー（データセット）の場所へジャンプ")}
+                  >
+                    <RotateCcw size={22} strokeWidth={1.8} />
+                  </button>
+                )}
+
+                {/* Cover Image Set Button in Fullscreen */}
+                {activeDatasetId && selectedImage && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSetAsCover(activeDatasetId, selectedImage);
+                    }}
+                    className={cn(
+                      "w-12 h-12 flex items-center justify-center rounded-full transition-all hover:scale-110 outline-none focus:outline-none backdrop-blur-sm border shadow-sm cursor-pointer",
+                      isFullscreenDarkText
+                        ? "bg-white/20 border-black/10 text-black/70 hover:text-black hover:bg-white/40"
+                        : "bg-black/20 border-white/10 text-white/70 hover:text-white hover:bg-black/40",
+                      datasets.find(d => d.id === activeDatasetId)?.coverImageId === selectedImage.id && (
+                        isFullscreenDarkText
+                          ? "bg-amber-400/60 text-black border-amber-500/60"
+                          : "bg-amber-500/50 text-amber-300 border-amber-400/60"
+                      )
+                    )}
+                    title={
+                      datasets.find(d => d.id === activeDatasetId)?.coverImageId === selectedImage.id
+                        ? t("COVER IMAGE (CLICK TO RESET)", "カバー画像に設定中（クリックで初期解除）")
+                        : t("SET AS COVER IMAGE", "この画像をリストのカバー画像に設定")
+                    }
+                  >
+                    <Bookmark 
+                      size={22} 
+                      className={datasets.find(d => d.id === activeDatasetId)?.coverImageId === selectedImage.id ? "text-amber-400" : "text-inherit"} 
+                      fill={datasets.find(d => d.id === activeDatasetId)?.coverImageId === selectedImage.id ? "currentColor" : "none"} 
+                    />
+                  </button>
+                )}
+
+                {/* Favorite Star Button in Fullscreen */}
+                {favoriteDatasetId && selectedImage && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggleFavoriteImage(selectedImage);
+                    }}
+                    className={cn(
+                      "w-12 h-12 flex items-center justify-center rounded-full transition-all hover:scale-105 outline-none focus:outline-none backdrop-blur-sm border shadow-sm cursor-pointer",
+                      isFullscreenDarkText
+                        ? "bg-white/20 border-black/15 text-black/70 hover:text-black hover:bg-white/40"
+                        : "bg-black/20 border-white/15 text-white/70 hover:text-white hover:bg-black/40",
+                      isCurrentFavorited && (
+                        isFullscreenDarkText
+                          ? "bg-black/10 text-black border-black/30 font-bold"
+                          : "bg-white/20 text-white border-white/40 font-bold"
+                      )
+                    )}
+                    title={isCurrentFavorited ? t("REMOVE FROM FAVORITES", "お気に入りから解除") : t("ADD TO FAVORITES", "お気に入りに追加")}
+                  >
+                    <Star 
+                      size={22} 
+                      strokeWidth={1.5}
+                      className={isCurrentFavorited ? (isFullscreenDarkText ? "text-black fill-none" : "text-white fill-none") : "text-inherit fill-none"} 
+                    />
+                  </button>
+                )}
+
+                {/* Portrait Mode Toggle Button */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleToggleFavoriteImage(selectedImage);
+                    if (portraitMode === "off") setPortraitMode("left");
+                    else if (portraitMode === "left") setPortraitMode("right");
+                    else setPortraitMode("off");
                   }}
                   className={cn(
-                    "absolute top-6 right-[196px] w-12 h-12 flex items-center justify-center rounded-full transition-all hover:scale-110 outline-none focus:outline-none backdrop-blur-sm border shadow-sm cursor-pointer",
+                    "w-12 h-12 flex items-center justify-center rounded-full transition-all hover:scale-110 outline-none focus:outline-none backdrop-blur-sm border shadow-sm",
                     isFullscreenDarkText
                       ? "bg-white/20 border-black/10 text-black/70 hover:text-black hover:bg-white/40"
                       : "bg-black/20 border-white/10 text-white/70 hover:text-white hover:bg-black/40",
-                    isCurrentFavorited && (
-                      isFullscreenDarkText
-                        ? "bg-yellow-400/40 text-yellow-900 border-yellow-500/60"
-                        : "bg-yellow-500/30 text-yellow-300 border-yellow-400/60"
-                    )
+                    portraitMode !== "off" && (isFullscreenDarkText ? "bg-white/50 text-black border-black/20" : "bg-black/50 text-white border-white/20")
                   )}
-                  title={isCurrentFavorited ? t("REMOVE FROM FAVORITES", "お気に入りから解除") : t("ADD TO FAVORITES", "お気に入りに追加")}
+                  title={t("Portrait Mode (P)", "ポートレート切替 (P)")}
                 >
-                  <Star 
-                    size={24} 
-                    className={isCurrentFavorited ? "text-yellow-400" : "text-inherit"} 
-                    fill={isCurrentFavorited ? "currentColor" : "none"} 
-                  />
+                  <MonitorSmartphone size={24} className={cn("transition-transform duration-300", portraitMode === "left" ? "-rotate-90" : portraitMode === "right" ? "rotate-90" : "")} />
                 </button>
-              )}
 
-              {/* Cover Image Set Button in Fullscreen */}
-              {activeDatasetId && selectedImage && (
+                {/* Borderless Toggle Button */}
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSetAsCover(activeDatasetId, selectedImage);
-                  }}
+                  onClick={(e) => { e.stopPropagation(); toggleAppFullscreen(); }}
                   className={cn(
-                    "absolute top-6 w-12 h-12 flex items-center justify-center rounded-full transition-all hover:scale-110 outline-none focus:outline-none backdrop-blur-sm border shadow-sm cursor-pointer",
-                    favoriteDatasetId ? "right-[256px]" : "right-[196px]",
+                    "w-12 h-12 flex items-center justify-center rounded-full transition-all hover:scale-110 outline-none focus:outline-none backdrop-blur-sm border shadow-sm",
                     isFullscreenDarkText
                       ? "bg-white/20 border-black/10 text-black/70 hover:text-black hover:bg-white/40"
                       : "bg-black/20 border-white/10 text-white/70 hover:text-white hover:bg-black/40",
-                    datasets.find(d => d.id === activeDatasetId)?.coverImageId === selectedImage.id && (
-                      isFullscreenDarkText
-                        ? "bg-amber-400/60 text-black border-amber-500/60"
-                        : "bg-amber-500/50 text-amber-300 border-amber-400/60"
-                    )
+                    isAppFullscreen && (isFullscreenDarkText ? "bg-white/50 text-black border-black/20" : "bg-black/50 text-white border-white/20")
                   )}
-                  title={
-                    datasets.find(d => d.id === activeDatasetId)?.coverImageId === selectedImage.id
-                      ? t("COVER IMAGE (CLICK TO RESET)", "カバー画像に設定中（クリックで初期解除）")
-                      : t("SET AS COVER IMAGE", "この画像をリストのカバー画像に設定")
-                  }
+                  title={t("Borderless (F)", "ボーダレス (F)")}
                 >
-                  <Bookmark 
-                    size={22} 
-                    className={datasets.find(d => d.id === activeDatasetId)?.coverImageId === selectedImage.id ? "text-amber-400" : "text-inherit"} 
-                    fill={datasets.find(d => d.id === activeDatasetId)?.coverImageId === selectedImage.id ? "currentColor" : "none"} 
-                  />
+                  {isAppFullscreen ? <Minimize size={24} /> : <Maximize size={24} />}
                 </button>
-              )}
-              {/* Portrait Mode Toggle Button */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (portraitMode === "off") setPortraitMode("left");
-                  else if (portraitMode === "left") setPortraitMode("right");
-                  else setPortraitMode("off");
-                }}
-                className={cn(
-                  "absolute top-6 right-[136px] w-12 h-12 flex items-center justify-center rounded-full transition-all hover:scale-110 outline-none focus:outline-none backdrop-blur-sm border shadow-sm",
-                  isFullscreenDarkText
-                    ? "bg-white/20 border-black/10 text-black/70 hover:text-black hover:bg-white/40"
-                    : "bg-black/20 border-white/10 text-white/70 hover:text-white hover:bg-black/40",
-                  portraitMode !== "off" && (isFullscreenDarkText ? "bg-white/50 text-black border-black/20" : "bg-black/50 text-white border-white/20")
-                )}
-                title={t("Portrait Mode (P)", "ポートレート切替 (P)")}
-              >
-                <MonitorSmartphone size={24} className={cn("transition-transform duration-300", portraitMode === "left" ? "-rotate-90" : portraitMode === "right" ? "rotate-90" : "")} />
-              </button>
 
-              {/* Borderless Toggle Button */}
-              <button
-                onClick={(e) => { e.stopPropagation(); toggleAppFullscreen(); }}
-                className={cn(
-                  "absolute top-6 right-[76px] w-12 h-12 flex items-center justify-center rounded-full transition-all hover:scale-110 outline-none focus:outline-none backdrop-blur-sm border shadow-sm",
-                  isFullscreenDarkText
-                    ? "bg-white/20 border-black/10 text-black/70 hover:text-black hover:bg-white/40"
-                    : "bg-black/20 border-white/10 text-white/70 hover:text-white hover:bg-black/40",
-                  isAppFullscreen && (isFullscreenDarkText ? "bg-white/50 text-black border-black/20" : "bg-black/50 text-white border-white/20")
-                )}
-                title={t("Borderless (F)", "ボーダレス (F)")}
-              >
-                {isAppFullscreen ? <Minimize size={24} /> : <Maximize size={24} />}
-              </button>
-
-              {/* Close Button */}
-              <button
-                onClick={() => setIsFullscreen(false)}
-                className={cn(
-                  "absolute top-6 right-4 w-12 h-12 flex items-center justify-center rounded-full transition-all hover:scale-110 outline-none focus:outline-none backdrop-blur-sm border shadow-sm",
-                  isFullscreenDarkText
-                    ? "bg-white/20 border-black/10 text-black/70 hover:text-black hover:bg-white/40"
-                    : "bg-black/20 border-white/10 text-white/70 hover:text-white hover:bg-black/40"
-                )}
-                title={t("Close (Esc)", "閉じる (Esc)")}
-              >
-                <X size={26} />
-              </button>
+                {/* Close Button */}
+                <button
+                  onClick={() => setIsFullscreen(false)}
+                  className={cn(
+                    "w-12 h-12 flex items-center justify-center rounded-full transition-all hover:scale-110 outline-none focus:outline-none backdrop-blur-sm border shadow-sm",
+                    isFullscreenDarkText
+                      ? "bg-white/20 border-black/10 text-black/70 hover:text-black hover:bg-white/40"
+                      : "bg-black/20 border-white/10 text-white/70 hover:text-white hover:bg-black/40"
+                  )}
+                  title={t("Close (Esc)", "閉じる (Esc)")}
+                >
+                  <X size={26} />
+                </button>
+              </div>
 
               {/* Status indicator when in favorite dataset but image was unstarred */}
               {activeDatasetId === favoriteDatasetId && !isCurrentFavorited && (

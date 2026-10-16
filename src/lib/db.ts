@@ -27,6 +27,7 @@ export interface DatasetRecord {
 export interface ImageRecord {
   id: string; // name + lastModified
   datasetId: string;
+  originalDatasetId?: string;
   name: string;
   type: string;
   size: number;
@@ -272,7 +273,13 @@ export async function copyImagesToDataset(imageIds: string[], newDatasetId: stri
   for (const id of imageIds) {
     const img = await tx.store.get(id);
     if (img) {
-      const newImg = { ...img, datasetId: newDatasetId, id: `${newDatasetId}-${img.name}-${img.lastModified}-${img.size}` };
+      const origId = img.originalDatasetId || img.datasetId;
+      const newImg = {
+        ...img,
+        datasetId: newDatasetId,
+        originalDatasetId: origId,
+        id: `${newDatasetId}-${img.name}-${img.lastModified}-${img.size}`
+      };
       await tx.store.put(newImg);
     }
   }
