@@ -64,6 +64,7 @@ import {
   Folders,
   Mouse,
   MoveVertical,
+  Keyboard,
   Wifi,
   WifiOff,
 } from "lucide-react";
@@ -554,6 +555,23 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem("app_theme", theme);
+    document.documentElement.setAttribute("data-theme", theme);
+    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    let color = "#0B0C0D"; // default for BLACK
+    if (theme === "TRUE_BLACK") color = "#000000";
+    else if (theme === "LIGHT") color = "#e2e8f0";
+    else if (theme === "PAPER") color = "#f5f5f0";
+    else if (theme === "RED") color = "#0d0404";
+    else if (theme === "NAVY") color = "#06090e";
+    
+    if (metaThemeColor) {
+      metaThemeColor.setAttribute("content", color);
+    } else {
+      const meta = document.createElement("meta");
+      meta.name = "theme-color";
+      meta.content = color;
+      document.head.appendChild(meta);
+    }
   }, [theme]);
 
   useEffect(() => {
@@ -648,6 +666,41 @@ export default function App() {
     dragInvertRef.current = dragInvert;
     localStorage.setItem("drag_invert", String(dragInvert));
   }, [dragInvert]);
+
+  // Keyboard Scroll Stop Mode ("REVERSE" | "SAME")
+  const [kbdStopMode, setKbdStopMode] = useState<"REVERSE" | "SAME">(() => {
+    const saved = localStorage.getItem("kbd_stop_mode");
+    return (saved as "REVERSE" | "SAME") || "REVERSE";
+  });
+  const kbdStopModeRef = useRef<"REVERSE" | "SAME">(kbdStopMode);
+
+  useEffect(() => {
+    kbdStopModeRef.current = kbdStopMode;
+    localStorage.setItem("kbd_stop_mode", kbdStopMode);
+  }, [kbdStopMode]);
+
+  // Arrow Key Function in List View ("SPEED" | "NAVIGATE")
+  const [arrowKeyMode, setArrowKeyMode] = useState<"SPEED" | "NAVIGATE">(() => {
+    const saved = localStorage.getItem("arrow_key_mode");
+    return (saved as "SPEED" | "NAVIGATE") || "SPEED";
+  });
+  const arrowKeyModeRef = useRef<"SPEED" | "NAVIGATE">(arrowKeyMode);
+
+  useEffect(() => {
+    arrowKeyModeRef.current = arrowKeyMode;
+    localStorage.setItem("arrow_key_mode", arrowKeyMode);
+  }, [arrowKeyMode]);
+
+  // Track mouse hovered image ID for priority Enter key opening
+  const [hoveredImageId, setHoveredImageId] = useState<string | null>(null);
+  const hoveredImageIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    hoveredImageIdRef.current = hoveredImageId;
+  }, [hoveredImageId]);
+
+  // Track last navigation source ("mouse" vs "keyboard") so Enter key prioritizes the intended target
+  const lastNavSourceRef = useRef<"mouse" | "keyboard">("mouse");
 
   // Jog Drag States & Refs
   const [jogDragState, setJogDragState] = useState<{
@@ -1617,21 +1670,6 @@ export default function App() {
   // Apply Theme
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
-    
-    // Dynamic theme-color meta tag
-    let metaThemeColor = document.querySelector('meta[name="theme-color"]');
-    if (!metaThemeColor) {
-      metaThemeColor = document.createElement("meta");
-      metaThemeColor.setAttribute("name", "theme-color");
-      document.head.appendChild(metaThemeColor);
-    }
-    let color = "#0B0C0D"; // default for BLACK
-    if (theme === "TRUE_BLACK") color = "#000000";
-    else if (theme === "LIGHT") color = "#e2e8f0";
-    else if (theme === "PAPER") color = "#f4ebe1";
-    else if (theme === "NAVY") color = "#0F172A";
-    else if (theme === "RED") color = "#450a0a";
-    metaThemeColor.setAttribute("content", color);
   }, [theme]);
 
   // Load from DB on mount
@@ -2210,6 +2248,59 @@ export default function App() {
       pendingScrollRestoreRef.current = null;
     }
   }, []);
+
+  // 画面中央に最も近い画像を検出するヘルパー関数
+  const getCenterImage = React.useCallback((): LoadedImage | null => {
+    if (!scrollContainerRef.current || sortedImages.length === 0) return null;
+    const container = scrollContainerRef.current;
+    const containerRect = container.getBoundingClientRect();
+    const centerY = containerRect.top + containerRect.height / 2;
+
+    let closestImg: LoadedImage | null = null;
+    let minDistance = Infinity;
+
+    for (const img of sortedImages) {
+      const el = document.getElementById(`image-card-${img.id}`);
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        const itemCenterY = rect.top + rect.height / 2;
+        const dist = Math.abs(centerY - itemCenterY);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestImg = img;
+        }
+      }
+    }
+
+    return closestImg || sortedImages[0] || null;
+  }, [sortedImages]);
+
+  // リスト（データセット/フォルダ）切り替え時に画面中央の画像を自動選択
+  useEffect(() => {
+    if (sortedImages.length > 0) {
+      const exists = selectedImage && sortedImages.some((img) => img.id === selectedImage.id);
+      if (!exists) {
+        const t1 = setTimeout(() => {
+          const centerImg = getCenterImage();
+          if (centerImg) {
+            setSelectedImage(centerImg);
+          }
+        }, 60);
+        const t2 = setTimeout(() => {
+          const centerImg = getCenterImage();
+          if (centerImg) {
+            setSelectedImage(centerImg);
+          }
+        }, 200);
+        return () => {
+          clearTimeout(t1);
+          clearTimeout(t2);
+        };
+      }
+    } else {
+      setSelectedImage(null);
+    }
+  }, [sortedImages, activeDatasetId, activeCategoryId, isCategoryImagesView, getCenterImage]);
 
   // 画像セット時や描画完了時にスクロール位置を確実に中段・下段へ適用
   useEffect(() => {
@@ -3589,6 +3680,7 @@ Images imported: ${importedImages}`);
   }, [sortedImages, images, isFullscreen]);
 
   const goToNextImage = React.useCallback(() => {
+    lastNavSourceRef.current = "keyboard";
     if (!selectedImage || sortedImages.length <= 1) return;
     const currentIndex = sortedImages.findIndex(
       (img) => img.id === selectedImage.id,
@@ -3599,6 +3691,7 @@ Images imported: ${importedImages}`);
   }, [selectedImage, sortedImages]);
 
   const goToPrevImage = React.useCallback(() => {
+    lastNavSourceRef.current = "keyboard";
     if (!selectedImage || sortedImages.length <= 1) return;
     const currentIndex = sortedImages.findIndex(
       (img) => img.id === selectedImage.id,
@@ -3652,54 +3745,85 @@ Images imported: ${importedImages}`);
   }, [selectedImage, isFullscreen]);
 
   useEffect(() => {
-    const pressedKeys = new Set<string>();
-    let kbdScrollInterval: ReturnType<typeof setInterval> | null = null;
-
-    const startKbdScroll = () => {
-      if (kbdScrollInterval) return;
-      kbdScrollInterval = setInterval(() => {
-        if (!scrollContainerRef.current) return;
-        let dy = 0;
-        let dx = 0;
-        
-        // For list scrolling
-        if (!isFullscreen) {
-          if (pressedKeys.has("ArrowUp")) dy -= 15;
-          if (pressedKeys.has("ArrowDown")) dy += 15;
-        }
-
-        if (dy !== 0 || dx !== 0) {
-          scrollContainerRef.current.scrollBy({ top: dy, left: dx, behavior: "auto" });
-        }
-      }, 16);
-    };
-
-    const stopKbdScroll = () => {
-      if (kbdScrollInterval) {
-        clearInterval(kbdScrollInterval);
-        kbdScrollInterval = null;
-      }
-    };
+    let shiftOnlyPressed = false;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      
-      pressedKeys.add(e.key);
+      if (
+        (e.target instanceof HTMLInputElement && e.target.type !== "range") ||
+        e.target instanceof HTMLTextAreaElement
+      ) return;
+
+      if (e.key === "Shift") {
+        shiftOnlyPressed = true;
+      } else if (e.key !== "Shift") {
+        shiftOnlyPressed = false;
+      }
+
       if (!isFullscreen && !e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
         e.preventDefault();
-        if (e.key === "ArrowUp") {
-          setAutoScrollDir("up");
-        } else if (e.key === "ArrowDown") {
-          setAutoScrollDir("down");
+        const currentDir = autoScrollDirRef.current;
+        const mode = kbdStopModeRef.current;
+
+        if (e.key === "ArrowDown") {
+          if (mode === "REVERSE") {
+            // [REVERSE] 上移動中に「下」を押すと停止
+            if (currentDir === "up") {
+              if (e.repeat) return;
+              setAutoScrollDir(null);
+              return;
+            }
+            if (currentDir === null) {
+              if (e.repeat) return;
+              setAutoScrollDir("down");
+            }
+          } else {
+            // [SAME] 下移動中に「下」を押すと停止
+            if (currentDir === "down") {
+              if (e.repeat) return;
+              setAutoScrollDir(null);
+              return;
+            }
+            if (currentDir === null || currentDir === "up") {
+              if (e.repeat) return;
+              setAutoScrollDir("down");
+            }
+          }
+        } else if (e.key === "ArrowUp") {
+          if (mode === "REVERSE") {
+            // [REVERSE] 下移動中に「上」を押すと停止
+            if (currentDir === "down") {
+              if (e.repeat) return;
+              setAutoScrollDir(null);
+              return;
+            }
+            if (currentDir === null) {
+              if (e.repeat) return;
+              setAutoScrollDir("up");
+            }
+          } else {
+            // [SAME] 上移動中に「上」を押すと停止
+            if (currentDir === "up") {
+              if (e.repeat) return;
+              setAutoScrollDir(null);
+              return;
+            }
+            if (currentDir === null || currentDir === "down") {
+              if (e.repeat) return;
+              setAutoScrollDir("up");
+            }
+          }
         }
-        startKbdScroll();
+        return;
       }
       // 共通ショートカット
       const key = e.key;
       const code = e.code;
       
-      // input などの入力中は除外
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      // input などの入力中は除外（スライダー range は操作対象として許可）
+      if (
+        (e.target instanceof HTMLInputElement && e.target.type !== "range") ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
         return;
       }
 
@@ -3773,19 +3897,74 @@ Images imported: ${importedImages}`);
         }
         if (key === "ArrowRight") {
           e.preventDefault();
-          goToNextImage();
+          lastNavSourceRef.current = "keyboard";
+          if (arrowKeyModeRef.current === "SPEED" && !e.shiftKey) {
+            setAutoScrollPxPerSec((prev) => {
+              const next = Math.min(3600, prev + 50);
+              const approx = next < 175 ? 1 : next < 375 ? 2 : next < 750 ? 3 : 4;
+              setAutoScrollSpeed(approx);
+              triggerWheelHud(autoScrollDirRef.current, next);
+              return next;
+            });
+          } else {
+            goToNextImage();
+          }
         } else if (key === "ArrowLeft") {
           e.preventDefault();
-          goToPrevImage();
+          lastNavSourceRef.current = "keyboard";
+          if (arrowKeyModeRef.current === "SPEED" && !e.shiftKey) {
+            setAutoScrollPxPerSec((prev) => {
+              const next = Math.max(50, prev - 50);
+              const approx = next < 175 ? 1 : next < 375 ? 2 : next < 750 ? 3 : 4;
+              setAutoScrollSpeed(approx);
+              triggerWheelHud(autoScrollDirRef.current, next);
+              return next;
+            });
+          } else {
+            goToPrevImage();
+          }
         } else if (key === "ArrowDown" && e.shiftKey) {
           e.preventDefault();
+          lastNavSourceRef.current = "keyboard";
           goToNextDataset();
         } else if (key === "ArrowUp" && e.shiftKey) {
           e.preventDefault();
+          lastNavSourceRef.current = "keyboard";
           goToPrevDataset();
         } else if (key === "Enter") {
           e.preventDefault();
-          if (selectedImage) {
+          if (e.target instanceof HTMLElement) {
+            e.target.blur();
+          }
+          let targetImg: LoadedImage | null = null;
+
+          // 1. キーボードで枠移動した直後の場合は、枠線で選ばれている画像を最優先
+          if (
+            lastNavSourceRef.current === "keyboard" &&
+            selectedImage &&
+            sortedImages.some((img) => img.id === selectedImage.id)
+          ) {
+            targetImg = selectedImage;
+          }
+
+          // 2. マウス操作直後、またはキーボード選択画像が無ければ、マウスホバー中の画像を優先
+          if (!targetImg && hoveredImageIdRef.current) {
+            const hImg = sortedImages.find((img) => img.id === hoveredImageIdRef.current);
+            if (hImg) targetImg = hImg;
+          }
+
+          // 3. ホバー画像も無ければ画面中央に最も近い画像を取得
+          if (!targetImg) {
+            targetImg = getCenterImage();
+          }
+
+          // 4. それでも無ければ選択中の画像
+          if (!targetImg && selectedImage && sortedImages.some((img) => img.id === selectedImage.id)) {
+            targetImg = selectedImage;
+          }
+
+          if (targetImg) {
+            setSelectedImage(targetImg);
             setIsFullscreen(true);
           }
         }
@@ -3841,7 +4020,7 @@ Images imported: ${importedImages}`);
         return;
       }
       
-      if (key === "Escape" || key === "Backspace") {
+      if (key === "Escape" || key === "Backspace" || key === "Enter") {
         if (e.repeat) return;
         e.preventDefault();
         setIsFullscreen(false);
@@ -3949,9 +4128,21 @@ Images imported: ${importedImages}`);
     };
     
     const handleKeyUp = (e: KeyboardEvent) => {
-      pressedKeys.delete(e.key);
-      if (!pressedKeys.has("ArrowUp") && !pressedKeys.has("ArrowDown")) {
-        stopKbdScroll();
+      if (e.key === "Shift") {
+        if (shiftOnlyPressed) {
+          shiftOnlyPressed = false;
+          if (!isFullscreen) {
+            setArrowKeyMode((prev) => {
+              const next = prev === "SPEED" ? "NAVIGATE" : "SPEED";
+              const label = next === "SPEED"
+                ? (language === "JP" ? "左右キー機能: 速度調整 (←/→)" : "Arrow keys: SPEED CONTROL")
+                : (language === "JP" ? "左右キー機能: 画像選択 (←/→)" : "Arrow keys: IMAGE SELECT");
+              showNotification(label);
+              triggerWheelHud(autoScrollDirRef.current, autoScrollPxPerSecRef.current);
+              return next;
+            });
+          }
+        }
       }
       if (e.key === "+" || e.code === "NumpadAdd" || e.key === "-" || e.code === "NumpadSubtract") {
         stopZooming();
@@ -3964,7 +4155,6 @@ Images imported: ${importedImages}`);
   return () => {
     window.removeEventListener("keydown", handleKeyDown);
     window.removeEventListener("keyup", handleKeyUp);
-    stopKbdScroll();
   };
   }, [
     isFullscreen,
@@ -4282,6 +4472,16 @@ Images imported: ${importedImages}`);
           }
         }
       }}
+      onMouseEnter={() => {
+        setHoveredImageId(img.id);
+        lastNavSourceRef.current = "mouse";
+      }}
+      onMouseMove={() => {
+        if (lastNavSourceRef.current !== "mouse") {
+          lastNavSourceRef.current = "mouse";
+        }
+      }}
+      onMouseLeave={() => setHoveredImageId((prev) => (prev === img.id ? null : prev))}
       onDoubleClick={() => {
         if (suppressNextClickRef.current || isSelectionMode) return;
         setSelectedImage(img);
@@ -4292,8 +4492,8 @@ Images imported: ${importedImages}`);
       className={cn(
         "cursor-pointer overflow-hidden border min-w-0 min-h-0 relative transition-colors rounded-none bg-panel-bg",
         isSelected || isMultiSelected
-          ? "border-accent shadow-[0_0_15px_var(--color-accent-glow)] z-10"
-          : "border-panel-border hover:border-text-secondary z-0",
+          ? "border-2 border-accent ring-2 ring-accent/60 ring-offset-1 ring-offset-panel-bg shadow-[0_0_18px_var(--color-accent-glow)] z-10 scale-[1.01]"
+          : "border border-panel-border hover:border-text-secondary z-0",
         viewMode === "grid-ma" && "w-full",
         viewMode === "grid-sq" &&
           "w-full aspect-square flex items-center justify-center",
@@ -4563,7 +4763,20 @@ Images imported: ${importedImages}`);
           <div className="flex items-center gap-2 h-full">
             <span className="text-[10px] uppercase font-mono tracking-widest text-text-muted">SIZE:</span>
             <div className="w-40 flex items-center">
-              <input type="range" min="60" max="750" value={itemScale} onChange={(e) => setItemScale(Number(e.target.value))} />
+              <input
+                type="range"
+                min="60"
+                max="750"
+                value={itemScale}
+                onChange={(e) => setItemScale(Number(e.target.value))}
+                onPointerUp={(e) => (e.currentTarget as HTMLElement).blur()}
+                onMouseUp={(e) => (e.currentTarget as HTMLElement).blur()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    (e.currentTarget as HTMLElement).blur();
+                  }
+                }}
+              />
             </div>
             <span className="text-[10px] font-mono text-text-primary w-10 text-right">{itemScale}px</span>
           </div>
@@ -4571,7 +4784,20 @@ Images imported: ${importedImages}`);
           <div className="flex items-center gap-2 h-full">
             <span className="text-[10px] uppercase font-mono tracking-widest text-text-muted">GAP:</span>
             <div className="w-40 flex items-center">
-              <input type="range" min="0" max="120" value={gridGap} onChange={(e) => setGridGap(Number(e.target.value))} />
+              <input
+                type="range"
+                min="0"
+                max="120"
+                value={gridGap}
+                onChange={(e) => setGridGap(Number(e.target.value))}
+                onPointerUp={(e) => (e.currentTarget as HTMLElement).blur()}
+                onMouseUp={(e) => (e.currentTarget as HTMLElement).blur()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    (e.currentTarget as HTMLElement).blur();
+                  }
+                }}
+              />
             </div>
             <span className="text-[10px] font-mono text-text-primary w-10 text-right">{gridGap}px</span>
           </div>
@@ -5599,7 +5825,10 @@ Images imported: ${importedImages}`);
                                   max="2.5"
                                   step="0.05"
                                   value={wheelSensitivity}
+                                  tabIndex={-1}
                                   onChange={(e) => setWheelSensitivity(parseFloat(e.target.value))}
+                                  onMouseUp={(e) => (e.target as HTMLElement).blur()}
+                                  onPointerUp={(e) => (e.target as HTMLElement).blur()}
                                   className="w-full h-1.5 bg-btn-bg border border-btn-border rounded-lg appearance-none cursor-pointer accent-accent"
                                 />
                               </div>
@@ -5742,7 +5971,115 @@ Images imported: ${importedImages}`);
                               </div>
                             </div>
 
-                            {/* 4. AUTO SCROLL SHORTCUT HINT */}
+                            {/* 4. KEYBOARD STOP MODE */}
+                            <div className="flex flex-col gap-1.5">
+                              <div className="flex items-center justify-between font-mono text-[10px] text-text-muted tracking-wider uppercase font-bold border-b border-panel-border pb-1">
+                                <div className="flex items-center gap-1.5">
+                                  <Keyboard size={12} className="text-accent" />
+                                  <span>{t("KEYBOARD STOP MODE", "キー操作停止方式")}</span>
+                                </div>
+                                <span className="text-[9px] text-accent font-mono uppercase font-bold">
+                                  {kbdStopMode === "REVERSE" ? t("REVERSE STOP", "対向キーで停止") : t("SAME STOP", "同キーで停止")}
+                                </span>
+                              </div>
+
+                              <div className="text-[10px] text-text-muted leading-tight">
+                                {t(
+                                  "Select how arrow keys pause movement during list scrolling.",
+                                  "一覧スクロール中、上下キー入力時にスクロールを一旦停止させる方式を選択します。"
+                                )}
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-1.5 font-mono text-[10px]">
+                                <button
+                                  type="button"
+                                  onClick={() => setKbdStopMode("REVERSE")}
+                                  className={cn(
+                                    "flex flex-col items-center justify-center p-2 border transition-all text-center rounded-xs cursor-pointer gap-0.5",
+                                    kbdStopMode === "REVERSE"
+                                      ? "border-accent bg-accent/15 text-text-primary font-bold ring-1 ring-accent"
+                                      : "border-panel-border hover:border-text-muted text-text-secondary hover:text-text-primary bg-panel-bg"
+                                  )}
+                                >
+                                  <div className="flex items-center gap-1">
+                                    <span>{t("REVERSE", "対向キーで停止")}</span>
+                                  </div>
+                                  <span className="text-[9px] text-text-muted">移動中に反対キーで停止</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setKbdStopMode("SAME")}
+                                  className={cn(
+                                    "flex flex-col items-center justify-center p-2 border transition-all text-center rounded-xs cursor-pointer gap-0.5",
+                                    kbdStopMode === "SAME"
+                                      ? "border-accent bg-accent/15 text-text-primary font-bold ring-1 ring-accent"
+                                      : "border-panel-border hover:border-text-muted text-text-secondary hover:text-text-primary bg-panel-bg"
+                                  )}
+                                >
+                                  <div className="flex items-center gap-1">
+                                    <span>{t("SAME KEY", "同キーで停止")}</span>
+                                  </div>
+                                  <span className="text-[9px] text-text-muted">移動中に同じキーで停止</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* 5. ARROW KEYS IN LIST VIEW */}
+                            <div className="flex flex-col gap-1.5">
+                              <div className="flex items-center justify-between font-mono text-[10px] text-text-muted tracking-wider uppercase font-bold border-b border-panel-border pb-1">
+                                <div className="flex items-center gap-1.5">
+                                  <Sliders size={12} className="text-accent" />
+                                  <span>{t("LIST ARROW KEYS", "一覧での左右キー機能")}</span>
+                                </div>
+                                <span className="text-[9px] text-accent font-mono uppercase font-bold">
+                                  {arrowKeyMode === "SPEED" ? t("SPEED CONTROL", "速度微調整") : t("IMAGE SELECT", "画像選択移動")}
+                                </span>
+                              </div>
+
+                              <div className="text-[10px] text-text-muted leading-tight">
+                                {t(
+                                  "Choose whether left/right keys adjust scroll speed or navigate images.",
+                                  "一覧表示時に左右矢印キー（←/→）でスピードを調節するか、画像選択を移動するかを切り替えます。"
+                                )}
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-1.5 font-mono text-[10px]">
+                                <button
+                                  type="button"
+                                  onClick={() => setArrowKeyMode("SPEED")}
+                                  className={cn(
+                                    "flex flex-col items-center justify-center p-2 border transition-all text-center rounded-xs cursor-pointer gap-0.5",
+                                    arrowKeyMode === "SPEED"
+                                      ? "border-accent bg-accent/15 text-text-primary font-bold ring-1 ring-accent"
+                                      : "border-panel-border hover:border-text-muted text-text-secondary hover:text-text-primary bg-panel-bg"
+                                  )}
+                                >
+                                  <div className="flex items-center gap-1">
+                                    <span>{t("SPEED ADJUST", "速度調整 (←/→)")}</span>
+                                  </div>
+                                  <span className="text-[9px] text-text-muted">←で減速 / →で加速 (+50px/s)</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setArrowKeyMode("NAVIGATE")}
+                                  className={cn(
+                                    "flex flex-col items-center justify-center p-2 border transition-all text-center rounded-xs cursor-pointer gap-0.5",
+                                    arrowKeyMode === "NAVIGATE"
+                                      ? "border-accent bg-accent/15 text-text-primary font-bold ring-1 ring-accent"
+                                      : "border-panel-border hover:border-text-muted text-text-secondary hover:text-text-primary bg-panel-bg"
+                                  )}
+                                >
+                                  <div className="flex items-center gap-1">
+                                    <span>{t("IMAGE SELECT", "画像選択 (←/→)")}</span>
+                                  </div>
+                                  <span className="text-[9px] text-text-muted">←前画像 / →次画像</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* 6. AUTO SCROLL SHORTCUT HINT */}
                             <div className="flex flex-col gap-1 p-2 bg-panel-bg border border-panel-border rounded-xs">
                               <span className="font-mono text-[9px] text-text-muted uppercase tracking-wider font-bold">
                                 {t("AUTO SCROLL NOTES", "自動スクロールの操作補足")}
@@ -5751,7 +6088,7 @@ Images imported: ${importedImages}`);
                                 <span>• 一覧を掴んで上下にドラッグ（滑らす）で滑らかに無段階加速</span>
                                 <span>• 右下のジョグパッドのドラッグやホイールでも微調整可能</span>
                                 <span>• 動作中に画面や画像をクリックすると即座に安全停止（画像は開きません）</span>
-                                <span>• Spaceキーで開始/一時停止、Tキーで速度段階切替</span>
+                                <span>• Spaceキーで開始/一時停止、Shiftキーをポンと押すと左右キーモード切替（速度調整 ↔ 画像選択）</span>
                               </div>
                             </div>
 
@@ -5800,6 +6137,8 @@ Images imported: ${importedImages}`);
                                   setWheelSensitivity(1.0);
                                   setWheelInvert(false);
                                   setDragInvert(false);
+                                  setKbdStopMode("REVERSE");
+                                  setArrowKeyMode("SPEED");
                                 }}
                                 className="px-2 py-1 border border-panel-border bg-panel-bg hover:border-accent hover:text-accent text-[9px] font-mono transition-colors rounded-xs cursor-pointer"
                               >
@@ -5871,7 +6210,10 @@ Images imported: ${importedImages}`);
                                   max="100"
                                   step="5"
                                   value={coverOpacity}
+                                  tabIndex={-1}
                                   onChange={(e) => setCoverOpacity(parseInt(e.target.value, 10))}
+                                  onMouseUp={(e) => (e.target as HTMLElement).blur()}
+                                  onPointerUp={(e) => (e.target as HTMLElement).blur()}
                                   className="w-full h-1.5 bg-btn-bg border border-btn-border rounded-lg appearance-none cursor-pointer accent-accent"
                                 />
                               </div>
@@ -7168,7 +7510,7 @@ Images imported: ${importedImages}`);
                           style={{
                             ...(!searchQuery.trim() && viewMode === "grid-sq"
                               ? {
-                                  gridTemplateColumns: `repeat(auto-fill, minmax(${itemScale}px, 1fr))`,
+                                  gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${itemScale}px), ${itemScale}px))`,
                                   gap: `${gridGap}px`,
                                 }
                               : {}),
@@ -7218,7 +7560,7 @@ Images imported: ${importedImages}`);
                                              viewMode === "list" && "flex flex-col",
                                            )}
                                            style={{
-                                              ...(viewMode === "grid-sq" ? { gridTemplateColumns: `repeat(auto-fill, minmax(${itemScale}px, 1fr))`, gap: `${gridGap}px` } : {}),
+                                              ...(viewMode === "grid-sq" ? { gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${itemScale}px), ${itemScale}px))`, gap: `${gridGap}px` } : {}),
                                               ...(viewMode === "grid-ma" ? { gap: `${gridGap}px` } : {}),
                                               ...(viewMode === "list" ? { gap: `${gridGap}px` } : {}),
                                            }}

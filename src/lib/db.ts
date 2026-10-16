@@ -58,7 +58,7 @@ interface ImageViewerDB extends DBSchema {
 }
 
 const DB_NAME = 'solid-image-viewer-db';
-const DB_VERSION = 12; // upgrade to version 12 to resolve VersionErrors
+const DB_VERSION = 12; // preserve version 12 to avoid regression
 const STORE_NAME_IMAGES = 'images';
 const STORE_NAME_DATASETS = 'datasets';
 const STORE_NAME_CATEGORIES = 'categories';
@@ -72,6 +72,11 @@ export async function initDB() {
       if (!db.objectStoreNames.contains(STORE_NAME_IMAGES)) {
         const imgStore = db.createObjectStore(STORE_NAME_IMAGES, { keyPath: 'id' });
         imgStore.createIndex('by-dataset', 'datasetId');
+      } else {
+        const imgStore = transaction.objectStore(STORE_NAME_IMAGES);
+        if (!imgStore.indexNames.contains('by-dataset')) {
+          imgStore.createIndex('by-dataset', 'datasetId');
+        }
       }
       if (!db.objectStoreNames.contains(STORE_NAME_CATEGORIES)) {
         const catStore = db.createObjectStore(STORE_NAME_CATEGORIES, { keyPath: 'id' });

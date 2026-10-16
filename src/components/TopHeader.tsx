@@ -87,10 +87,16 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           <div className="w-40 flex items-center">
             <input
               type="range"
-              min="60"
-              max="750"
+              min="40"
+              max="900"
+              step="1"
               value={itemScale}
-              onChange={(e) => setItemScale(Number(e.target.value))}
+              tabIndex={-1}
+              onChange={(e) => {
+                setItemScale(Number(e.target.value));
+              }}
+              onMouseUp={(e) => (e.target as HTMLElement).blur()}
+              onPointerUp={(e) => (e.target as HTMLElement).blur()}
             />
           </div>
           <span className="text-[10px] font-mono text-text-primary w-10 text-right tabular-nums">{itemScale}px</span>
@@ -102,9 +108,15 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             <input
               type="range"
               min="0"
-              max="120"
+              max="160"
+              step="1"
               value={gridGap}
-              onChange={(e) => setGridGap(Number(e.target.value))}
+              tabIndex={-1}
+              onChange={(e) => {
+                setGridGap(Number(e.target.value));
+              }}
+              onMouseUp={(e) => (e.target as HTMLElement).blur()}
+              onPointerUp={(e) => (e.target as HTMLElement).blur()}
             />
           </div>
           <span className="text-[10px] font-mono text-text-primary w-10 text-right tabular-nums">{gridGap}px</span>
