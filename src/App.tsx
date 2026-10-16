@@ -611,6 +611,14 @@ export default function App() {
   };
 
   const [selectedImage, setSelectedImage] = useState<LoadedImage | null>(null);
+  const selectedImageRef = useRef<LoadedImage | null>(null);
+  const isScrollTrackingUpdateRef = useRef(false);
+  const scrollTimerRef = useRef<number | null>(null);
+  const isScrollingRef = useRef(false);
+
+  useEffect(() => {
+    selectedImageRef.current = selectedImage;
+  }, [selectedImage]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState<string>("");
   const [isReadingDirectory, setIsReadingDirectory] = useState(false);
@@ -2249,31 +2257,113 @@ export default function App() {
     }
   }, []);
 
-  // 画面中央に最も近い画像を検出するヘルパー関数
+  // 画面中央に最も近い画像を検出するヘルパー関数（同一列の縦方向まっすぐの追従を実現・超高速DOM検索）
   const getCenterImage = React.useCallback((): LoadedImage | null => {
     if (!scrollContainerRef.current || sortedImages.length === 0) return null;
     const container = scrollContainerRef.current;
     const containerRect = container.getBoundingClientRect();
     const centerY = containerRect.top + containerRect.height / 2;
 
-    let closestImg: LoadedImage | null = null;
-    let minDistance = Infinity;
+    // 現在画面内にレンダリングされている画像カード要素のみを高速取得
+    const cardElements = container.querySelectorAll<HTMLElement>("[id^='image-card-']");
+    if (cardElements.length === 0) return sortedImages[0] || null;
 
-    for (const img of sortedImages) {
-      const el = document.getElementById(`image-card-${img.id}`);
-      if (el) {
+    // 現在選択されている画像のX座標（センターX）を取得。なければコンテナの水平中央X
+    let targetX = containerRect.left + containerRect.width / 2;
+    if (selectedImageRef.current) {
+      const selectedEl = document.getElementById(`image-card-${selectedImageRef.current.id}`);
+      if (selectedEl) {
+        const sRect = selectedEl.getBoundingClientRect();
+        targetX = sRect.left + sRect.width / 2;
+      }
+    }
+
+    // 画像ID -> LoadedImage オブジェクトの高速O(1)ルックアップマップ
+    const imgMap = new Map<string, LoadedImage>();
+    for (let i = 0; i < sortedImages.length; i++) {
+      imgMap.set(sortedImages[i].id, sortedImages[i]);
+    }
+
+    interface Metric {
+      img: LoadedImage;
+      centerX: number;
+      centerY: number;
+      height: number;
+      yDist: number;
+    }
+
+    const metrics: Metric[] = [];
+    let bestYItem: Metric | null = null;
+    let minYDist = Infinity;
+
+    for (let i = 0; i < cardElements.length; i++) {
+      const el = cardElements[i];
+      const id = el.id.substring(11);
+      const img = imgMap.get(id);
+      if (img) {
         const rect = el.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
         const itemCenterY = rect.top + rect.height / 2;
-        const dist = Math.abs(centerY - itemCenterY);
-        if (dist < minDistance) {
-          minDistance = dist;
-          closestImg = img;
+        const yDist = Math.abs(centerY - itemCenterY);
+        const m: Metric = {
+          img,
+          centerX,
+          centerY: itemCenterY,
+          height: rect.height,
+          yDist,
+        };
+        metrics.push(m);
+        if (yDist < minYDist) {
+          minYDist = yDist;
+          bestYItem = m;
         }
       }
     }
 
-    return closestImg || sortedImages[0] || null;
+    if (!bestYItem || metrics.length === 0) return sortedImages[0] || null;
+
+    // Y座標が画面中央の行（bestYItemと同じ行に属するアイテム群）を特定
+    const rowTolerance = Math.max(35, bestYItem.height * 0.45);
+    const rowItems = metrics.filter(
+      (m) => Math.abs(m.centerY - bestYItem!.centerY) <= rowTolerance
+    );
+
+    // その行内で、元の画像と同じ列（X座標）に最も近い画像を直下・直上として選択
+    let closestImg: LoadedImage | null = null;
+    let minXDist = Infinity;
+
+    for (let i = 0; i < rowItems.length; i++) {
+      const m = rowItems[i];
+      const xDist = Math.abs(m.centerX - targetX);
+      if (xDist < minXDist) {
+        minXDist = xDist;
+        closestImg = m.img;
+      }
+    }
+
+    return closestImg || bestYItem.img || sortedImages[0] || null;
   }, [sortedImages]);
+
+  // スクロール時に画面中央の画像へ選択枠（selectedImage）をリアルタイム追従させるイベントハンドラー
+  const handleContainerScroll = React.useCallback(() => {
+    if (isFullscreen || viewMode === "free" || sortedImages.length === 0) return;
+    isScrollingRef.current = true;
+    if (scrollTimerRef.current) cancelAnimationFrame(scrollTimerRef.current);
+
+    scrollTimerRef.current = requestAnimationFrame(() => {
+      const centerImg = getCenterImage();
+      if (centerImg && centerImg.id !== selectedImageRef.current?.id) {
+        isScrollTrackingUpdateRef.current = true;
+        setSelectedImage(centerImg);
+        if (!hoveredImageIdRef.current) {
+          lastNavSourceRef.current = "keyboard";
+        }
+      }
+      setTimeout(() => {
+        isScrollingRef.current = false;
+      }, 50);
+    });
+  }, [isFullscreen, viewMode, sortedImages.length, getCenterImage]);
 
   // リスト（データセット/フォルダ）切り替え時に画面中央の画像を自動選択
   useEffect(() => {
@@ -3735,8 +3825,12 @@ Images imported: ${importedImages}`);
   ]);
 
   useEffect(() => {
-    // 選択画像が変わったらスクロール (isFullscreen時も裏側でスクロールされて良い)
-    if (selectedImage && !isFullscreen) {
+    if (isScrollTrackingUpdateRef.current) {
+      isScrollTrackingUpdateRef.current = false;
+      return;
+    }
+    // 選択画像が変わったらスクロール (キーボード操作やクリックなど、スクロール追従時以外の選択で実行)
+    if (selectedImage && !isFullscreen && !isScrollingRef.current) {
       const el = document.getElementById(`image-card-${selectedImage.id}`);
       if (el) {
         el.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' });
@@ -4370,7 +4464,7 @@ Images imported: ${importedImages}`);
       <motion.div
         id={`image-card-${img.id}`}
       key={img.id}
-      layout={viewMode === "grid-sq" || viewMode === "grid-ma"}
+      layout={false}
       drag={viewMode === "free"}
       dragConstraints={
         viewMode === "free" ? false : scatterContainerRef
@@ -7362,6 +7456,7 @@ Images imported: ${importedImages}`);
                   onPointerMove={handleListPointerMove}
                   onPointerUp={handleListPointerUp}
                   onPointerCancel={handleListPointerCancel}
+                  onScroll={handleContainerScroll}
                   onWheel={(e) => {
                     if (autoScrollDirRef.current !== null) {
                       let delta = e.deltaY;
