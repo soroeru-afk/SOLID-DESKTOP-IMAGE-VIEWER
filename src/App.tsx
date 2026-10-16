@@ -2067,7 +2067,17 @@ export default function App() {
   // SCATTER (スケーター) モード時の軽量化サンプリング (10枚〜100枚の上限可変設定 & シャッフル)
   const scatterImages = useMemo(() => {
     if (viewMode !== "free") return sortedImages;
-    if (sortedImages.length <= scatterLimit) return sortedImages;
+    if (sortedImages.length <= scatterLimit) {
+      if (randomSeed > 0) {
+        const shuffled = [...sortedImages];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        return shuffled;
+      }
+      return sortedImages;
+    }
 
     const total = sortedImages.length;
     const step = total / scatterLimit;
@@ -5456,6 +5466,14 @@ Images imported: ${importedImages}`);
                     </button>
                   ))}
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setRandomSeed((prev) => prev + 1)}
+                  className="w-full mt-1 py-1 bg-accent/20 hover:bg-accent text-accent hover:text-accent-text rounded transition-all font-bold text-[9px] cursor-pointer shadow-xs active:scale-95 flex items-center justify-center gap-1"
+                  title={t("Shuffle images and scatter layout", "画像の並びと配置をシャッフル")}
+                >
+                  ↻ {t("SHUFFLE", "シャッフル")}
+                </button>
               </div>
             )}
 
@@ -7943,14 +7961,14 @@ Images imported: ${importedImages}`);
                                 </div>
                               </div>
 
-                              {sortedImages.length > scatterLimit && (
+                              {sortedImages.length > 0 && (
                                 <button
                                   type="button"
                                   onClick={() => setRandomSeed((prev) => prev + 1)}
-                                  className="ml-1 px-2.5 py-0.5 bg-accent/20 hover:bg-accent text-accent hover:text-accent-text rounded-full transition-all font-bold text-[9px] cursor-pointer shadow-xs active:scale-95 shrink-0"
-                                  title={t("Reshuffle sampled images", "別パターンを再抽出・シャッフル")}
+                                  className="ml-1 px-2.5 py-0.5 bg-accent/20 hover:bg-accent text-accent hover:text-accent-text rounded-full transition-all font-bold text-[9px] cursor-pointer shadow-xs active:scale-95 shrink-0 flex items-center gap-1"
+                                  title={t("Shuffle images and scatter layout", "画像の並びと配置をシャッフル")}
                                 >
-                                  ↻ {t("RESHUFFLE", "再シャッフル")}
+                                  ↻ {t("SHUFFLE", "シャッフル")}
                                 </button>
                               )}
                             </div>
