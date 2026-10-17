@@ -19,8 +19,8 @@ interface TopHeaderProps {
   setItemScale: (val: number) => void;
   gridGap: number;
   setGridGap: (val: number) => void;
-  canvasBg: "theme" | "black" | "white" | "checker";
-  setCanvasBg: (val: "theme" | "black" | "white" | "checker") => void;
+  canvasBg: "theme" | "auto" | "black" | "white" | "checker";
+  setCanvasBg: (val: "theme" | "auto" | "black" | "white" | "checker") => void;
   appFont: string;
   setAppFont: (val: any) => void;
   theme: string;
@@ -125,16 +125,19 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
         <div className="flex items-center gap-2 h-full">
           <span className="text-[10px] uppercase font-mono tracking-widest text-text-muted">CANVAS:</span>
           <div className="flex gap-1 h-full py-2 items-center">
-            <SolidButton active={canvasBg === "theme"} onClick={() => setCanvasBg("theme")} className="w-10 h-6 px-0 py-0 text-[10px]">
+            <SolidButton active={canvasBg === "theme"} onClick={() => setCanvasBg("theme")} className="w-[50px] h-6 px-0 py-0 text-[10px] font-mono tracking-tighter">
+              THEME
+            </SolidButton>
+            <SolidButton active={canvasBg === "auto"} onClick={() => setCanvasBg("auto")} className="w-[50px] h-6 px-0 py-0 text-[10px] font-mono tracking-tighter">
               AUTO
             </SolidButton>
-            <SolidButton active={canvasBg === "black"} onClick={() => setCanvasBg("black")} className="w-10 h-6 px-0 py-0 text-[10px]">
+            <SolidButton active={canvasBg === "black"} onClick={() => setCanvasBg("black")} className="w-[50px] h-6 px-0 py-0 text-[10px] font-mono tracking-tighter">
               BLK
             </SolidButton>
-            <SolidButton active={canvasBg === "white"} onClick={() => setCanvasBg("white")} className="w-10 h-6 px-0 py-0 text-[10px]">
+            <SolidButton active={canvasBg === "white"} onClick={() => setCanvasBg("white")} className="w-[50px] h-6 px-0 py-0 text-[10px] font-mono tracking-tighter">
               WHT
             </SolidButton>
-            <SolidButton active={canvasBg === "checker"} onClick={() => setCanvasBg("checker")} className="w-10 h-6 px-0 py-0 text-[10px]">
+            <SolidButton active={canvasBg === "checker"} onClick={() => setCanvasBg("checker")} className="w-[50px] h-6 px-0 py-0 text-[10px] font-mono tracking-tighter">
               CHK
             </SolidButton>
           </div>

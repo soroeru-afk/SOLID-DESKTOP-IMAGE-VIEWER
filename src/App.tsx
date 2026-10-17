@@ -158,11 +158,14 @@ const analyzeImageBlob = async (blob: Blob): Promise<ImageMetadata> => {
       const fallback = { bg: "checkerboard" as const, width: originalWidth, height: originalHeight };
       const resolveBg = (bg: "black" | "white" | "checkerboard") => resolve({ bg, width: originalWidth, height: originalHeight });
 
+      // Fast-path for JPEGs: JPEGs never have alpha transparency
+      const isJpeg = blob.type.includes("jpeg") || blob.type.includes("jpg");
+
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (!ctx) return resolve(fallback);
 
-      const MAX_SIZE = 64;
+      const MAX_SIZE = 32;
       let width = img.width;
       let height = img.height;
       if (width > MAX_SIZE || height > MAX_SIZE) {
@@ -178,6 +181,16 @@ const analyzeImageBlob = async (blob: Blob): Promise<ImageMetadata> => {
 
       try {
         const imageData = ctx.getImageData(0, 0, width, height).data;
+
+        if (isJpeg) {
+          let totalLum = 0;
+          for (let i = 0; i < imageData.length; i += 4) {
+            totalLum += 0.299 * imageData[i] + 0.587 * imageData[i + 1] + 0.114 * imageData[i + 2];
+          }
+          const avgBrightness = totalLum / (width * height);
+          return resolveBg(avgBrightness > 128 ? "white" : "black");
+        }
+
         let transparentCount = 0;
         let totalBrightness = 0;
         let nonTransparentCount = 0;
@@ -197,17 +210,28 @@ const analyzeImageBlob = async (blob: Blob): Promise<ImageMetadata> => {
           }
         }
 
-        const avgBrightness = nonTransparentCount > 0 ? totalBrightness / nonTransparentCount : 128;
         const totalPixels = width * height;
-        const isMostlyTransparent = (transparentCount / totalPixels) > 0.05;
-        
-        if (isMostlyTransparent) {
-          // For transparent images (logos/marks), we want contrast against the mark.
-          // If mark is bright, use black canvas. If mark is dark, use white canvas.
-          return resolveBg(avgBrightness > 128 ? "black" : "white");
+        const hasAlpha = (transparentCount / totalPixels) > 0.001 || transparentCount > 2;
+
+        // Check 4 corners for white background logo detection
+        const checkCornerWhite = (x: number, y: number) => {
+          const idx = (y * width + x) * 4;
+          const r = imageData[idx];
+          const g = imageData[idx + 1];
+          const b = imageData[idx + 2];
+          const a = imageData[idx + 3];
+          return a > 240 && r >= 240 && g >= 240 && b >= 240;
+        };
+        const c1 = checkCornerWhite(0, 0);
+        const c2 = checkCornerWhite(width - 1, 0);
+        const c3 = checkCornerWhite(0, height - 1);
+        const c4 = checkCornerWhite(width - 1, height - 1);
+        const isWhiteBgLogo = c1 && c2 && c3 && c4 && (blob.type.includes("png") || blob.type.includes("svg") || blob.type.includes("webp") || blob.type.includes("gif"));
+
+        if (hasAlpha || isWhiteBgLogo) {
+          return resolveBg("checkerboard");
         } else {
-          // For opaque images, we want the canvas to blend with the background.
-          // The background dominates the average brightness.
+          const avgBrightness = nonTransparentCount > 0 ? totalBrightness / nonTransparentCount : 128;
           return resolveBg(avgBrightness > 128 ? "white" : "black");
         }
       } catch (e) {
@@ -1212,11 +1236,192 @@ export default function App() {
     }
   }, []);
 
+  // Continuous Hold Rotation States & Callbacks
+  const isRotatePressingRef = useRef(false);
+  const rotatePressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const rotateAnimFrameRef = useRef<number | null>(null);
+  const rotateLastTimeRef = useRef<number>(0);
+  const isContinuousRotatingRef = useRef(false);
+  const wasContinuouslyRotatedRef = useRef(false);
+
+  const startHoldRotate = React.useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (isRotatePressingRef.current) return;
+
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+
+    isRotatePressingRef.current = true;
+    isContinuousRotatingRef.current = false;
+    rotateLastTimeRef.current = performance.now();
+
+    // 200ms長押しで連続回転モード発動
+    rotatePressTimerRef.current = setTimeout(() => {
+      isContinuousRotatingRef.current = true;
+      wasContinuouslyRotatedRef.current = true;
+      rotateLastTimeRef.current = performance.now();
+
+      const loop = (now: number) => {
+        if (!isRotatePressingRef.current) return;
+        const deltaSec = (now - rotateLastTimeRef.current) / 1000;
+        rotateLastTimeRef.current = now;
+
+        // 1秒間に90度回転 (滑らかにどこでも止められる)
+        setFullscreenRotation((prev) => {
+          const next = (prev + deltaSec * 90) % 360;
+          imgControls.start({ rotate: next, transition: { duration: 0 } });
+          return next;
+        });
+
+        rotateAnimFrameRef.current = requestAnimationFrame(loop);
+      };
+
+      rotateAnimFrameRef.current = requestAnimationFrame(loop);
+    }, 200);
+  }, [imgControls]);
+
+  const stopHoldRotate = React.useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!isRotatePressingRef.current) return;
+
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+
+    isRotatePressingRef.current = false;
+
+    if (rotatePressTimerRef.current) {
+      clearTimeout(rotatePressTimerRef.current);
+      rotatePressTimerRef.current = null;
+    }
+
+    if (rotateAnimFrameRef.current) {
+      cancelAnimationFrame(rotateAnimFrameRef.current);
+      rotateAnimFrameRef.current = null;
+    }
+
+    // 長押しせず短時間クリックの場合
+    if (!isContinuousRotatingRef.current) {
+      setFullscreenRotation((prev) => {
+        const deg = ((prev % 360) + 360) % 360;
+        const isCustomAngle = wasContinuouslyRotatedRef.current || Math.abs(deg % 45) > 0.01;
+        let next = prev;
+
+        if (isCustomAngle) {
+          if (deg > 180) {
+            // 半分(180度)を超えて回転している場合は、そのまま時計回りに前進して正位置(360度)へ
+            next = prev + (360 - deg);
+          } else {
+            // 180度以下の場合は、そのまま反時計回りに戻って正位置(0度)へ
+            next = prev - deg;
+          }
+        } else {
+          // 通常の45度ステップ回転: 常に時計回りに+45度前進 (315度 -> 360度で逆回転せずスムーズ前進)
+          next = prev + 45;
+        }
+
+        wasContinuouslyRotatedRef.current = false;
+        imgControls.start({ rotate: next, transition: { duration: 0.15 } });
+        return next;
+      });
+    } else {
+      isContinuousRotatingRef.current = false;
+    }
+  }, [imgControls]);
+
+  // Keyboard R Key Hold Rotation States & Callbacks
+  const isKeyRPressingRef = useRef(false);
+  const keyRTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const keyRAnimFrameRef = useRef<number | null>(null);
+  const keyRLastTimeRef = useRef<number>(0);
+  const isKeyRContinuousRef = useRef(false);
+
+  const handleKeyRDown = React.useCallback(() => {
+    if (isKeyRPressingRef.current) return;
+    isKeyRPressingRef.current = true;
+    isKeyRContinuousRef.current = false;
+    keyRLastTimeRef.current = performance.now();
+
+    // 200ms長押しでキーボード連続回転モード発動
+    keyRTimerRef.current = setTimeout(() => {
+      isKeyRContinuousRef.current = true;
+      wasContinuouslyRotatedRef.current = true;
+      keyRLastTimeRef.current = performance.now();
+
+      const loop = (now: number) => {
+        if (!isKeyRPressingRef.current) return;
+        const deltaSec = (now - keyRLastTimeRef.current) / 1000;
+        keyRLastTimeRef.current = now;
+
+        setFullscreenRotation((prev) => {
+          const next = (prev + deltaSec * 90) % 360;
+          imgControls.start({ rotate: next, transition: { duration: 0 } });
+          return next;
+        });
+
+        keyRAnimFrameRef.current = requestAnimationFrame(loop);
+      };
+
+      keyRAnimFrameRef.current = requestAnimationFrame(loop);
+    }, 200);
+  }, [imgControls]);
+
+  const handleKeyRUp = React.useCallback(() => {
+    if (!isKeyRPressingRef.current) return;
+    isKeyRPressingRef.current = false;
+
+    if (keyRTimerRef.current) {
+      clearTimeout(keyRTimerRef.current);
+      keyRTimerRef.current = null;
+    }
+
+    if (keyRAnimFrameRef.current) {
+      cancelAnimationFrame(keyRAnimFrameRef.current);
+      keyRAnimFrameRef.current = null;
+    }
+
+    // 長押しせず短時間タップの場合はステップ回転／正位置復元
+    if (!isKeyRContinuousRef.current) {
+      setFullscreenRotation((prev) => {
+        const deg = ((prev % 360) + 360) % 360;
+        const isCustomAngle = wasContinuouslyRotatedRef.current || Math.abs(deg % 45) > 0.01;
+        let next = prev;
+
+        if (isCustomAngle) {
+          if (deg > 180) {
+            next = prev + (360 - deg);
+          } else {
+            next = prev - deg;
+          }
+        } else {
+          next = prev + 45;
+        }
+
+        wasContinuouslyRotatedRef.current = false;
+        imgControls.start({ rotate: next, transition: { duration: 0.15 } });
+        return next;
+      });
+    } else {
+      isKeyRContinuousRef.current = false;
+    }
+  }, [imgControls]);
+
 
   useEffect(() => {
     setFullscreenScale(1);
     setFullscreenRotation(0);
     setFullscreenFlipX(false);
+    wasContinuouslyRotatedRef.current = false;
+    isKeyRPressingRef.current = false;
+    if (keyRTimerRef.current) clearTimeout(keyRTimerRef.current);
+    if (keyRAnimFrameRef.current) cancelAnimationFrame(keyRAnimFrameRef.current);
     imgX.set(0);
     imgY.set(0);
     imgControls.start({ x: 0, y: 0, scale: 1, rotate: 0, rotateY: 0 });
@@ -2264,28 +2469,28 @@ function createPRNG(seed: number) {
 
       images.forEach((img) => URL.revokeObjectURL(img.url));
 
-      const loaded = await Promise.all(
-        allDbImages.map(async (img) => {
-          let { autoBg, width, height } = img;
-          if (!autoBg || !width || !height) {
-            const meta = await analyzeImageBlob(img.data);
-            autoBg = autoBg || meta.bg;
-            width = width || meta.width;
-            height = height || meta.height;
-            storeImages([{ ...img, autoBg, width, height }]).catch(console.error);
-          }
-          return {
-            ...img,
-            url: URL.createObjectURL(img.data),
-            randomX: Math.random() * 80 - 40,
-            randomY: Math.random() * 80 - 40,
-            randomRotation: (Math.random() * scatterRotationRange * 2) - scatterRotationRange,
-            autoBg,
-            width,
-            height,
-          };
-        })
-      );
+      const loaded = allDbImages.map((img) => {
+        const isAlphaFormat =
+          img.type?.includes("png") ||
+          img.type?.includes("gif") ||
+          img.type?.includes("webp") ||
+          img.type?.includes("svg") ||
+          img.name?.toLowerCase().endsWith(".png") ||
+          img.name?.toLowerCase().endsWith(".gif") ||
+          img.name?.toLowerCase().endsWith(".webp") ||
+          img.name?.toLowerCase().endsWith(".svg");
+        const autoBg = img.autoBg ?? (isAlphaFormat ? "checkerboard" : "white");
+        return {
+          ...img,
+          url: URL.createObjectURL(img.data),
+          randomX: Math.random() * 80 - 40,
+          randomY: Math.random() * 80 - 40,
+          randomRotation: (Math.random() * scatterRotationRange * 2) - scatterRotationRange,
+          autoBg,
+          width: img.width || 300,
+          height: img.height || 300,
+        };
+      });
       setImages(loaded);
     } catch (e) {
       console.error(e);
@@ -2351,33 +2556,55 @@ function createPRNG(seed: number) {
       // Revoke old URLs
       images.forEach((img) => URL.revokeObjectURL(img.url));
 
-      const loaded = await Promise.all(
-        dbImages.map(async (img) => {
-          let { autoBg, width, height } = img;
-          if (!autoBg || !width || !height) {
-            const meta = await analyzeImageBlob(img.data);
-            autoBg = autoBg || meta.bg;
-            width = width || meta.width;
-            height = height || meta.height;
-            // Update the DB record in the background to cache it
-            storeImages([{ ...img, autoBg, width, height }]).catch(console.error);
-          }
-          return {
-            ...img,
-            url: URL.createObjectURL(img.data),
-            randomX: Math.random() * 80 - 40,
-            randomY: Math.random() * 80 - 40,
-            randomRotation: (Math.random() * scatterRotationRange * 2) - scatterRotationRange,
-            autoBg,
-            width,
-            height,
-          };
-        })
-      );
+      const loaded = dbImages.map((img) => {
+        const isAlphaFormat =
+          img.type?.includes("png") ||
+          img.type?.includes("gif") ||
+          img.type?.includes("webp") ||
+          img.type?.includes("svg") ||
+          img.name?.toLowerCase().endsWith(".png") ||
+          img.name?.toLowerCase().endsWith(".gif") ||
+          img.name?.toLowerCase().endsWith(".webp") ||
+          img.name?.toLowerCase().endsWith(".svg");
+        const autoBg = img.autoBg ?? (isAlphaFormat ? "checkerboard" : "white");
+        return {
+          ...img,
+          url: URL.createObjectURL(img.data),
+          randomX: Math.random() * 80 - 40,
+          randomY: Math.random() * 80 - 40,
+          randomRotation: (Math.random() * scatterRotationRange * 2) - scatterRotationRange,
+          autoBg,
+          width: img.width || 300,
+          height: img.height || 300,
+        };
+      });
+
       setImages(loaded);
+      setIsLoading(false);
+
+      // 非同期バックグラウンド処理（UIロード完了後に重くならない範囲でメタデータ保存）
+      setTimeout(() => {
+        const unanalyzed = dbImages.filter((img) => !img.width || !img.height);
+        if (unanalyzed.length > 0) {
+          Promise.all(
+            unanalyzed.slice(0, 20).map(async (img) => {
+              try {
+                const meta = await analyzeImageBlob(img.data);
+                await storeImages([
+                  {
+                    ...img,
+                    autoBg: img.autoBg || meta.bg,
+                    width: img.width || meta.width,
+                    height: img.height || meta.height,
+                  },
+                ]);
+              } catch {}
+            })
+          ).catch(() => {});
+        }
+      }, 100);
     } catch (e) {
       console.error(e);
-    } finally {
       setIsLoading(false);
     }
   };
@@ -4228,18 +4455,6 @@ Images imported: ${importedImages}`);
         else setPortraitMode("off");
         return;
       }
-      if (key === "r" || key === "R") {
-        if (e.repeat) return;
-        e.preventDefault();
-        if (isFullscreen) {
-          setFullscreenRotation(r => {
-            const next = r + 90;
-            imgControls.start({ rotate: next, transition: { duration: 0.2 } });
-            return next;
-          });
-        }
-        return;
-      }
       if (key === "h" || key === "H") {
         if (e.repeat) return;
         e.preventDefault();
@@ -4400,6 +4615,22 @@ Images imported: ${importedImages}`);
         }
         return;
       }
+      if (key === "r" || key === "R") {
+        if (e.repeat) return;
+        e.preventDefault();
+        handleKeyRDown();
+        return;
+      }
+      if (key === "h" || key === "H") {
+        if (e.repeat) return;
+        e.preventDefault();
+        setFullscreenFlipX((f) => {
+          const next = !f;
+          imgControls.start({ rotateY: next ? 180 : 0, transition: { duration: 0.2 } });
+          return next;
+        });
+        return;
+      }
       if (key === "Delete") {
         if (e.repeat) return;
         e.preventDefault();
@@ -4515,6 +4746,11 @@ Images imported: ${importedImages}`);
     };
     
     const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "r" || e.key === "R") {
+        e.preventDefault();
+        handleKeyRUp();
+        return;
+      }
       if (e.key === "Shift") {
         if (shiftOnlyPressed) {
           shiftOnlyPressed = false;
@@ -4561,6 +4797,8 @@ Images imported: ${importedImages}`);
     startZoomIn,
     startZoomOut,
     stopZooming,
+    handleKeyRDown,
+    handleKeyRUp,
   ]);
 
   const handleDownloadImage = (image: ImageRecord) => {
@@ -4731,19 +4969,23 @@ Images imported: ${importedImages}`);
 
   const getCanvasBgClass = (imgBg?: "black" | "white" | "checkerboard") => {
     if (canvasBg === "theme") {
-      // THEMEモード: テーマごとに最適調整されたなじみ背景色
+      // 透過マーク・ロゴ（checkerboard）の場合のみ、黒テーマ等で黒ロゴが消えないよう白背景 (bg-white) を適用
+      if (imgBg === "checkerboard") {
+        return "bg-white";
+      }
+      // 通常の長方形写真・イラスト画像は、画像ごとの明暗解析で混在せず選択テーマ背景色で100%完全統一！
       const curTheme = theme.toUpperCase();
       if (curTheme === "LIGHT" || curTheme === "PAPER") {
         return "bg-white"; // LIGHT・PAPER時は完全な白 (White)
       }
       if (curTheme === "NAVY") {
-        return "bg-[#080c14]"; // NAVY時は背景より若干濃いめの落ち着いたダークネイビー
+        return "bg-[#080c14]"; // NAVY時は落ち着いたダークネイビー
       }
       if (curTheme === "RED") {
-        return "bg-[#100505]"; // RED時は背景より若干濃いめの落ち着いた深紅黒
+        return "bg-[#100505]"; // RED時は落ち着いた深紅黒
       }
       if (curTheme === "BLACK") {
-        return "bg-[#0e1013]"; // BLACK時は背景より若干濃いめのチャコールブラック
+        return "bg-[#0e1013]"; // BLACK時はチャコールブラック
       }
       if (curTheme === "TRUE_BLACK") {
         return "bg-black"; // TRUE_BLACK時は完全なピュアブラック
@@ -4751,10 +4993,9 @@ Images imported: ${importedImages}`);
       return "bg-root-bg";
     }
     if (canvasBg === "auto") {
-      // AUTOモード: 画像解析結果 (black / white / checkerboard) を自動適用
+      // AUTOモード: 画像個別の自動解析結果 (white / checkerboard -> bg-white, black -> bg-black) をそのまま個別適用
+      if (imgBg === "white" || imgBg === "checkerboard") return "bg-white";
       if (imgBg === "black") return "bg-black";
-      if (imgBg === "white") return "bg-white";
-      if (imgBg === "checkerboard") return "bg-checkerboard";
       return "bg-root-bg";
     }
     if (canvasBg === "black") return "bg-black";
@@ -4764,10 +5005,15 @@ Images imported: ${importedImages}`);
   };
 
   const isFullscreenDarkText = (() => {
-    if (canvasBg === "auto" && selectedImage?.autoBg) {
-      return selectedImage.autoBg === "white" || selectedImage.autoBg === "checkerboard";
+    if (canvasBg === "theme") {
+      if (selectedImage?.autoBg === "checkerboard") return true;
+      const curTheme = theme.toUpperCase();
+      return curTheme === "LIGHT" || curTheme === "PAPER";
     }
-    return canvasBg === "white" || canvasBg === "checker" || (canvasBg === "theme" && (theme.toUpperCase() === "LIGHT" || theme.toUpperCase() === "PAPER"));
+    if (canvasBg === "auto") {
+      return selectedImage?.autoBg === "white" || selectedImage?.autoBg === "checkerboard";
+    }
+    return canvasBg === "white" || canvasBg === "checker";
   })();
 
   const renderImageCard = (
@@ -6440,7 +6686,7 @@ Images imported: ${importedImages}`);
                                   R
                                 </kbd>
                                 <span className="text-text-secondary truncate">
-                                  {t("Rotate Image (+90°)", "画像を90°回転")}
+                                  {t("Rotate Image (Tap: Step / Hold: Free)", "画像回転 (タップ: 45°回転 / 長押し: 自由連続回転)")}
                                 </span>
 
                                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
@@ -8624,7 +8870,7 @@ Images imported: ${importedImages}`);
       
       {/* Export / Import Loading & Message Overlay */}
       <AnimatePresence>
-        {(isLoading || loadingMessage) && (
+        {(Boolean(loadingMessage) || isReadingDirectory) && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -8785,6 +9031,7 @@ Images imported: ${importedImages}`);
                     setFullscreenScale(1);
                     setFullscreenRotation(0);
                     setFullscreenFlipX(false);
+                    wasContinuouslyRotatedRef.current = false;
                     imgControls.start({ x: 0, y: 0, scale: 1, rotate: 0, rotateY: 0 });
                   }}
                   title="Drag to Move / Scroll to Zoom / Double-click to Reset"
@@ -8985,6 +9232,20 @@ Images imported: ${importedImages}`);
                       : "opacity-60 hover:opacity-100"
                   )}
                 >
+                  THEME
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCanvasBg("auto");
+                  }}
+                  className={cn(
+                    "px-1.5 py-0.5 rounded transition-all",
+                    canvasBg === "auto"
+                      ? (isFullscreenDarkText ? "bg-black text-white " : "bg-white text-black ")
+                      : "opacity-60 hover:opacity-100"
+                  )}
+                >
                   AUTO
                 </button>
                 <button
@@ -9111,16 +9372,12 @@ Images imported: ${importedImages}`);
                   <FlipHorizontal size={18} />
                 </button>
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setFullscreenRotation(r => {
-                      const next = r + 90;
-                      imgControls.start({ rotate: next, transition: { duration: 0.2 } });
-                      return next;
-                    });
-                  }}
-                  className="p-1.5 hover:bg-white/20 rounded transition-colors touch-none"
-                  title={t("Rotate 90° (R)", "90度回転 (R)")}
+                  onPointerDown={startHoldRotate}
+                  onPointerUp={stopHoldRotate}
+                  onPointerLeave={stopHoldRotate}
+                  onPointerCancel={stopHoldRotate}
+                  className="p-1.5 hover:bg-white/20 rounded transition-colors touch-none cursor-pointer"
+                  title={t("Rotate (Click: +45° / Press & Hold: Continuous)", "回転 (クリック: 45°回転 / 長押し: 滑らか自由回転)")}
                 >
                   <RotateCw size={18} />
                 </button>
