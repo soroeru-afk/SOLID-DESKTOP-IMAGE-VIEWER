@@ -4454,7 +4454,12 @@ Images imported: ${importedImages}`);
         return;
       }
 
-      if (key === "f" || key === "F") {
+      if (
+        key === "f" ||
+        key === "F" ||
+        code === "NumpadDivide" ||
+        key === "/"
+      ) {
         if (e.repeat) return;
         e.preventDefault();
         toggleAppFullscreen();
@@ -4688,10 +4693,15 @@ Images imported: ${importedImages}`);
         });
         return;
       }
-      if (key === "u" || key === "U") {
+      if (
+        key === "u" ||
+        key === "U" ||
+        code === "NumpadMultiply" ||
+        key === "*"
+      ) {
         if (e.repeat) return;
         e.preventDefault();
-        setShowFullscreenUI(prev => !prev);
+        setShowFullscreenUI((prev) => !prev);
         return;
       }
       if (key === "z" || key === "Z" || code === "Numpad5" || key === "5") {
@@ -5737,7 +5747,7 @@ Images imported: ${importedImages}`);
             <SolidButton
               onClick={toggleAppFullscreen}
               className="px-2"
-              title="TOGGLE FULLSCREEN (F11)"
+              title="TOGGLE FULLSCREEN (F / テンキー / / F11)"
             >
               {isAppFullscreen ? (
                 <Minimize size={16} />
@@ -6668,10 +6678,10 @@ Images imported: ${importedImages}`);
                                 </span>
 
                                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                                  F
+                                  F / テンキー /
                                 </kbd>
                                 <span className="text-text-secondary truncate">
-                                  {t("Browser Fullscreen", "ブラウザ全画面切替")}
+                                  {t("Browser Fullscreen (F / Numpad /)", "ブラウザ全画面切替 (F / テンキー /)")}
                                 </span>
 
                                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-amber-500/40 text-amber-400 text-center min-w-[24px]">
@@ -6746,10 +6756,10 @@ Images imported: ${importedImages}`);
                                 </span>
 
                                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                                  U
+                                  U / テンキー *
                                 </kbd>
                                 <span className="text-text-secondary truncate">
-                                  {t("Toggle UI Display", "操作UIの表示/非表示")}
+                                  {t("Toggle UI Display (U / Numpad *)", "操作UIの表示/非表示 (U / テンキー *)")}
                                 </span>
 
                                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
@@ -9550,7 +9560,7 @@ Images imported: ${importedImages}`);
                       : "bg-black/20 border-white/10 text-white/70 hover:text-white hover:bg-black/40",
                     isAppFullscreen && (isFullscreenDarkText ? "bg-white/50 text-black border-black/20" : "bg-black/50 text-white border-white/20")
                   )}
-                  title={t("Borderless (F)", "ボーダレス (F)")}
+                  title={t("Borderless (F / Numpad /)", "ボーダレス (F / テンキー /)")}
                 >
                   {isAppFullscreen ? <Minimize size={24} /> : <Maximize size={24} />}
                 </button>
