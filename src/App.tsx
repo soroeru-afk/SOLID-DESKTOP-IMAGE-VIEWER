@@ -676,11 +676,25 @@ export default function App() {
 
   // Auto Scroll States & Loop
   const [autoScrollDir, setAutoScrollDir] = useState<"up" | "down" | null>(null);
-  const [autoScrollSpeed, setAutoScrollSpeed] = useState<number>(2);
-  const [autoScrollPxPerSec, setAutoScrollPxPerSec] = useState<number>(250);
+  const [autoScrollSpeed, setAutoScrollSpeed] = useState<number>(() => {
+    const saved = localStorage.getItem("auto_scroll_speed");
+    return saved ? parseInt(saved, 10) : 2;
+  });
+  const [autoScrollPxPerSec, setAutoScrollPxPerSec] = useState<number>(() => {
+    const saved = localStorage.getItem("auto_scroll_px_per_sec");
+    return saved ? parseInt(saved, 10) : 250;
+  });
   const autoScrollDirRef = useRef<"up" | "down" | null>(null);
   const lastAutoScrollDirRef = useRef<"up" | "down">("down");
-  const autoScrollPxPerSecRef = useRef<number>(250);
+  const autoScrollPxPerSecRef = useRef<number>(autoScrollPxPerSec);
+
+  useEffect(() => {
+    localStorage.setItem("auto_scroll_speed", String(autoScrollSpeed));
+  }, [autoScrollSpeed]);
+
+  useEffect(() => {
+    localStorage.setItem("auto_scroll_px_per_sec", String(autoScrollPxPerSec));
+  }, [autoScrollPxPerSec]);
 
   // Wheel Scroll Settings (Sensitivity & Direction Invert)
   const [wheelSensitivity, setWheelSensitivity] = useState<number>(() => {
@@ -4540,9 +4554,13 @@ Images imported: ${importedImages}`);
           e.preventDefault();
           lastNavSourceRef.current = "keyboard";
           if (e.shiftKey) {
-            goToPrevDataset();
+            if (!e.repeat) goToPrevDataset();
           } else {
-            setAutoScrollDir((prev) => (prev === "up" ? null : "up"));
+            if (e.repeat) {
+              setAutoScrollDir("up");
+            } else {
+              setAutoScrollDir((prev) => (prev === "up" ? null : "up"));
+            }
           }
           return;
         }
@@ -4550,9 +4568,13 @@ Images imported: ${importedImages}`);
           e.preventDefault();
           lastNavSourceRef.current = "keyboard";
           if (e.shiftKey) {
-            goToNextDataset();
+            if (!e.repeat) goToNextDataset();
           } else {
-            setAutoScrollDir((prev) => (prev === "down" ? null : "down"));
+            if (e.repeat) {
+              setAutoScrollDir("down");
+            } else {
+              setAutoScrollDir((prev) => (prev === "down" ? null : "down"));
+            }
           }
           return;
         }
