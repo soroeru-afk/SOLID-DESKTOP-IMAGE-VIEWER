@@ -4689,7 +4689,7 @@ Images imported: ${importedImages}`);
         setShowFullscreenUI(prev => !prev);
         return;
       }
-      if (key === "z" || key === "Z") {
+      if (key === "z" || key === "Z" || code === "Numpad5" || key === "5") {
         if (e.repeat) return;
         handleToggleZoomFill(e);
         return;
@@ -4702,7 +4702,7 @@ Images imported: ${importedImages}`);
         }
         return;
       }
-      if (key === "r" || key === "R") {
+      if (key === "r" || key === "R" || code === "Numpad0" || key === "0") {
         if (e.repeat) return;
         e.preventDefault();
         handleKeyRDown();
@@ -4825,15 +4825,11 @@ Images imported: ${importedImages}`);
       } else if (e.key === "-" || e.code === "NumpadSubtract") {
         e.preventDefault();
         if (!e.repeat) startZoomOut();
-      } else if (e.key === "0" || e.code === "Numpad0") {
-        e.preventDefault();
-        setFullscreenScale(1);
-        imgControls.start({ x: 0, y: 0, scale: 1, transition: { duration: 0 } });
       }
     };
     
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === "r" || e.key === "R") {
+      if (e.key === "r" || e.key === "R" || e.key === "0" || e.code === "Numpad0") {
         e.preventDefault();
         handleKeyRUp();
         return;
@@ -6770,7 +6766,7 @@ Images imported: ${importedImages}`);
                                 </span>
 
                                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                                  Z
+                                  Z / 5
                                 </kbd>
                                 <span className="text-text-secondary truncate">
                                   {t("Zoom to Fill / Reset", "画面フィット (ズーム切替)")}
@@ -6784,7 +6780,7 @@ Images imported: ${importedImages}`);
                                 </span>
 
                                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                                  R
+                                  R / 0
                                 </kbd>
                                 <span className="text-text-secondary truncate">
                                   {t("Rotate Image (Tap: Step / Hold: Free)", "画像回転 (タップ: 45°回転 / 長押し: 自由連続回転)")}
