@@ -4497,6 +4497,71 @@ Images imported: ${importedImages}`);
           }
           return;
         }
+        // Dedicated Numpad Speed Controls (+ / -)
+        if (key === "+" || code === "NumpadAdd") {
+          e.preventDefault();
+          setAutoScrollPxPerSec((prev) => {
+            const next = Math.min(3600, prev + 50);
+            const approx = next < 175 ? 1 : next < 375 ? 2 : next < 750 ? 3 : 4;
+            setAutoScrollSpeed(approx);
+            triggerWheelHud(autoScrollDirRef.current, next);
+            return next;
+          });
+          return;
+        }
+        if (key === "-" || code === "NumpadSubtract") {
+          e.preventDefault();
+          setAutoScrollPxPerSec((prev) => {
+            const next = Math.max(50, prev - 50);
+            const approx = next < 175 ? 1 : next < 375 ? 2 : next < 750 ? 3 : 4;
+            setAutoScrollSpeed(approx);
+            triggerWheelHud(autoScrollDirRef.current, next);
+            return next;
+          });
+          return;
+        }
+
+        // Dedicated Numpad 4 (Prev Image) / Numpad 6 (Next Image)
+        if (code === "Numpad4" || key === "4") {
+          e.preventDefault();
+          lastNavSourceRef.current = "keyboard";
+          goToPrevImage();
+          return;
+        }
+        if (code === "Numpad6" || key === "6") {
+          e.preventDefault();
+          lastNavSourceRef.current = "keyboard";
+          goToNextImage();
+          return;
+        }
+
+        // Dedicated Numpad 8 (Scroll/Move Up) / Numpad 2 (Scroll/Move Down) / Numpad 5 (Stop)
+        if (code === "Numpad8" || key === "8") {
+          e.preventDefault();
+          lastNavSourceRef.current = "keyboard";
+          if (e.shiftKey) {
+            goToPrevDataset();
+          } else {
+            setAutoScrollDir((prev) => (prev === "up" ? null : "up"));
+          }
+          return;
+        }
+        if (code === "Numpad2" || key === "2") {
+          e.preventDefault();
+          lastNavSourceRef.current = "keyboard";
+          if (e.shiftKey) {
+            goToNextDataset();
+          } else {
+            setAutoScrollDir((prev) => (prev === "down" ? null : "down"));
+          }
+          return;
+        }
+        if (code === "Numpad5" || key === "5") {
+          e.preventDefault();
+          setAutoScrollDir(null);
+          return;
+        }
+
         if (key === "ArrowRight") {
           e.preventDefault();
           lastNavSourceRef.current = "keyboard";
@@ -6591,10 +6656,24 @@ Images imported: ${importedImages}`);
                                 </span>
 
                                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                                  ← / →
+                                  ← / → (or テンキー 4/6)
                                 </kbd>
                                 <span className="text-text-secondary truncate">
-                                  {t("Select Prev / Next Image", "前 / 次の画像選択")}
+                                  {t("Select Prev / Next Image", "前 / 次の画像選択 (テンキー 4/6)")}
+                                </span>
+
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-accent/40 text-accent text-center min-w-[24px]">
+                                  テンキー + / -
+                                </kbd>
+                                <span className="text-text-secondary truncate font-bold text-accent">
+                                  {t("Numpad Speed Adjust (+50px/s / -50px/s)", "テンキー速度調整 (+で加速 / -で減速)")}
+                                </span>
+
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
+                                  テンキー 8 / 2 / 5
+                                </kbd>
+                                <span className="text-text-secondary truncate">
+                                  {t("Scroll Up / Down / Stop", "スクロール移動 (8:上 / 2:下 / 5:停止)")}
                                 </span>
 
                                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
