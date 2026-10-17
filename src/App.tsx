@@ -1454,7 +1454,6 @@ export default function App() {
   );
   const [sidebarVisible, setSidebarVisible] = useState(true);
     const [language, setLanguage] = useState<"EN" | "JP">("EN");
-  const [isDragging, setIsDragging] = useState(false);
   const [dragTarget, setDragTarget] = useState<"add" | "new" | null>(null);
 
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -4461,7 +4460,13 @@ Images imported: ${importedImages}`);
         toggleAppFullscreen();
         return;
       }
-      if (key === "p" || key === "P") {
+      if (
+        key === "p" ||
+        key === "P" ||
+        code === "NumpadDecimal" ||
+        code === "NumpadComma" ||
+        (isFullscreen && (key === "." || key === ","))
+      ) {
         if (e.repeat) return;
         e.preventDefault();
         if (portraitMode === "off") setPortraitMode("left");
@@ -4829,7 +4834,7 @@ Images imported: ${importedImages}`);
     };
     
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === "r" || e.key === "R" || e.key === "0" || e.code === "Numpad0") {
+      if (e.key === "r" || e.key === "R" || e.code === "Numpad0" || e.key === "0") {
         e.preventDefault();
         handleKeyRUp();
         return;
@@ -4938,7 +4943,6 @@ Images imported: ${importedImages}`);
   const handleFilesDrop = async (e: React.DragEvent | DragEvent, forceNewDataset: boolean) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragging(false);
     setDragTarget(null);
     // reset global counter by simulating drag end
     
@@ -4974,57 +4978,25 @@ Images imported: ${importedImages}`);
     }
   };
 
-  // Setup Global Drag & Drop on the window
+  // Global drag prevention: Prevent browser from opening dropped files, restricting D&D exclusively to dedicated sidebar drop zones
   useEffect(() => {
-    let dragCounter = 0;
-
-    const onDragEnter = (e: DragEvent) => {
+    const preventDefault = (e: DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      dragCounter++;
-      if (e.dataTransfer?.types.includes("Files")) {
-        setIsDragging(true);
-      }
     };
 
-    const onDragLeave = (e: DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      dragCounter--;
-      if (dragCounter === 0) {
-        setIsDragging(false);
-      }
-    };
+    window.addEventListener("dragenter", preventDefault);
+    window.addEventListener("dragleave", preventDefault);
+    window.addEventListener("dragover", preventDefault);
+    window.addEventListener("drop", preventDefault);
 
-    const onDragOver = (e: DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.dataTransfer) {
-        e.dataTransfer.dropEffect = "copy";
-      }
+    return () => {
+      window.removeEventListener("dragenter", preventDefault);
+      window.removeEventListener("dragleave", preventDefault);
+      window.removeEventListener("dragover", preventDefault);
+      window.removeEventListener("drop", preventDefault);
     };
-
-    const onDrop = async (e: DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      dragCounter = 0;
-      setIsDragging(false);
-      setDragTarget(null);
-      await handleFilesDrop(e, false);
-    };
-
-    window.addEventListener("dragenter", onDragEnter);
-    window.addEventListener("dragleave", onDragLeave);
-    window.addEventListener("dragover", onDragOver);
-    window.addEventListener("drop", onDrop);
-
-  return () => {
-      window.removeEventListener("dragenter", onDragEnter);
-      window.removeEventListener("dragleave", onDragLeave);
-      window.removeEventListener("dragover", onDragOver);
-      window.removeEventListener("drop", onDrop);
-    };
-  }, [activeDatasetId]);
+  }, []);
 
   const cW = typeof window !== "undefined" ? (isPortraitMode ? window.innerHeight : window.innerWidth) : 1000;
   const cH = typeof window !== "undefined" ? (isPortraitMode ? window.innerWidth : window.innerHeight) : 1000;
@@ -5578,26 +5550,6 @@ Images imported: ${importedImages}`);
   return (
     <div className="h-screen w-screen flex flex-col p-4 gap-4 box-border overflow-hidden select-none">
       
-
-      {/* Drag & Drop Overlay */}
-      <AnimatePresence>
-        {isDragging && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-root-bg/80 backdrop-blur-sm border-2 border-dashed border-accent m-4 flex flex-col items-center justify-center font-mono pointer-events-none"
-          >
-            <FolderPlus size={64} className="text-accent mb-4" />
-            <h2 className="text-2xl text-text-primary tracking-widest mb-2">
-              {t("DROP TO ADD TO ACTIVE", "ドロップして現在のリストに追加")}
-            </h2>
-            <p className="text-text-secondary">
-              {t("OR DRAG TO 'CREATE BY FOLDER' IN SIDEBAR", "新規リストとして作成する場合はサイドバーへ")}
-            </p>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Notification Toast */}
       <AnimatePresence>
@@ -6709,10 +6661,10 @@ Images imported: ${importedImages}`);
                                 </span>
 
                                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                                  P
+                                  P / テンキー .
                                 </kbd>
                                 <span className="text-text-secondary truncate">
-                                  {t("Portrait Rotate", "画面向き回転 (縦/横)")}
+                                  {t("Portrait Rotate (P / Numpad .)", "画面向き回転 (縦/横)")}
                                 </span>
 
                                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
@@ -6766,10 +6718,10 @@ Images imported: ${importedImages}`);
                                 </span>
 
                                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                                  Z / 5
+                                  Z / テンキー 5
                                 </kbd>
                                 <span className="text-text-secondary truncate">
-                                  {t("Zoom to Fill / Reset", "画面フィット (ズーム切替)")}
+                                  {t("Zoom to Fill / Reset (Z / 5)", "画面フィット (ズーム切替)")}
                                 </span>
 
                                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
@@ -6780,10 +6732,10 @@ Images imported: ${importedImages}`);
                                 </span>
 
                                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
-                                  R / 0
+                                  R / テンキー 0
                                 </kbd>
                                 <span className="text-text-secondary truncate">
-                                  {t("Rotate Image (Tap: Step / Hold: Free)", "画像回転 (タップ: 45°回転 / 長押し: 自由連続回転)")}
+                                  {t("Rotate (Tap: Reset / Hold: Free)", "画像回転 (タップ: 復元・45° / 長押し: 連続回転)")}
                                 </span>
 
                                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-btn-border text-text-primary text-center min-w-[24px]">
