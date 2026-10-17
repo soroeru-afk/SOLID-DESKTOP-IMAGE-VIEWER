@@ -396,8 +396,8 @@ export default function App() {
     }
   );
   const [canvasBg, setCanvasBg] = useState<
-    "theme" | "black" | "white" | "checker"
-  >("white");
+    "theme" | "auto" | "black" | "white" | "checker"
+  >("theme");
   const isLightTheme = theme === "LIGHT" || theme === "PAPER";
   const cycleTheme = () => {
     const themes: Array<"NAVY" | "BLACK" | "TRUE_BLACK" | "RED" | "LIGHT" | "PAPER"> = ["NAVY", "BLACK", "TRUE_BLACK", "RED", "LIGHT", "PAPER"];
@@ -420,7 +420,7 @@ export default function App() {
     "grid-sq": 140,
     "grid-ma": 140,
     list: 140,
-    free: 140,
+    free: 350,
   });
   const [gaps, setGaps] = useState<Record<string, number>>({
     "grid-sq": 24,
@@ -466,13 +466,26 @@ export default function App() {
     if (activeDatasetId) {
       const savedScales = localStorage.getItem(`app_scales_${activeDatasetId}`);
       if (savedScales) {
-        setScales(JSON.parse(savedScales));
+        try {
+          const parsed = JSON.parse(savedScales);
+          if (!parsed.free || parsed.free < 250) {
+            parsed.free = 350;
+          }
+          setScales(parsed);
+        } catch {
+          setScales({
+            "grid-sq": 140,
+            "grid-ma": 140,
+            list: 140,
+            free: 350,
+          });
+        }
       } else {
         setScales({
           "grid-sq": 140,
           "grid-ma": 140,
           list: 140,
-          free: 140,
+          free: 350,
         });
       }
 
@@ -492,7 +505,7 @@ export default function App() {
       if (savedCanvasBg) {
         setCanvasBg(savedCanvasBg as any);
       } else {
-        setCanvasBg("white");
+        setCanvasBg("theme");
       }
 
       const savedSortField = localStorage.getItem(`app_sortField_${activeDatasetId}`);
@@ -601,7 +614,7 @@ export default function App() {
   }, [randomSeed, activeDatasetId]);
 
   const scaleKey = orientationFilter === "all" ? viewMode : `${viewMode}-${orientationFilter}`;
-  const itemScale = scales[scaleKey] ?? scales[viewMode] ?? 140;
+  const itemScale = scales[scaleKey] ?? scales[viewMode] ?? (viewMode === "free" ? 350 : 140);
   const gridGap = gaps[scaleKey] ?? gaps[viewMode] ?? 24;
 
   const setItemScale = (val: number) => {
@@ -680,7 +693,7 @@ export default function App() {
   // Keyboard Scroll Stop Mode ("REVERSE" | "SAME")
   const [kbdStopMode, setKbdStopMode] = useState<"REVERSE" | "SAME">(() => {
     const saved = localStorage.getItem("kbd_stop_mode");
-    return (saved as "REVERSE" | "SAME") || "REVERSE";
+    return (saved as "REVERSE" | "SAME") || "SAME"; // ユーザー（カオルさま）ご指定により移動中に同じキーで停止 (SAME KEY) をデフォルト化
   });
   const kbdStopModeRef = useRef<"REVERSE" | "SAME">(kbdStopMode);
 
@@ -1242,10 +1255,71 @@ export default function App() {
     return 30; // 重なりや埋もれを防ぐ最適なデフォルト30枚
   });
 
+  // SCATTER (スケーター) 画像枠形状モード ("natural" : アスペクト比混在長方形 | "square" : 正方形統一)
+  const [scatterAspectMode, setScatterAspectMode] = useState<"natural" | "square">(
+    () => {
+      const saved = localStorage.getItem("scatterAspectMode");
+      return (saved as "natural" | "square") || "natural"; // カオルさまのご要望に応え混在表示をデフォルトに設定
+    }
+  );
+
+  // SCATTER (スケーター) 画像ランダム回転角度レンジ (既定 ±30度)
+  const [scatterRotationRange, setScatterRotationRange] = useState<number>(() => {
+    const saved = localStorage.getItem("scatterRotationRange");
+    if (saved) {
+      const num = parseInt(saved, 10);
+      if (!isNaN(num) && num >= 0 && num <= 80) return num;
+    }
+    return 30; // 既定 ±30度（程よい動きと面白さ）
+  });
+
   const handleUpdateScatterLimit = (limit: number) => {
     const clamped = Math.min(100, Math.max(10, limit));
     setScatterLimit(clamped);
     localStorage.setItem("scatterLimit", clamped.toString());
+  };
+
+  const handleUpdateScatterAspectMode = (mode: "natural" | "square") => {
+    setScatterAspectMode(mode);
+    localStorage.setItem("scatterAspectMode", mode);
+  };
+
+  const handleUpdateScatterRotationRange = (range: number) => {
+    setScatterRotationRange(range);
+    localStorage.setItem("scatterRotationRange", range.toString());
+    // 現在の画像に新しい角度を即時反映
+    setImages((prev) =>
+      prev.map((img) => ({
+        ...img,
+        randomRotation: (Math.random() * range * 2) - range,
+      }))
+    );
+  };
+
+  // SCATTER (スケーター) 設定パネルの折りたたみ状態 (既定は折りたたんで下部エリアの圧迫を防止)
+  const [isScatterSettingsExpanded, setIsScatterSettingsExpanded] = useState<boolean>(() => {
+    const saved = localStorage.getItem("isScatterSettingsExpanded");
+    return saved ? saved === "true" : false; // 折りたたみをデフォルトにして下のパネルを圧迫しないように！
+  });
+
+  const toggleScatterSettingsExpanded = () => {
+    setIsScatterSettingsExpanded((prev) => {
+      const next = !prev;
+      localStorage.setItem("isScatterSettingsExpanded", String(next));
+      return next;
+    });
+  };
+
+  const handleReshuffleScatter = () => {
+    setRandomSeed((prev) => prev + 1);
+    setImages((prev) =>
+      prev.map((img) => ({
+        ...img,
+        randomX: Math.random() * 80 - 40,
+        randomY: Math.random() * 80 - 40,
+        randomRotation: (Math.random() * scatterRotationRange * 2) - scatterRotationRange,
+      }))
+    );
   };
 
   const handleToggleZoomFill = React.useCallback((e?: React.MouseEvent | KeyboardEvent) => {
@@ -2006,6 +2080,17 @@ export default function App() {
     }
   };
 
+// シード依存の決定論的疑似乱数生成器 (Mulberry32)
+function createPRNG(seed: number) {
+  let s = (seed || 1) >>> 0;
+  return function () {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
   const sortedImages = useMemo(() => {
     let filteredImages = images;
     if (showHiddenImages) {
@@ -2032,9 +2117,10 @@ export default function App() {
     }
 
     if (sortField === "random") {
+      const rng = createPRNG((randomSeed || 1) * 31);
       const shuffled = [...filteredImages];
       for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
+        const j = Math.floor(rng() * (i + 1));
         [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
       }
       return shuffled;
@@ -2064,20 +2150,10 @@ export default function App() {
     });
   }, [images, sortField, sortOrders, randomSeed, searchQuery, orientationFilter, showHiddenImages]);
 
-  // SCATTER (スケーター) モード時の軽量化サンプリング (10枚〜100枚の上限可変設定 & シャッフル)
+  // SCATTER (スケーター) モード時の軽量化サンプリング (10枚〜100枚の上限可変設定 & シード固定シャッフル)
   const scatterImages = useMemo(() => {
     if (viewMode !== "free") return sortedImages;
-    if (sortedImages.length <= scatterLimit) {
-      if (randomSeed > 0) {
-        const shuffled = [...sortedImages];
-        for (let i = shuffled.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-        }
-        return shuffled;
-      }
-      return sortedImages;
-    }
+    if (sortedImages.length <= scatterLimit) return sortedImages;
 
     const total = sortedImages.length;
     const step = total / scatterLimit;
@@ -2087,9 +2163,10 @@ export default function App() {
       sampled.push(sortedImages[idx]);
     }
 
+    const rng = createPRNG((randomSeed || 1) * 9973);
     const shuffled = [...sampled];
     for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = Math.floor(rng() * (i + 1));
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
     return shuffled;
@@ -2202,7 +2279,7 @@ export default function App() {
             url: URL.createObjectURL(img.data),
             randomX: Math.random() * 80 - 40,
             randomY: Math.random() * 80 - 40,
-            randomRotation: Math.random() * 30 - 15,
+            randomRotation: (Math.random() * scatterRotationRange * 2) - scatterRotationRange,
             autoBg,
             width,
             height,
@@ -2290,7 +2367,7 @@ export default function App() {
             url: URL.createObjectURL(img.data),
             randomX: Math.random() * 80 - 40,
             randomY: Math.random() * 80 - 40,
-            randomRotation: Math.random() * 30 - 15,
+            randomRotation: (Math.random() * scatterRotationRange * 2) - scatterRotationRange,
             autoBg,
             width,
             height,
@@ -4653,15 +4730,25 @@ Images imported: ${importedImages}`);
   }
 
   const getCanvasBgClass = (imgBg?: "black" | "white" | "checkerboard") => {
-    const effectiveBg = canvasBg === "theme" && imgBg ? imgBg : canvasBg;
-    if (effectiveBg === "black") return "bg-black";
-    if (effectiveBg === "white") return "bg-white";
-    if (effectiveBg === "checker" || effectiveBg === "checkerboard") return "bg-checkerboard";
+    if (canvasBg === "theme") {
+      // THEMEモード: テーマ背景になじむ配色 (透明画像や余白も全体のテーマに自然に調和)
+      return "bg-root-bg/90";
+    }
+    if (canvasBg === "auto") {
+      // AUTOモード: 画像解析結果 (black / white / checkerboard) を自動適用
+      if (imgBg === "black") return "bg-black";
+      if (imgBg === "white") return "bg-white";
+      if (imgBg === "checkerboard") return "bg-checkerboard";
+      return "bg-root-bg/90";
+    }
+    if (canvasBg === "black") return "bg-black";
+    if (canvasBg === "white") return "bg-white";
+    if (canvasBg === "checker") return "bg-checkerboard";
     return "";
   };
 
   const isFullscreenDarkText = (() => {
-    if (canvasBg === "theme" && selectedImage?.autoBg) {
+    if (canvasBg === "auto" && selectedImage?.autoBg) {
       return selectedImage.autoBg === "white" || selectedImage.autoBg === "checkerboard";
     }
     return canvasBg === "white" || canvasBg === "checker" || (canvasBg === "theme" && (theme.toUpperCase() === "LIGHT" || theme.toUpperCase() === "PAPER"));
@@ -4689,54 +4776,73 @@ Images imported: ${importedImages}`);
     return (
       <motion.div
         id={`image-card-${img.id}`}
-      key={img.id}
-      layout={false}
-      drag={viewMode === "free"}
-      dragConstraints={
-        viewMode === "free" ? false : scatterContainerRef
-      }
-      dragElastic={0.1}
-      dragMomentum={true}
-      whileDrag={{
-        scale: 1.05,
-        zIndex: 100,
-        boxShadow: "0 20px 40px rgba(0,0,0,0.6)",
-      }}
-      whileHover={
-        viewMode === "free" ? { scale: 1.02 } : {}
-      }
-      initial={
-        viewMode === "free"
-          ? {
-              opacity: 0,
-              scale: 0.8,
-              x: (img.randomX * containerWidth) / 100,
-              y: (img.randomY * containerHeight) / 100,
-              rotate: img.randomRotation,
-            }
-          : { opacity: 0, scale: 0.8 }
-      }
-      animate={
-        viewMode === "free"
-          ? {
-              opacity:
-                isSelectionMode && !isMultiSelected
-                  ? 0.5
-                  : 1,
-              scale: 1,
-              rotate: img.randomRotation,
-            }
-          : {
-              opacity:
-                isSelectionMode && !isMultiSelected
-                  ? 0.5
-                  : 1,
-              scale: 1,
-              x: 0,
-              y: 0,
-              rotate: 0,
-            }
-      }
+        key={img.id}
+        layout={false}
+        drag={viewMode === "free"}
+        dragConstraints={viewMode === "free" ? scatterContainerRef : false}
+        dragElastic={0}
+        dragMomentum={false}
+        onDragStart={() => {
+          suppressNextClickRef.current = true;
+        }}
+        onDragEnd={(event, info) => {
+          setTimeout(() => {
+            suppressNextClickRef.current = false;
+          }, 200);
+          if (viewMode === "free" && containerWidth > 0 && containerHeight > 0) {
+            const deltaXPercent = (info.offset.x / containerWidth) * 100;
+            const deltaYPercent = (info.offset.y / containerHeight) * 100;
+            const newX = Math.max(-45, Math.min(45, img.randomX + deltaXPercent));
+            const newY = Math.max(-45, Math.min(45, img.randomY + deltaYPercent));
+            setImages((prev) =>
+              prev.map((item) =>
+                item.id === img.id ? { ...item, randomX: newX, randomY: newY } : item
+              )
+            );
+          }
+        }}
+        whileDrag={{
+          scale: 1.05,
+          zIndex: 100,
+          boxShadow: "0 20px 40px rgba(0,0,0,0.6)",
+        }}
+        whileHover={
+          viewMode === "free" ? { scale: 1.02, zIndex: 20 } : {}
+        }
+        initial={
+          viewMode === "free"
+            ? {
+                opacity: 0,
+                scale: 0.8,
+                x: (img.randomX * containerWidth) / 100,
+                y: (img.randomY * containerHeight) / 100,
+                rotate: img.randomRotation,
+              }
+            : { opacity: 0, scale: 0.8 }
+        }
+        animate={
+          viewMode === "free"
+            ? {
+                opacity:
+                  isSelectionMode && !isMultiSelected
+                    ? 0.5
+                    : 1,
+                scale: 1,
+                x: (img.randomX * containerWidth) / 100,
+                y: (img.randomY * containerHeight) / 100,
+                rotate: img.randomRotation,
+              }
+            : {
+                opacity:
+                  isSelectionMode && !isMultiSelected
+                    ? 0.5
+                    : 1,
+                scale: 1,
+                x: 0,
+                y: 0,
+                rotate: 0,
+              }
+        }
       transition={{
         layout: {
           type: "tween",
@@ -4819,24 +4925,44 @@ Images imported: ${importedImages}`);
           "w-full aspect-square flex items-center justify-center",
         viewMode === "free" && "absolute shadow-xl",
         viewMode === "list" &&
-          "w-full flex items-center px-4 shrink-0 gap-4 group/listitem",
+          "w-full flex items-center shrink-0 group/listitem",
       )}
       style={
         viewMode === "free"
-          ? { opacity: img.isHidden ? 0.4 : 1,
-              width: itemScale,
-              height: itemScale,
-              left: `50%`,
-              top: `50%`,
-              marginLeft: `-${itemScale / 2}px`,
-              marginTop: `-${itemScale / 2}px`,
-              zIndex: isSelected ? 50 : 1,
-            }
+          ? (() => {
+              let freeW = itemScale;
+              let freeH = itemScale;
+              if (scatterAspectMode === "natural") {
+                const imgW = img.width && img.height ? img.width : 1;
+                const imgH = img.width && img.height ? img.height : 1;
+                const aspect = imgW / imgH;
+                if (aspect >= 1) {
+                  // 横長・長方形
+                  freeW = itemScale;
+                  freeH = Math.max(24, Math.round(itemScale / aspect));
+                } else {
+                  // 縦長・長方形
+                  freeH = itemScale;
+                  freeW = Math.max(24, Math.round(itemScale * aspect));
+                }
+              }
+              return {
+                opacity: img.isHidden ? 0.4 : 1,
+                width: freeW,
+                height: freeH,
+                left: `50%`,
+                top: `50%`,
+                marginLeft: `-${freeW / 2}px`,
+                marginTop: `-${freeH / 2}px`,
+                zIndex: isSelected ? 50 : 1,
+              };
+            })()
           : viewMode === "list"
             ? {
-                height: Math.max(48, itemScale * 0.8),
+                height: "auto",
                 width: "100%",
                 zIndex: isSelected ? 50 : 1,
+                padding: gridGap === 0 ? "0px 8px" : `${Math.min(12, Math.round(gridGap / 2))}px ${Math.max(8, Math.min(16, gridGap))}px`,
               }
             : viewMode === "grid-ma"
               ? {
@@ -4853,27 +4979,45 @@ Images imported: ${importedImages}`);
     >
       {viewMode === "list" ? (
         <>
+          {(() => {
+            // Masonry同様にスライダー最大（750px）まで巨大化対応。
+            // 右側のメタデータ領域（最低200px確保）に合わせて画面幅内で限界までデカく拡大
+            const maxBoxLimit = typeof containerWidth === "number" && containerWidth > 320
+              ? Math.max(60, Math.min(itemScale, containerWidth - 200))
+              : itemScale;
+            const boxSize = Math.max(40, maxBoxLimit);
+
+            return (
+              <div
+                className="shrink-0 border border-panel-border overflow-hidden flex items-center justify-center bg-panel-bg transition-all"
+                style={{
+                  width: `${boxSize}px`,
+                  height: `${boxSize}px`,
+                }}
+              >
+                <div
+                  className={cn(
+                    "relative flex items-center justify-center w-full h-full p-1",
+                    getCanvasBgClass(img.autoBg),
+                  )}
+                >
+                  <img
+                    src={img.url}
+                    draggable={false}
+                    className="max-w-full max-h-full object-contain block mx-auto my-auto"
+                  />
+                </div>
+              </div>
+            );
+          })()}
           <div
-            className="shrink-0 border border-panel-border overflow-hidden flex items-center justify-center bg-panel-bg"
+            className="flex-1 min-w-0 flex flex-col justify-center group/name transition-colors rounded hover:bg-panel-border/30 h-full"
             style={{
-              width: Math.max(32, itemScale * 0.65),
-              height: Math.max(32, itemScale * 0.65),
+              marginLeft: gridGap === 0 ? "8px" : `${Math.max(8, Math.min(16, gridGap))}px`,
+              paddingLeft: "8px",
+              paddingRight: "8px",
             }}
           >
-            <div
-              className={cn(
-                "relative flex items-center justify-center max-w-full max-h-full",
-                getCanvasBgClass(img.autoBg),
-              )}
-            >
-              <img
-                src={img.url}
-                draggable={false}
-                className="max-w-full max-h-full block"
-              />
-            </div>
-          </div>
-          <div className="flex-1 min-w-0 px-2 flex flex-col justify-center group/name transition-colors rounded hover:bg-panel-border/30 h-full">
             <div className="flex items-center justify-between w-full">
               <span className="font-mono text-sm text-text-primary truncate block pr-2">{img.name}</span>
               <div className="flex items-center gap-1 shrink-0">
@@ -5190,10 +5334,11 @@ Images imported: ${importedImages}`);
               CANVAS:
             </span>
             <div className="flex gap-1 h-full py-2 items-center">
-              <SolidButton active={canvasBg === "theme"} onClick={() => setCanvasBg("theme")} className="w-10 h-6 px-0 py-0 text-[10px]">AUTO</SolidButton>
-              <SolidButton active={canvasBg === "black"} onClick={() => setCanvasBg("black")} className="w-10 h-6 px-0 py-0 text-[10px]">BLK</SolidButton>
-              <SolidButton active={canvasBg === "white"} onClick={() => setCanvasBg("white")} className="w-10 h-6 px-0 py-0 text-[10px]">WHT</SolidButton>
-              <SolidButton active={canvasBg === "checker"} onClick={() => setCanvasBg("checker")} className="w-10 h-6 px-0 py-0 text-[10px]">CHK</SolidButton>
+              <SolidButton active={canvasBg === "theme"} onClick={() => setCanvasBg("theme")} className="px-1.5 h-6 py-0 text-[10px]" title={t("Blend with current UI theme", "テーマ背景になじむ色")}>THEME</SolidButton>
+              <SolidButton active={canvasBg === "auto"} onClick={() => setCanvasBg("auto")} className="px-1.5 h-6 py-0 text-[10px]" title={t("Auto detect image background", "画像解析オート（白・黒自動判定）")}>AUTO</SolidButton>
+              <SolidButton active={canvasBg === "black"} onClick={() => setCanvasBg("black")} className="w-8 h-6 px-0 py-0 text-[10px]" title={t("Force black background", "ブラック背景に固定")}>BLK</SolidButton>
+              <SolidButton active={canvasBg === "white"} onClick={() => setCanvasBg("white")} className="w-8 h-6 px-0 py-0 text-[10px]" title={t("Force white background", "ホワイト背景に固定")}>WHT</SolidButton>
+              <SolidButton active={canvasBg === "checker"} onClick={() => setCanvasBg("checker")} className="w-8 h-6 px-0 py-0 text-[10px]" title={t("Force checkerboard background", "透明格子背景に固定")}>CHK</SolidButton>
             </div>
           </div>
 
@@ -5426,54 +5571,160 @@ Images imported: ${importedImages}`);
               </SolidButton>
             </div>
 
-            {/* SCATTER DISPLAY COUNT LIMIT CONTROLS */}
+            {/* SCATTER DISPLAY COUNT LIMIT & SHUFFLE CONTROLS (COLLAPSIBLE) */}
             {viewMode === "free" && (
-              <div className="mt-3 p-2.5 bg-panel-bg/90 border border-accent/30 rounded flex flex-col gap-2 font-mono text-[10px] shadow-xs">
+              <div className="mt-3 p-2 bg-panel-bg/90 border border-accent/30 rounded flex flex-col gap-2 font-mono text-[10px] shadow-xs">
+                {/* Panel Header Toggle */}
                 <div className="flex items-center justify-between">
-                  <span className="text-text-muted uppercase tracking-wider font-bold flex items-center gap-1">
-                    <ScatterChart size={12} className="text-accent" />
-                    {t("SCATTER DISPLAY MAX", "SCATTER表示枚数上限")}
-                  </span>
-                  <span className="text-accent font-bold text-xs">{scatterLimit}枚</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min="10"
-                    max="100"
-                    step="5"
-                    value={scatterLimit}
-                    onChange={(e) => handleUpdateScatterLimit(Number(e.target.value))}
-                    className="flex-1 h-1.5 bg-panel-border rounded-lg appearance-none cursor-pointer accent-accent"
-                    title={t("Adjust SCATTER max display count (10 - 100 images)", "SCATTER表示上限枚数を調整 (10枚〜100枚)")}
-                  />
-                </div>
-                <div className="flex justify-between items-center gap-1 pt-0.5">
-                  {[10, 20, 30, 50, 75, 100].map((num) => (
+                  <button
+                    type="button"
+                    onClick={toggleScatterSettingsExpanded}
+                    className="flex items-center gap-1.5 text-text-muted hover:text-text-primary transition-colors cursor-pointer text-[10px] font-bold uppercase tracking-wider text-left"
+                    title={t("Toggle SCATTER settings panel", "スケーター詳細設定パネルの展開/折りたたみ")}
+                  >
+                    {isScatterSettingsExpanded ? (
+                      <ChevronDown size={14} className="text-accent shrink-0" />
+                    ) : (
+                      <ChevronRight size={14} className="text-accent shrink-0" />
+                    )}
+                    <ScatterChart size={12} className="text-accent shrink-0" />
+                    <span>{t("SCATTER SETTINGS", "スケーター詳細設定")}</span>
+                  </button>
+
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-accent font-bold text-[10px] tabular-nums">
+                      {scatterLimit}枚
+                    </span>
                     <button
-                      key={num}
                       type="button"
-                      onClick={() => handleUpdateScatterLimit(num)}
-                      className={cn(
-                        "flex-1 py-1 text-[9px] font-bold rounded transition-all text-center border cursor-pointer",
-                        scatterLimit === num
-                          ? "bg-accent border-accent text-accent-text shadow-xs"
-                          : "bg-panel-bg border-panel-border/80 text-text-muted hover:text-text-primary hover:border-text-muted"
-                      )}
-                      title={`Set limit to ${num} images`}
+                      onClick={handleReshuffleScatter}
+                      className="px-1.5 py-0.5 bg-accent/20 hover:bg-accent text-accent hover:text-accent-text border border-accent/40 rounded transition-all font-bold text-[9px] flex items-center gap-1 cursor-pointer"
+                      title={t("Reshuffle layout and sampled images", "スケーター配置・抽出画像を再シャッフル")}
                     >
-                      {num}
+                      <RefreshCw size={10} />
+                      <span>{t("SHUFFLE", "再シャッフル")}</span>
                     </button>
-                  ))}
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setRandomSeed((prev) => prev + 1)}
-                  className="w-full mt-1 py-1 bg-accent/20 hover:bg-accent text-accent hover:text-accent-text rounded transition-all font-bold text-[9px] cursor-pointer shadow-xs active:scale-95 flex items-center justify-center gap-1"
-                  title={t("Shuffle images and scatter layout", "画像の並びと配置をシャッフル")}
-                >
-                  ↻ {t("SHUFFLE", "シャッフル")}
-                </button>
+
+                {/* Collapsible Body */}
+                {isScatterSettingsExpanded && (
+                  <div className="flex flex-col gap-2 pt-2 border-t border-panel-border/60">
+                    <div className="flex items-center justify-between">
+                      <span className="text-text-muted uppercase tracking-wider font-bold flex items-center gap-1">
+                        <ScatterChart size={12} className="text-accent" />
+                        {t("SCATTER DISPLAY MAX", "SCATTER表示枚数上限")}
+                      </span>
+                      <span className="text-accent font-bold text-xs">{scatterLimit}枚</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min="10"
+                        max="100"
+                        step="5"
+                        value={scatterLimit}
+                        onChange={(e) => handleUpdateScatterLimit(Number(e.target.value))}
+                        className="flex-1 h-1.5 bg-panel-border rounded-lg appearance-none cursor-pointer accent-accent"
+                        title={t("Adjust SCATTER max display count (10 - 100 images)", "SCATTER表示上限枚数を調整 (10枚〜100枚)")}
+                      />
+                    </div>
+                    <div className="flex justify-between items-center gap-1 pt-0.5">
+                      {[10, 20, 30, 50, 75, 100].map((num) => (
+                        <button
+                          key={num}
+                          type="button"
+                          onClick={() => handleUpdateScatterLimit(num)}
+                          className={cn(
+                            "flex-1 py-1 text-[9px] font-bold rounded transition-all text-center border cursor-pointer",
+                            scatterLimit === num
+                              ? "bg-accent border-accent text-accent-text shadow-xs"
+                              : "bg-panel-bg border-panel-border/80 text-text-muted hover:text-text-primary hover:border-text-muted"
+                          )}
+                          title={`Set limit to ${num} images`}
+                        >
+                          {num}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* ASPECT RATIO MODE TOGGLE */}
+                    <div className="flex flex-col gap-1 pt-1.5 border-t border-panel-border/60">
+                      <span className="text-text-muted uppercase tracking-wider font-bold text-[9px]">
+                        {t("CARD RATIO (ASPECT)", "枠形状 (アスペクト比)")}
+                      </span>
+                      <div className="grid grid-cols-2 gap-1 font-mono text-[9px]">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateScatterAspectMode("natural")}
+                          className={cn(
+                            "py-1 px-1 border transition-all text-center rounded-xs cursor-pointer flex items-center justify-center gap-1",
+                            scatterAspectMode === "natural"
+                              ? "border-accent bg-accent/20 text-accent font-bold shadow-xs"
+                              : "border-panel-border text-text-muted hover:text-text-primary bg-panel-bg"
+                          )}
+                          title={t("Keep original aspect ratio (Portrait / Landscape / Square mixed)", "長方形・縦長・横長・正方形の混在表示")}
+                        >
+                          <Smartphone size={10} className="rotate-90 text-accent" />
+                          <span>{t("MIXED / NATURAL", "縦横比混在")}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateScatterAspectMode("square")}
+                          className={cn(
+                            "py-1 px-1 border transition-all text-center rounded-xs cursor-pointer flex items-center justify-center gap-1",
+                            scatterAspectMode === "square"
+                              ? "border-accent bg-accent/20 text-accent font-bold shadow-xs"
+                              : "border-panel-border text-text-muted hover:text-text-primary bg-panel-bg"
+                          )}
+                          title={t("Force all cards to square", "すべての枠を正方形に統一")}
+                        >
+                          <Square size={10} />
+                          <span>{t("SQUARE", "正方形統一")}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="text-[9px] text-text-muted pt-1.5 border-t border-panel-border/60 flex items-center justify-between">
+                      <span>💡 {t("Wheel to Zoom Image Scale", "ホイール回転で拡大縮小")}</span>
+                      <span className="text-accent font-bold tabular-nums">{itemScale}px</span>
+                    </div>
+
+                    {/* ROTATION ANGLE RANGE TOGGLE */}
+                    <div className="flex flex-col gap-1 pt-1.5 border-t border-panel-border/60">
+                      <div className="flex items-center justify-between font-mono text-[9px]">
+                        <span className="text-text-muted uppercase tracking-wider font-bold">
+                          {t("ROTATION ANGLE", "傾き角度範囲")}
+                        </span>
+                        <span className="text-accent font-bold">±{scatterRotationRange}°</span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-1 font-mono text-[9px]">
+                        {[
+                          { label: "±15°", val: 15 },
+                          { label: "±30°", val: 30 },
+                          { label: "±45°", val: 45 },
+                          { label: "±60°", val: 60 },
+                        ].map((item) => (
+                          <button
+                            key={item.val}
+                            type="button"
+                            onClick={() => handleUpdateScatterRotationRange(item.val)}
+                            className={cn(
+                              "py-1 border transition-all text-center rounded-xs cursor-pointer font-bold",
+                              scatterRotationRange === item.val
+                                ? "border-accent bg-accent/20 text-accent shadow-xs"
+                                : "border-panel-border text-text-muted hover:text-text-primary bg-panel-bg"
+                            )}
+                            title={`Scatter rotation range: ±${item.val}°`}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -7796,6 +8047,18 @@ Images imported: ${importedImages}`);
                   onPointerCancel={handleListPointerCancel}
                   onScroll={handleContainerScroll}
                   onWheel={(e) => {
+                    if (viewMode === "free") {
+                      e.preventDefault();
+                      let delta = e.deltaY;
+                      if (wheelInvertRef.current) {
+                        delta = -delta;
+                      }
+                      if (Math.abs(delta) < 1) return;
+                      const step = Math.max(5, Math.round(15 * Math.abs(delta) / 100));
+                      const change = delta > 0 ? -step : step;
+                      setItemScale(Math.min(900, Math.max(40, itemScale + change)));
+                      return;
+                    }
                     if (autoScrollDirRef.current !== null) {
                       let delta = e.deltaY;
                       if (wheelInvertRef.current) {
@@ -7916,61 +8179,14 @@ Images imported: ${importedImages}`);
 
                     return (
                       <>
-                        {/* SCATTER Mode Capping Badge & Limit Adjuster (10〜100枚の可変調整) */}
+                        {/* SCATTER Mode Status Badge (サイドバーへ設定を集約したためシンプルな表示に統一) */}
                         {viewMode === "free" && (
                           <div className="absolute top-3 right-4 z-40 flex items-center gap-2 pointer-events-auto">
-                            <div className="bg-panel-bg/95 backdrop-blur-md border border-accent/40 shadow-lg rounded-full px-3.5 py-1.5 flex items-center gap-3 font-mono text-[10px] text-text-primary select-none">
-                              <ScatterChart size={13} className="text-accent shrink-0" />
+                            <div className="bg-panel-bg/90 backdrop-blur-md border border-panel-border shadow-md rounded-full px-3 py-1 flex items-center gap-2 font-mono text-[10px] text-text-primary select-none opacity-80 hover:opacity-100 transition-opacity">
+                              <ScatterChart size={12} className="text-accent shrink-0" />
                               <span className="shrink-0">
                                 SCATTER: <strong className="text-accent font-bold text-xs">{scatterImages.length}</strong> / {sortedImages.length} {t("IMAGES", "枚")}
                               </span>
-
-                              {/* Limit Slider & Presets */}
-                              <div className="flex items-center gap-1.5 border-l border-panel-border/80 pl-2.5">
-                                <span className="text-text-muted text-[9px] uppercase tracking-wider">{t("MAX:", "上限:")}</span>
-                                <input
-                                  type="range"
-                                  min="10"
-                                  max="100"
-                                  step="5"
-                                  value={scatterLimit}
-                                  onChange={(e) => handleUpdateScatterLimit(Number(e.target.value))}
-                                  className="w-16 h-1.5 bg-panel-border rounded-lg appearance-none cursor-pointer accent-accent"
-                                  title={t("Adjust SCATTER max display count (10 - 100 images)", "SCATTER表示上限枚数を調整 (10枚〜100枚)")}
-                                />
-                                <span className="w-8 text-right font-bold text-accent text-[10px]">{scatterLimit}枚</span>
-
-                                {/* Quick Presets */}
-                                <div className="flex items-center gap-1 ml-0.5">
-                                  {[10, 30, 50, 100].map((num) => (
-                                    <button
-                                      key={num}
-                                      type="button"
-                                      onClick={() => handleUpdateScatterLimit(num)}
-                                      className={cn(
-                                        "px-1.5 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer",
-                                        scatterLimit === num
-                                          ? "bg-accent text-accent-text shadow-xs"
-                                          : "bg-panel-border/60 hover:bg-panel-border text-text-muted hover:text-text-primary"
-                                      )}
-                                      title={`Preset: ${num} images`}
-                                    >
-                                      {num}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-
-                              {sortedImages.length > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={() => setRandomSeed((prev) => prev + 1)}
-                                  className="ml-1 px-2.5 py-0.5 bg-accent/20 hover:bg-accent text-accent hover:text-accent-text rounded-full transition-all font-bold text-[9px] cursor-pointer shadow-xs active:scale-95 shrink-0 flex items-center gap-1"
-                                  title={t("Shuffle images and scatter layout", "画像の並びと配置をシャッフル")}
-                                >
-                                  ↻ {t("SHUFFLE", "シャッフル")}
-                                </button>
-                              )}
                             </div>
                           </div>
                         )}
