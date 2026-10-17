@@ -4731,15 +4731,31 @@ Images imported: ${importedImages}`);
 
   const getCanvasBgClass = (imgBg?: "black" | "white" | "checkerboard") => {
     if (canvasBg === "theme") {
-      // THEMEモード: テーマ背景になじむ配色 (透明画像や余白も全体のテーマに自然に調和)
-      return "bg-root-bg/90";
+      // THEMEモード: テーマごとに最適調整されたなじみ背景色
+      const curTheme = theme.toUpperCase();
+      if (curTheme === "LIGHT" || curTheme === "PAPER") {
+        return "bg-white"; // LIGHT・PAPER時は完全な白 (White)
+      }
+      if (curTheme === "NAVY") {
+        return "bg-[#080c14]"; // NAVY時は背景より若干濃いめの落ち着いたダークネイビー
+      }
+      if (curTheme === "RED") {
+        return "bg-[#100505]"; // RED時は背景より若干濃いめの落ち着いた深紅黒
+      }
+      if (curTheme === "BLACK") {
+        return "bg-[#0e1013]"; // BLACK時は背景より若干濃いめのチャコールブラック
+      }
+      if (curTheme === "TRUE_BLACK") {
+        return "bg-black"; // TRUE_BLACK時は完全なピュアブラック
+      }
+      return "bg-root-bg";
     }
     if (canvasBg === "auto") {
       // AUTOモード: 画像解析結果 (black / white / checkerboard) を自動適用
       if (imgBg === "black") return "bg-black";
       if (imgBg === "white") return "bg-white";
       if (imgBg === "checkerboard") return "bg-checkerboard";
-      return "bg-root-bg/90";
+      return "bg-root-bg";
     }
     if (canvasBg === "black") return "bg-black";
     if (canvasBg === "white") return "bg-white";
@@ -5333,12 +5349,12 @@ Images imported: ${importedImages}`);
             <span className="text-[10px] uppercase font-mono tracking-widest text-text-muted">
               CANVAS:
             </span>
-            <div className="flex gap-1 h-full py-2 items-center">
-              <SolidButton active={canvasBg === "theme"} onClick={() => setCanvasBg("theme")} className="px-1.5 h-6 py-0 text-[10px]" title={t("Blend with current UI theme", "テーマ背景になじむ色")}>THEME</SolidButton>
-              <SolidButton active={canvasBg === "auto"} onClick={() => setCanvasBg("auto")} className="px-1.5 h-6 py-0 text-[10px]" title={t("Auto detect image background", "画像解析オート（白・黒自動判定）")}>AUTO</SolidButton>
-              <SolidButton active={canvasBg === "black"} onClick={() => setCanvasBg("black")} className="w-8 h-6 px-0 py-0 text-[10px]" title={t("Force black background", "ブラック背景に固定")}>BLK</SolidButton>
-              <SolidButton active={canvasBg === "white"} onClick={() => setCanvasBg("white")} className="w-8 h-6 px-0 py-0 text-[10px]" title={t("Force white background", "ホワイト背景に固定")}>WHT</SolidButton>
-              <SolidButton active={canvasBg === "checker"} onClick={() => setCanvasBg("checker")} className="w-8 h-6 px-0 py-0 text-[10px]" title={t("Force checkerboard background", "透明格子背景に固定")}>CHK</SolidButton>
+            <div className="flex gap-1 h-full py-2 items-center font-mono">
+              <SolidButton active={canvasBg === "theme"} onClick={() => setCanvasBg("theme")} className="w-[52px] h-6 px-0 py-0 text-[10px] tracking-wider justify-center flex items-center" title={t("Blend with current UI theme", "テーマ背景になじむ色")}>THEME</SolidButton>
+              <SolidButton active={canvasBg === "auto"} onClick={() => setCanvasBg("auto")} className="w-[52px] h-6 px-0 py-0 text-[10px] tracking-wider justify-center flex items-center" title={t("Auto detect image background", "画像解析オート（白・黒自動判定）")}>AUTO</SolidButton>
+              <SolidButton active={canvasBg === "black"} onClick={() => setCanvasBg("black")} className="w-[52px] h-6 px-0 py-0 text-[10px] tracking-wider justify-center flex items-center" title={t("Force black background", "ブラック背景に固定")}>BLACK</SolidButton>
+              <SolidButton active={canvasBg === "white"} onClick={() => setCanvasBg("white")} className="w-[52px] h-6 px-0 py-0 text-[10px] tracking-wider justify-center flex items-center" title={t("Force white background", "ホワイト背景に固定")}>WHITE</SolidButton>
+              <SolidButton active={canvasBg === "checker"} onClick={() => setCanvasBg("checker")} className="w-[52px] h-6 px-0 py-0 text-[10px] tracking-widest justify-center flex items-center" title={t("Force checkerboard background", "透明格子背景に固定")}>CHK</SolidButton>
             </div>
           </div>
 
