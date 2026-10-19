@@ -375,6 +375,75 @@ export default function App() {
       localStorage.removeItem("app_activeDatasetId");
     }
   }, [activeDatasetId]);
+
+  // Navigation History (BACK / NEXT 閲覧ナビゲーション履歴)
+  const [navHistory, setNavHistory] = useState<Array<{
+    activeDatasetId: string | null;
+    activeCategoryId: string | null;
+    isCategoryImagesView: boolean;
+  }>>(() => [
+    {
+      activeDatasetId: (() => {
+        const saved = localStorage.getItem("app_activeDatasetId");
+        return saved === "all" ? null : saved || null;
+      })(),
+      activeCategoryId: localStorage.getItem("app_activeCategoryId") || null,
+      isCategoryImagesView: false,
+    },
+  ]);
+  const [navIndex, setNavIndex] = useState<number>(0);
+  const isNavigatingRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    if (isNavigatingRef.current) {
+      isNavigatingRef.current = false;
+      return;
+    }
+    const current = navHistory[navIndex];
+    if (
+      current &&
+      current.activeDatasetId === activeDatasetId &&
+      current.activeCategoryId === activeCategoryId &&
+      current.isCategoryImagesView === isCategoryImagesView
+    ) {
+      return;
+    }
+    const newState = { activeDatasetId, activeCategoryId, isCategoryImagesView };
+    setNavHistory((prev) => {
+      const sliced = prev.slice(0, navIndex + 1);
+      return [...sliced, newState];
+    });
+    setNavIndex((prev) => prev + 1);
+  }, [activeDatasetId, activeCategoryId, isCategoryImagesView]);
+
+  const canNavBack = navIndex > 0;
+  const canNavNext = navIndex < navHistory.length - 1;
+
+  const handleNavBack = () => {
+    if (!canNavBack) return;
+    const targetIndex = navIndex - 1;
+    const targetState = navHistory[targetIndex];
+    if (targetState) {
+      isNavigatingRef.current = true;
+      setNavIndex(targetIndex);
+      setActiveDatasetId(targetState.activeDatasetId);
+      setActiveCategoryId(targetState.activeCategoryId);
+      setIsCategoryImagesView(targetState.isCategoryImagesView);
+    }
+  };
+
+  const handleNavNext = () => {
+    if (!canNavNext) return;
+    const targetIndex = navIndex + 1;
+    const targetState = navHistory[targetIndex];
+    if (targetState) {
+      isNavigatingRef.current = true;
+      setNavIndex(targetIndex);
+      setActiveDatasetId(targetState.activeDatasetId);
+      setActiveCategoryId(targetState.activeCategoryId);
+      setIsCategoryImagesView(targetState.isCategoryImagesView);
+    }
+  };
   const [datasetViewMode, setDatasetViewMode] = useState<"list" | "dropdown">(
     "list",
   );
@@ -399,7 +468,7 @@ export default function App() {
   const [openAction, setOpenAction] = useState<"click" | "dblclick">(() => {
     const saved = localStorage.getItem("app_openAction");
 
-  return (saved as "click" | "dblclick") || "dblclick";
+  return (saved as "click" | "dblclick") || "click";
   });
   const [appFont, setAppFont] = useState<"GOTHIC" | "MARU" | "MEIRYO" | "MONO">(() => {
     const saved = localStorage.getItem("app_font");
@@ -752,9 +821,11 @@ export default function App() {
     localStorage.setItem("arrow_key_mode", arrowKeyMode);
   }, [arrowKeyMode]);
 
-  // Track mouse hovered image ID for priority Enter key opening
+  // Track mouse hovered image ID & scatter drag states for priority zIndex control
   const [hoveredImageId, setHoveredImageId] = useState<string | null>(null);
   const hoveredImageIdRef = useRef<string | null>(null);
+  const [activeScatterDragId, setActiveScatterDragId] = useState<string | null>(null);
+  const [lastDraggedImageId, setLastDraggedImageId] = useState<string | null>(null);
 
   useEffect(() => {
     hoveredImageIdRef.current = hoveredImageId;
@@ -1491,6 +1562,17 @@ export default function App() {
     return 30; // 既定 ±30度（程よい動きと面白さ）
   });
 
+  // SCATTER (スケーター) 個別画像のホイール拡大倍率 (初期1.0x、画像ごとの個別倍率保持)
+  const [individualScales, setIndividualScales] = useState<Record<string, number>>({});
+
+  const handleIndividualWheelScale = React.useCallback((imageId: string, change: number) => {
+    setIndividualScales((prev) => {
+      const current = prev[imageId] ?? 1.0;
+      const next = Math.max(0.3, Math.min(4.0, current + change));
+      return { ...prev, [imageId]: Math.round(next * 100) / 100 };
+    });
+  }, []);
+
   const handleUpdateScatterLimit = (limit: number) => {
     const clamped = Math.min(100, Math.max(10, limit));
     setScatterLimit(clamped);
@@ -1530,6 +1612,7 @@ export default function App() {
 
   const handleReshuffleScatter = () => {
     setRandomSeed((prev) => prev + 1);
+    setIndividualScales({}); // 再シャッフル時に個別倍率も一括リセット
     setImages((prev) =>
       prev.map((img) => ({
         ...img,
@@ -5111,8 +5194,11 @@ Images imported: ${importedImages}`);
         dragMomentum={false}
         onDragStart={() => {
           suppressNextClickRef.current = true;
+          setActiveScatterDragId(img.id);
+          setLastDraggedImageId(img.id);
         }}
         onDragEnd={(event, info) => {
+          setActiveScatterDragId(null);
           setTimeout(() => {
             suppressNextClickRef.current = false;
           }, 200);
@@ -5130,11 +5216,11 @@ Images imported: ${importedImages}`);
         }}
         whileDrag={{
           scale: 1.05,
-          zIndex: 100,
+          zIndex: 250,
           boxShadow: "0 20px 40px rgba(0,0,0,0.6)",
         }}
         whileHover={
-          viewMode === "free" ? { scale: 1.02, zIndex: 20 } : {}
+          viewMode === "free" ? { scale: 1.02, zIndex: 150 } : {}
         }
         initial={
           viewMode === "free"
@@ -5220,7 +5306,7 @@ Images imported: ${importedImages}`);
           }
         } else {
           setSelectedImage(img);
-          if (openAction === "click" && viewMode !== "free") {
+          if (openAction === "click") {
             setIsFullscreen(true);
           }
         }
@@ -5233,8 +5319,27 @@ Images imported: ${importedImages}`);
         if (lastNavSourceRef.current !== "mouse") {
           lastNavSourceRef.current = "mouse";
         }
+        if (hoveredImageId !== img.id) {
+          setHoveredImageId(img.id);
+        }
       }}
-      onMouseLeave={() => setHoveredImageId((prev) => (prev === img.id ? null : prev))}
+      onMouseLeave={() => {
+        setHoveredImageId((prev) => (prev === img.id ? null : prev));
+        setLastDraggedImageId((prev) => (prev === img.id ? null : prev));
+      }}
+      onWheel={(e) => {
+        if (viewMode === "free") {
+          e.preventDefault();
+          e.stopPropagation();
+          let delta = e.deltaY;
+          if (wheelInvertRef.current) {
+            delta = -delta;
+          }
+          if (Math.abs(delta) < 1) return;
+          const change = delta > 0 ? -0.1 : 0.1;
+          handleIndividualWheelScale(img.id, change);
+        }
+      }}
       onDoubleClick={() => {
         if (suppressNextClickRef.current || isSelectionMode) return;
         setSelectedImage(img);
@@ -5243,7 +5348,7 @@ Images imported: ${importedImages}`);
         }
       }}
       className={cn(
-        "cursor-pointer overflow-hidden border min-w-0 min-h-0 relative transition-colors rounded-none bg-panel-bg",
+        "cursor-pointer overflow-hidden border min-w-0 min-h-0 relative transition-colors rounded-none bg-panel-bg group",
         isSelected || isMultiSelected
           ? "border-2 border-accent ring-2 ring-accent/60 ring-offset-1 ring-offset-panel-bg shadow-[0_0_18px_var(--color-accent-glow)] z-10 scale-[1.01]"
           : "border border-panel-border hover:border-text-secondary z-0",
@@ -5257,22 +5362,39 @@ Images imported: ${importedImages}`);
       style={
         viewMode === "free"
           ? (() => {
-              let freeW = itemScale;
-              let freeH = itemScale;
+              const customFactor = individualScales[img.id] ?? 1.0;
+              const scaledBase = Math.round(itemScale * customFactor);
+
+              let freeW = scaledBase;
+              let freeH = scaledBase;
               if (scatterAspectMode === "natural") {
                 const imgW = img.width && img.height ? img.width : 1;
                 const imgH = img.width && img.height ? img.height : 1;
                 const aspect = imgW / imgH;
                 if (aspect >= 1) {
                   // 横長・長方形
-                  freeW = itemScale;
-                  freeH = Math.max(24, Math.round(itemScale / aspect));
+                  freeW = scaledBase;
+                  freeH = Math.max(24, Math.round(scaledBase / aspect));
                 } else {
                   // 縦長・長方形
-                  freeH = itemScale;
-                  freeW = Math.max(24, Math.round(itemScale * aspect));
+                  freeH = scaledBase;
+                  freeW = Math.max(24, Math.round(scaledBase * aspect));
                 }
               }
+
+              const isHovered = hoveredImageId === img.id;
+              const isDraggingThis = activeScatterDragId === img.id;
+              const isLastDraggedThis = lastDraggedImageId === img.id;
+
+              let zIndexVal = 1;
+              if (isDraggingThis) {
+                zIndexVal = 250;
+              } else if (isHovered || isLastDraggedThis) {
+                zIndexVal = 150; // マウスカーソルが離れるまでは最前面(zIndex: 150)を死守！
+              } else if (isSelected) {
+                zIndexVal = 50;
+              }
+
               return {
                 opacity: img.isHidden ? 0.4 : 1,
                 width: freeW,
@@ -5281,7 +5403,7 @@ Images imported: ${importedImages}`);
                 top: `50%`,
                 marginLeft: `-${freeW / 2}px`,
                 marginTop: `-${freeH / 2}px`,
-                zIndex: isSelected ? 50 : 1,
+                zIndex: zIndexVal,
               };
             })()
           : viewMode === "list"
@@ -5474,44 +5596,24 @@ Images imported: ${importedImages}`);
         </button>
       )}
 
-      {/* Cover Image Indicator / Set Button */}
-      {(() => {
-        if (isCover) {
-          const currentPos = currentDs?.coverImagePosition || "top";
-          const posLabel = currentPos === "center" ? "MID" : currentPos === "bottom" ? "BTM" : "TOP";
-          return (
-            <div
-              className="absolute top-2 left-2 z-20 flex items-center gap-1 bg-amber-500/95 text-black font-bold font-mono text-[9px] px-1.5 py-0.5 rounded shadow-[0_2px_8px_rgba(0,0,0,0.5)] backdrop-blur-xs tracking-wider select-none"
-              title={t("Cover Image: Click to cycle crop position (TOP -> CENTER -> BOTTOM)", "カバー画像: クリックでトリミング位置切替（上部 -> 中央 -> 下部）")}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (activeDatasetId) handleCycleCoverPosition(activeDatasetId, e);
-              }}
-            >
-              <Bookmark size={11} className="fill-black" />
-              <span>COVER</span>
-              <span className="bg-black/20 text-black px-1 rounded text-[8px] ml-0.5">{posLabel}</span>
-            </div>
-          );
-        }
-
-        if (!isSelectionMode && activeDatasetId && viewMode !== "list") {
-          return (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                if (activeDatasetId) handleSetAsCover(activeDatasetId, img);
-              }}
-              onDoubleClick={(e) => e.stopPropagation()}
-              className="absolute top-2 left-2 z-20 opacity-0 group-hover:opacity-100 transition-all duration-150 bg-black/80 hover:bg-amber-500 text-white hover:text-black font-mono text-[9px] px-1.5 py-0.5 rounded flex items-center gap-1 border border-white/20 hover:border-amber-500 shadow-md backdrop-blur-xs tracking-wider"
-              title={t("Set as list cover thumbnail", "この画像をリストのカバー画像に設定")}
-            >
-              <Bookmark size={11} />
-              <span>SET COVER</span>
-            </button>
-          );
-        }
-        return null;
+      {/* Cover Image Indicator */}
+      {isCover && (() => {
+        const currentPos = currentDs?.coverImagePosition || "top";
+        const posLabel = currentPos === "center" ? "MID" : currentPos === "bottom" ? "BTM" : "TOP";
+        return (
+          <div
+            className="absolute top-2 left-2 z-20 flex items-center gap-1 bg-amber-500/95 text-black font-bold font-mono text-[9px] px-1.5 py-0.5 rounded shadow-[0_2px_8px_rgba(0,0,0,0.5)] backdrop-blur-xs tracking-wider select-none"
+            title={t("Cover Image: Click to cycle crop position (TOP -> CENTER -> BOTTOM)", "カバー画像: クリックでトリミング位置切替（上部 -> 中央 -> 下部）")}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (activeDatasetId) handleCycleCoverPosition(activeDatasetId, e);
+            }}
+          >
+            <Bookmark size={11} className="fill-black" />
+            <span>COVER</span>
+            <span className="bg-black/20 text-black px-1 rounded text-[8px] ml-0.5">{posLabel}</span>
+          </div>
+        );
       })()}
       
       {img.isHidden && (
@@ -6036,23 +6138,36 @@ Images imported: ${importedImages}`);
             )}
 
             <div className="mt-4 pt-4 border-t border-panel-border flex flex-col gap-2">
-              <span className="text-[10px] font-mono text-text-muted uppercase tracking-widest mb-1">
-                OPEN IMAGE ACTION
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-mono text-text-muted uppercase tracking-widest">
+                  {t("NAVIGATION HISTORY", "閲覧ナビゲーション")}
+                </span>
+                <span className="text-[9px] font-mono text-accent">
+                  {navIndex + 1} / {navHistory.length}
+                </span>
+              </div>
               <div className="flex gap-2">
                 <SolidButton
-                  active={openAction === "click"}
-                  onClick={() => setOpenAction("click")}
-                  className="flex-1 justify-center text-[10px] h-8"
+                  disabled={!canNavBack}
+                  onClick={handleNavBack}
+                  className={cn(
+                    "flex-1 justify-center text-[10px] h-8 gap-1 font-mono transition-opacity cursor-pointer",
+                    !canNavBack && "opacity-40 cursor-not-allowed"
+                  )}
+                  title={t("Go back to previous folder/dataset view", "前の閲覧状態に戻る")}
                 >
-                  SINGLE CLICK
+                  <ChevronLeft size={14} /> BACK (戻る)
                 </SolidButton>
                 <SolidButton
-                  active={openAction === "dblclick"}
-                  onClick={() => setOpenAction("dblclick")}
-                  className="flex-1 justify-center text-[10px] h-8"
+                  disabled={!canNavNext}
+                  onClick={handleNavNext}
+                  className={cn(
+                    "flex-1 justify-center text-[10px] h-8 gap-1 font-mono transition-opacity cursor-pointer",
+                    !canNavNext && "opacity-40 cursor-not-allowed"
+                  )}
+                  title={t("Go forward to next folder/dataset view", "次の閲覧状態に進む")}
                 >
-                  DOUBLE CLICK
+                  NEXT (進む) <ChevronRight size={14} />
                 </SolidButton>
               </div>
             </div>
@@ -6803,6 +6918,56 @@ Images imported: ${importedImages}`);
 
                         {bottomPanelTab === "general" && (
                           <div className="flex flex-col gap-3.5 text-[11px]">
+                            {/* 0. OPEN IMAGE ACTION (SINGLE / DOUBLE CLICK) */}
+                            <div className="flex flex-col gap-1.5">
+                              <div className="flex items-center justify-between font-mono text-[10px] text-text-muted tracking-wider uppercase font-bold border-b border-panel-border pb-1">
+                                <div className="flex items-center gap-1.5">
+                                  <Mouse size={12} className="text-accent" />
+                                  <span>{t("OPEN IMAGE ACTION", "画像を開く操作")}</span>
+                                </div>
+                                <span className="text-[9px] text-accent font-mono uppercase font-bold">
+                                  {openAction === "click" ? t("SINGLE CLICK", "シングルクリック") : t("DOUBLE CLICK", "ダブルクリック")}
+                                </span>
+                              </div>
+
+                              <div className="text-[10px] text-text-muted leading-tight">
+                                {t(
+                                  "Set click trigger to open images in full screen view.",
+                                  "一覧画面で画像をクリックした時に全画面表示で開くトリガー（シングルクリック／ダブルクリック）を設定します。"
+                                )}
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-1.5 font-mono text-[10px]">
+                                <button
+                                  type="button"
+                                  onClick={() => setOpenAction("click")}
+                                  className={cn(
+                                    "flex flex-col items-center justify-center p-2 border transition-all text-center rounded-xs cursor-pointer gap-0.5",
+                                    openAction === "click"
+                                      ? "border-accent bg-accent/15 text-text-primary font-bold ring-1 ring-accent"
+                                      : "border-panel-border hover:border-text-muted text-text-secondary hover:text-text-primary bg-panel-bg"
+                                  )}
+                                >
+                                  <span className="font-bold">{t("SINGLE CLICK", "シングルクリック (基本)")}</span>
+                                  <span className="text-[9px] text-text-muted">1回クリックで開く</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setOpenAction("dblclick")}
+                                  className={cn(
+                                    "flex flex-col items-center justify-center p-2 border transition-all text-center rounded-xs cursor-pointer gap-0.5",
+                                    openAction === "dblclick"
+                                      ? "border-accent bg-accent/15 text-text-primary font-bold ring-1 ring-accent"
+                                      : "border-panel-border hover:border-text-muted text-text-secondary hover:text-text-primary bg-panel-bg"
+                                  )}
+                                >
+                                  <span className="font-bold">{t("DOUBLE CLICK", "ダブルクリック")}</span>
+                                  <span className="text-[9px] text-text-muted">2回連続クリックで開く</span>
+                                </button>
+                              </div>
+                            </div>
+
                             {/* 1. MOUSE WHEEL SENSITIVITY / SCROLL WIDTH */}
                             <div className="flex flex-col gap-1.5">
                               <div className="flex items-center justify-between font-mono text-[10px] text-text-muted tracking-wider uppercase font-bold border-b border-panel-border pb-1">
