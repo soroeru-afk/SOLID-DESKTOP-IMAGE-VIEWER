@@ -4701,7 +4701,9 @@ Images imported: ${importedImages}`);
         key === "f" ||
         key === "F" ||
         key === "F11" ||
-        code === "F11"
+        code === "F11" ||
+        code === "NumpadDivide" ||
+        key === "/"
       ) {
         if (e.repeat) return;
         e.preventDefault();
@@ -4741,9 +4743,6 @@ Images imported: ${importedImages}`);
         code === "KeyU" ||
         code === "NumpadMultiply" ||
         key === "*" ||
-        code === "NumpadDivide" ||
-        key === "/" ||
-        code === "Slash" ||
         code === "NumLock" ||
         key === "NumLock" ||
         key === "Clear"
