@@ -1524,7 +1524,32 @@ export default function App() {
     "left",
   );
   const [sidebarVisible, setSidebarVisible] = useState(true);
-    const [language, setLanguage] = useState<"EN" | "JP">("EN");
+  const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+  const [language, setLanguage] = useState<"EN" | "JP">("EN");
+
+  const isHeaderVisibleRef = useRef(isHeaderVisible);
+  isHeaderVisibleRef.current = isHeaderVisible;
+
+  const sidebarVisibleRef = useRef(sidebarVisible);
+  sidebarVisibleRef.current = sidebarVisible;
+
+  const t = React.useCallback((en: string, jp: string) => (language === "JP" ? jp : en), [language]);
+
+  const toggleCleanView = React.useCallback(() => {
+    const isHidden = !isHeaderVisibleRef.current || !sidebarVisibleRef.current;
+    if (isHidden) {
+      setIsHeaderVisible(true);
+      setSidebarVisible(true);
+      showNotification(t("STANDARD VIEW: HEADER & SIDEBAR RESTORED", "標準表示: ヘッダー・サイドバーを復元"));
+    } else {
+      setIsHeaderVisible(false);
+      setSidebarVisible(false);
+      showNotification(t("CLEAN VIEW: HEADER & SIDEBAR HIDDEN", "クリーン表示: ヘッダー・サイドバーを一括非表示"));
+    }
+  }, [t]);
+
+  const toggleCleanViewRef = useRef(toggleCleanView);
+  toggleCleanViewRef.current = toggleCleanView;
   const [dragTarget, setDragTarget] = useState<"add" | "new" | null>(null);
 
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -1565,12 +1590,91 @@ export default function App() {
   // SCATTER (スケーター) 個別画像のホイール拡大倍率 (初期1.0x、画像ごとの個別倍率保持)
   const [individualScales, setIndividualScales] = useState<Record<string, number>>({});
 
+  // SCATTER (スケーター) 個別画像の回転操作中ID＆Ref保持
+  const [activeRotatingScatterId, setActiveRotatingScatterId] = useState<string | null>(null);
+  const isRotatingScatterRef = useRef<boolean>(false);
+
   const handleIndividualWheelScale = React.useCallback((imageId: string, change: number) => {
     setIndividualScales((prev) => {
       const current = prev[imageId] ?? 1.0;
       const next = Math.max(0.3, Math.min(4.0, current + change));
       return { ...prev, [imageId]: Math.round(next * 100) / 100 };
     });
+  }, []);
+
+  // SCATTER (スケーター) 個別画像の中心軸ドラッグ回転処理
+  const handleStartRotateScatterImage = React.useCallback((
+    e: React.PointerEvent<HTMLElement>,
+    targetImg: LoadedImage
+  ) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (e.nativeEvent) {
+      try {
+        e.nativeEvent.stopImmediatePropagation();
+      } catch {
+        // ignore
+      }
+    }
+    suppressNextClickRef.current = true;
+    isRotatingScatterRef.current = true;
+    setActiveRotatingScatterId(targetImg.id);
+
+    const handleEl = e.currentTarget;
+    try {
+      handleEl.setPointerCapture(e.pointerId);
+    } catch {
+      // fallback
+    }
+
+    const cardEl = document.getElementById(`image-card-${targetImg.id}`);
+    if (!cardEl) {
+      isRotatingScatterRef.current = false;
+      setActiveRotatingScatterId(null);
+      return;
+    }
+
+    const rect = cardEl.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    const initialPointerAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI);
+    const initialRotation = targetImg.randomRotation || 0;
+
+    const onPointerMove = (ev: PointerEvent) => {
+      ev.stopPropagation();
+      ev.preventDefault();
+      const currentPointerAngle = Math.atan2(ev.clientY - centerY, ev.clientX - centerX) * (180 / Math.PI);
+      const angleDelta = currentPointerAngle - initialPointerAngle;
+      const newRotation = Math.round((initialRotation + angleDelta) * 10) / 10;
+
+      setImages((prev) =>
+        prev.map((item) =>
+          item.id === targetImg.id ? { ...item, randomRotation: newRotation } : item
+        )
+      );
+    };
+
+    const onPointerUp = (ev: PointerEvent) => {
+      try {
+        handleEl.releasePointerCapture(ev.pointerId);
+      } catch {
+        // ignore
+      }
+      window.removeEventListener("pointermove", onPointerMove, { capture: true });
+      window.removeEventListener("pointerup", onPointerUp, { capture: true });
+      window.removeEventListener("pointercancel", onPointerUp, { capture: true });
+      
+      setActiveRotatingScatterId(null);
+      setTimeout(() => {
+        isRotatingScatterRef.current = false;
+        suppressNextClickRef.current = false;
+      }, 150);
+    };
+
+    window.addEventListener("pointermove", onPointerMove, { capture: true });
+    window.addEventListener("pointerup", onPointerUp, { capture: true });
+    window.addEventListener("pointercancel", onPointerUp, { capture: true });
   }, []);
 
   const handleUpdateScatterLimit = (limit: number) => {
@@ -1730,26 +1834,70 @@ export default function App() {
 
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsAppFullscreen(!!document.fullscreenElement);
+      const fsEl =
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement;
+      setIsAppFullscreen(!!fsEl);
     };
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
 
-  return () => {
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    document.addEventListener("mozfullscreenchange", handleFullscreenChange);
+    document.addEventListener("MSFullscreenChange", handleFullscreenChange);
+
+    return () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
     };
   }, []);
 
-  const toggleAppFullscreen = async () => {
-    if (!document.fullscreenElement) {
-      await document.documentElement.requestFullscreen().catch((err) => {
-        console.error(`Error attempting to enable fullscreen: ${err.message}`);
-      });
+  const toggleAppFullscreen = React.useCallback(async () => {
+    const fsEl =
+      document.fullscreenElement ||
+      (document as any).webkitFullscreenElement ||
+      (document as any).mozFullScreenElement ||
+      (document as any).msFullscreenElement;
+
+    if (!fsEl && !isAppFullscreen) {
+      try {
+        const docEl = document.documentElement as any;
+        if (docEl.requestFullscreen) {
+          await docEl.requestFullscreen();
+        } else if (docEl.webkitRequestFullscreen) {
+          await docEl.webkitRequestFullscreen();
+        } else if (docEl.mozRequestFullScreen) {
+          await docEl.mozRequestFullScreen();
+        } else if (docEl.msRequestFullscreen) {
+          await docEl.msRequestFullscreen();
+        }
+        setIsAppFullscreen(true);
+      } catch (err) {
+        console.warn("Fullscreen request fallback:", err);
+        setIsAppFullscreen(true);
+      }
     } else {
-      if (document.exitFullscreen) {
-        await document.exitFullscreen();
+      try {
+        const doc = document as any;
+        if (doc.exitFullscreen) {
+          await doc.exitFullscreen();
+        } else if (doc.webkitExitFullscreen) {
+          await doc.webkitExitFullscreen();
+        } else if (doc.mozCancelFullScreen) {
+          await doc.mozCancelFullScreen();
+        } else if (doc.msExitFullscreen) {
+          await doc.msExitFullscreen();
+        }
+        setIsAppFullscreen(false);
+      } catch (err) {
+        console.warn("Fullscreen exit fallback:", err);
+        setIsAppFullscreen(false);
       }
     }
-  };
+  }, [isAppFullscreen]);
 
   const [moveTargetId, setMoveTargetId] = useState<string>("");
   const [lastSelectedIdx, setLastSelectedIdx] = useState<number | null>(null);
@@ -2097,9 +2245,21 @@ export default function App() {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
-  // Load from DB on mount
-  const t = (en: string, jp: string) => (language === "JP" ? jp : en);
+  // Clean up dragged/grabbed/hover states when entering or exiting full screen
+  useEffect(() => {
+    if (isFullscreen) {
+      setActiveScatterDragId(null);
+      setActiveRotatingScatterId(null);
+      setHoveredImageId(null);
+      setLastDraggedImageId(null);
+      suppressNextClickRef.current = false;
+      if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    }
+  }, [isFullscreen]);
 
+  // Load from DB on mount
   useEffect(() => {
     loadDatasets();
   }, []);
@@ -4540,8 +4700,8 @@ Images imported: ${importedImages}`);
       if (
         key === "f" ||
         key === "F" ||
-        code === "NumpadDivide" ||
-        key === "/"
+        key === "F11" ||
+        code === "F11"
       ) {
         if (e.repeat) return;
         e.preventDefault();
@@ -4571,6 +4731,29 @@ Images imported: ${importedImages}`);
             imgControls.start({ rotateY: next ? 180 : 0, transition: { duration: 0.2 } });
             return next;
           });
+        }
+        return;
+      }
+
+      if (
+        key === "u" ||
+        key === "U" ||
+        code === "KeyU" ||
+        code === "NumpadMultiply" ||
+        key === "*" ||
+        code === "NumpadDivide" ||
+        key === "/" ||
+        code === "Slash" ||
+        code === "NumLock" ||
+        key === "NumLock" ||
+        key === "Clear"
+      ) {
+        if (e.repeat) return;
+        e.preventDefault();
+        if (isFullscreen) {
+          setShowFullscreenUI((prev) => !prev);
+        } else {
+          toggleCleanViewRef.current();
         }
         return;
       }
@@ -4774,17 +4957,6 @@ Images imported: ${importedImages}`);
           const idx = intervals.indexOf(sec);
           return intervals[(idx + 1) % intervals.length];
         });
-        return;
-      }
-      if (
-        key === "u" ||
-        key === "U" ||
-        code === "NumpadMultiply" ||
-        key === "*"
-      ) {
-        if (e.repeat) return;
-        e.preventDefault();
-        setShowFullscreenUI((prev) => !prev);
         return;
       }
       if (key === "z" || key === "Z" || code === "Numpad5" || key === "5") {
@@ -5183,16 +5355,19 @@ Images imported: ${importedImages}`);
     const showOriginButton =
       !isSelectionMode && (isFavoriteDatasetView || Boolean((img as any).originalDatasetId));
 
+    const isCardRotating = activeRotatingScatterId === img.id;
+
     return (
       <motion.div
         id={`image-card-${img.id}`}
         key={img.id}
         layout={false}
-        drag={viewMode === "free"}
-        dragConstraints={viewMode === "free" ? scatterContainerRef : false}
+        drag={viewMode === "free" && !isFullscreen && !isCardRotating}
+        dragConstraints={viewMode === "free" && !isFullscreen && !isCardRotating ? scatterContainerRef : false}
         dragElastic={0}
         dragMomentum={false}
         onDragStart={() => {
+          if (isFullscreen || isRotatingScatterRef.current || activeRotatingScatterId) return;
           suppressNextClickRef.current = true;
           setActiveScatterDragId(img.id);
           setLastDraggedImageId(img.id);
@@ -5202,6 +5377,9 @@ Images imported: ${importedImages}`);
           setTimeout(() => {
             suppressNextClickRef.current = false;
           }, 200);
+          if (isRotatingScatterRef.current || activeRotatingScatterId === img.id) {
+            return; // 回転操作終了時の座標誤計算（すっ飛んでいく現象）を完全に防ぐ！
+          }
           if (viewMode === "free" && containerWidth > 0 && containerHeight > 0) {
             const deltaXPercent = (info.offset.x / containerWidth) * 100;
             const deltaYPercent = (info.offset.y / containerHeight) * 100;
@@ -5214,13 +5392,17 @@ Images imported: ${importedImages}`);
             );
           }
         }}
-        whileDrag={{
-          scale: 1.05,
-          zIndex: 250,
-          boxShadow: "0 20px 40px rgba(0,0,0,0.6)",
-        }}
+        whileDrag={
+          viewMode === "free" && !isFullscreen && !isCardRotating
+            ? {
+                scale: 1.05,
+                zIndex: 250,
+                boxShadow: "0 20px 40px rgba(0,0,0,0.6)",
+              }
+            : undefined
+        }
         whileHover={
-          viewMode === "free" ? { scale: 1.02, zIndex: 150 } : {}
+          viewMode === "free" && !isFullscreen && !isCardRotating ? { scale: 1.02, zIndex: 150 } : {}
         }
         initial={
           viewMode === "free"
@@ -5256,27 +5438,28 @@ Images imported: ${importedImages}`);
                 rotate: 0,
               }
         }
-      transition={{
-        layout: {
-          type: "tween",
-          ease: "circOut",
-          duration: 0.3,
-        },
-        opacity: {
-          duration: 0.1,
-          delay: isSelectionMode
-            ? 0
-            : Math.min(i * 0.015, 1.0),
-        },
-        scale: {
-          type: "tween",
-          ease: "circOut",
-          duration: 0.2,
-          delay: isSelectionMode
-            ? 0
-            : Math.min(i * 0.015, 1.0),
-        },
-      }}
+        transition={{
+          layout: {
+            type: "tween",
+            ease: "circOut",
+            duration: 0.3,
+          },
+          opacity: {
+            duration: 0.1,
+            delay: isSelectionMode
+              ? 0
+              : Math.min(i * 0.015, 1.0),
+          },
+          scale: {
+            type: "tween",
+            ease: "circOut",
+            duration: 0.2,
+            delay: isSelectionMode
+              ? 0
+              : Math.min(i * 0.015, 1.0),
+          },
+          rotate: isCardRotating ? { duration: 0 } : undefined,
+        }}
       onClick={(e) => {
         if (suppressNextClickRef.current) {
           suppressNextClickRef.current = false;
@@ -5307,6 +5490,10 @@ Images imported: ${importedImages}`);
         } else {
           setSelectedImage(img);
           if (openAction === "click") {
+            setActiveScatterDragId(null);
+            setHoveredImageId(null);
+            setLastDraggedImageId(null);
+            suppressNextClickRef.current = false;
             setIsFullscreen(true);
           }
         }
@@ -5344,18 +5531,25 @@ Images imported: ${importedImages}`);
         if (suppressNextClickRef.current || isSelectionMode) return;
         setSelectedImage(img);
         if (openAction === "dblclick" || viewMode === "free") {
+          setActiveScatterDragId(null);
+          setHoveredImageId(null);
+          setLastDraggedImageId(null);
+          suppressNextClickRef.current = false;
           setIsFullscreen(true);
         }
       }}
       className={cn(
-        "cursor-pointer overflow-hidden border min-w-0 min-h-0 relative transition-colors rounded-none bg-panel-bg group",
+        "cursor-pointer overflow-hidden min-w-0 min-h-0 relative transition-colors rounded-none group",
+        viewMode === "free" ? "bg-transparent border-none" : "bg-panel-bg border",
         isSelected || isMultiSelected
           ? "border-2 border-accent ring-2 ring-accent/60 ring-offset-1 ring-offset-panel-bg shadow-[0_0_18px_var(--color-accent-glow)] z-10 scale-[1.01]"
+          : viewMode === "free"
+          ? "border-none shadow-2xl z-0"
           : "border border-panel-border hover:border-text-secondary z-0",
         viewMode === "grid-ma" && "w-full",
         viewMode === "grid-sq" &&
           "w-full aspect-square flex items-center justify-center",
-        viewMode === "free" && "absolute shadow-xl",
+        viewMode === "free" && "absolute shadow-2xl",
         viewMode === "list" &&
           "w-full flex items-center shrink-0 group/listitem",
       )}
@@ -5537,23 +5731,34 @@ Images imported: ${importedImages}`);
       ) : (
         <div
           className={cn(
-            "w-full relative flex items-center justify-center group overflow-hidden bg-panel-bg",
+            "w-full relative flex items-center justify-center group overflow-hidden",
+            viewMode === "free" ? "bg-transparent h-full" : "bg-panel-bg",
             viewMode === "grid-sq" && "h-full",
           )}
         >
           <div
             className={cn(
               "relative flex items-center justify-center w-full h-full transition-transform duration-500 will-change-transform group-hover:scale-105",
-              getCanvasBgClass(img.autoBg),
+              viewMode === "free" ? "bg-transparent" : getCanvasBgClass(img.autoBg),
             )}
           >
             <img
               src={img.url}
               draggable={false}
+              onLoad={(e) => {
+                const nw = e.currentTarget.naturalWidth;
+                const nh = e.currentTarget.naturalHeight;
+                if (nw > 0 && nh > 0 && (!img.width || !img.height || img.width !== nw || img.height !== nh)) {
+                  setImages((prev) =>
+                    prev.map((item) => (item.id === img.id ? { ...item, width: nw, height: nh } : item))
+                  );
+                }
+              }}
               className={cn(
                 "block",
-                viewMode === "grid-sq" ||
-                  viewMode === "free"
+                viewMode === "free"
+                  ? (scatterAspectMode === "square" ? "w-full h-full object-cover" : "w-full h-full object-fill")
+                  : viewMode === "grid-sq"
                   ? "max-w-full max-h-full object-contain"
                   : "w-full h-auto",
               )}
@@ -5655,6 +5860,29 @@ Images imported: ${importedImages}`);
           {viewMode !== "list" && <span className="font-bold tracking-wider text-[8px]">SORT</span>}
         </div>
       )}
+
+      {/* SCATTER / FREE MODE ROTATION HANDLE (画像の中心軸ドラッグ回転ハンドル) */}
+      {viewMode === "free" && !isSelectionMode && (
+        <div
+          onPointerDown={(e) => handleStartRotateScatterImage(e, img)}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+          }}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            // ダブルクリックで角度を0度(正位置)にリセット
+            setImages((prev) =>
+              prev.map((item) => (item.id === img.id ? { ...item, randomRotation: 0 } : item))
+            );
+          }}
+          className="absolute bottom-2 right-2 z-30 opacity-0 group-hover:opacity-100 transition-all duration-150 bg-black/80 hover:bg-accent text-white hover:text-black border border-white/20 hover:border-accent shadow-xl rounded-full w-7 h-7 flex items-center justify-center cursor-grab active:cursor-grabbing select-none backdrop-blur-xs hover:scale-110"
+          title={t("Drag to rotate image around center (Double click to reset rotation)", "ドラッグで画像の中心を軸に回転（ダブルクリックで角度を0°にリセット）")}
+        >
+          <RotateCw size={13} className="stroke-[2.2]" />
+        </div>
+      )}
     </motion.div>
     );
   };
@@ -5679,8 +5907,27 @@ Images imported: ${importedImages}`);
         )}
       </AnimatePresence>
 
+      {/* Floating Restore Button when Header is hidden (クリーン表示時のUI復元ボタン) */}
+      {!isHeaderVisible && (
+        <motion.button
+          initial={{ opacity: 0, scale: 0.8, y: -10 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.8, y: -10 }}
+          type="button"
+          onClick={toggleCleanView}
+          className="fixed top-2.5 right-4 z-[100] px-2.5 py-1 h-7 bg-black/85 hover:bg-accent text-text-muted hover:text-black border border-panel-border/80 hover:border-accent rounded shadow-2xl backdrop-blur-md flex items-center gap-1.5 font-mono text-[10px] tracking-wider transition-all cursor-pointer opacity-80 hover:opacity-100 group"
+          title={t("Restore Header & Sidebar [U / テンキー * / NumLock]", "クリーン表示を解除・ヘッダーとサイドバーを復元 [U / テンキー * / NumLock]")}
+        >
+          <Eye size={13} className="shrink-0 text-accent group-hover:text-black" />
+          <span className="font-bold uppercase tracking-widest">{t("SHOW UI", "UI復元")}</span>
+        </motion.button>
+      )}
+
       {/* Top Header */}
-      <header className="flex justify-between items-center shrink-0 h-10">
+      <header className={cn(
+        "flex justify-between items-center shrink-0 transition-all duration-300",
+        isHeaderVisible ? "h-10 opacity-100" : "h-0 opacity-0 overflow-hidden pointer-events-none mb-0"
+      )}>
         <div className="flex items-start gap-3">
           <div className="w-8 h-8 bg-panel-border flex items-center justify-center rounded-none text-accent">
             <ScatterChart size={18} />
@@ -5846,6 +6093,7 @@ Images imported: ${importedImages}`);
               )}
             </SolidButton>
 
+            {/* FULLSCREEN BUTTON */}
             <SolidButton
               onClick={toggleAppFullscreen}
               className="px-2"
@@ -5857,6 +6105,21 @@ Images imported: ${importedImages}`);
                 <Maximize size={16} />
               )}
             </SolidButton>
+
+            {/* CLEAN VIEW BUTTON (HIDE HEADER & SIDEBAR AT ONCE) */}
+            <SolidButton
+              onClick={toggleCleanView}
+              className={cn(
+                "px-2 transition-all",
+                !isHeaderVisible && !sidebarVisible
+                  ? "border-accent text-accent bg-accent/20"
+                  : "text-text-muted hover:text-text-primary"
+              )}
+              title={t("Toggle Clean View (Hide Header & Sidebar at once)", "クリーン表示（ヘッダーとサイドバーを一発非表示）")}
+            >
+              <EyeOff size={16} />
+            </SolidButton>
+
             <SolidButton
               onClick={() =>
                 setSidebarPosition((p) => (p === "left" ? "right" : "left"))
@@ -6811,6 +7074,13 @@ Images imported: ${importedImages}`);
                                 </kbd>
                                 <span className="text-text-secondary truncate">
                                   {t("Open Quick Stock Drawer", "ストック一覧パネルを開閉")}
+                                </span>
+
+                                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-accent/40 text-accent text-center min-w-[24px]">
+                                  U / テンキー * / NumLock
+                                </kbd>
+                                <span className="text-text-secondary truncate font-bold text-accent">
+                                  {t("Toggle Clean View (Hide Header & Sidebar)", "クリーン表示（ヘッダー・サイドバー非表示）")}
                                 </span>
                               </div>
                             </div>
