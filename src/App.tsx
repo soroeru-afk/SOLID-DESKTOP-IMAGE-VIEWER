@@ -425,6 +425,23 @@ export default function App() {
     "theme" | "auto" | "black" | "white" | "checker"
   >("theme");
   const isLightTheme = theme === "LIGHT" || theme === "PAPER";
+  const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
+  const themeMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (themeMenuRef.current && !themeMenuRef.current.contains(e.target as Node)) {
+        setIsThemeMenuOpen(false);
+      }
+    };
+    if (isThemeMenuOpen) {
+      document.addEventListener("mousedown", handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, [isThemeMenuOpen]);
+
   const cycleTheme = () => {
     const themes: Array<"NAVY" | "BLACK" | "TRUE_BLACK" | "RED" | "LIGHT" | "PAPER"> = ["NAVY", "BLACK", "TRUE_BLACK", "RED", "LIGHT", "PAPER"];
     setTheme((prev) => themes[(themes.indexOf(prev as any) + 1) % themes.length]);
@@ -6120,17 +6137,119 @@ Images imported: ${importedImages}`);
             </select>
           </div>
 
-          <div className="flex items-center h-full">
-            <SolidButton
-              onClick={cycleTheme}
-              className={`h-6 px-3 py-0 text-[10px] flex items-center justify-start gap-2 w-[138px] whitespace-nowrap ${
-                theme === "TRUE_BLACK"
-                  ? "!border-neutral-600 hover:!border-neutral-500 hover:!bg-neutral-900"
-                  : ""
-              }`}
+          {/* THEME SWITCHER (SPLIT BUTTON + PULLDOWN DROPDOWN) */}
+          <div className="relative flex items-center h-full" ref={themeMenuRef}>
+            <div
+              className={cn(
+                "inline-flex items-center h-6 w-[116px] border border-panel-border bg-panel-bg rounded transition-all shrink-0",
+                theme === "TRUE_BLACK" ? "!border-neutral-600 bg-neutral-950" : "",
+                isThemeMenuOpen ? "border-accent ring-1 ring-accent/30" : ""
+              )}
             >
-              <Palette size={12} className="shrink-0" /> THEME: {theme === "TRUE_BLACK" ? "T-BLACK" : theme}
-            </SolidButton>
+              {/* トグルボタン: クリックで次のテーマへ順次切替（固定幅でサイズが一切変わらない） */}
+              <button
+                type="button"
+                onClick={cycleTheme}
+                className={cn(
+                  "flex-1 h-full pl-2 pr-1 flex items-center gap-1.5 text-[10px] font-mono font-bold tracking-wider text-text-primary hover:text-accent hover:bg-white/5 transition-colors cursor-pointer overflow-hidden select-none",
+                  theme === "TRUE_BLACK" && "hover:bg-neutral-900"
+                )}
+                title={t("Cycle Theme (Click to toggle next theme)", "テーマをトグル切替（クリックで次のテーマへ）")}
+              >
+                <span
+                  className="w-2.5 h-2.5 rounded-full shrink-0 border border-black/25 shadow-xs"
+                  style={{
+                    backgroundColor:
+                      theme === "NAVY"
+                        ? "#2563eb"
+                        : theme === "BLACK"
+                        ? "#334155"
+                        : theme === "TRUE_BLACK"
+                        ? "#000000"
+                        : theme === "LIGHT"
+                        ? "#0284c7"
+                        : theme === "PAPER"
+                        ? "#b45309"
+                        : "#dc2626",
+                  }}
+                />
+                <span className="truncate">
+                  {theme === "TRUE_BLACK" ? "T-BLACK" : theme}
+                </span>
+              </button>
+
+              {/* 区切り線 */}
+              <div className="w-px h-3.5 bg-panel-border shrink-0" />
+
+              {/* プルダウン展開ボタン（矢印） */}
+              <button
+                type="button"
+                onClick={() => setIsThemeMenuOpen((prev) => !prev)}
+                className={cn(
+                  "w-5 h-full flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-white/5 transition-colors cursor-pointer shrink-0 select-none",
+                  isThemeMenuOpen && "text-accent bg-accent/10"
+                )}
+                title={t("Open Theme Menu", "テーマメニューを開く")}
+              >
+                {isThemeMenuOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+              </button>
+            </div>
+
+            {/* プルダウンメニュー（真下に展開） */}
+            {isThemeMenuOpen && (
+              <div
+                className={cn(
+                  "absolute top-full mt-1.5 right-0 z-50 w-44 py-1 rounded shadow-xl border border-panel-border bg-panel-bg backdrop-blur-md select-none",
+                  theme === "TRUE_BLACK" && "bg-neutral-950 !border-neutral-700 shadow-2xl"
+                )}
+              >
+                {/* メニューヘッダー */}
+                <div className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold border-b border-panel-border text-text-muted">
+                  <Palette size={12} className="text-accent shrink-0" />
+                  <span>{t("THEME SWITCH", "テーマ切り替え")}</span>
+                </div>
+
+                {/* テーマリスト */}
+                <div className="py-1">
+                  {[
+                    { id: "NAVY", label: "NAVY", dot: "#2563eb" },
+                    { id: "BLACK", label: "BLACK", dot: "#334155" },
+                    { id: "TRUE_BLACK", label: "TRUE BLACK", dot: "#000000" },
+                    { id: "LIGHT", label: "LIGHT", dot: "#0284c7" },
+                    { id: "PAPER", label: "PAPER", dot: "#b45309" },
+                    { id: "RED", label: "RED", dot: "#dc2626" },
+                  ].map((thm) => {
+                    const isSelected = theme === thm.id;
+                    return (
+                      <button
+                        key={thm.id}
+                        type="button"
+                        onClick={() => {
+                          setTheme(thm.id as any);
+                          setIsThemeMenuOpen(false);
+                        }}
+                        className={cn(
+                          "w-full flex items-center justify-between px-3 py-1.5 text-[11px] font-mono font-bold transition-colors text-left cursor-pointer",
+                          isSelected
+                            ? "bg-accent/15 text-text-primary"
+                            : "text-text-secondary hover:bg-white/5 hover:text-text-primary",
+                          theme === "TRUE_BLACK" && !isSelected && "hover:bg-neutral-900"
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span
+                            className="w-3 h-3 rounded-full shrink-0 border border-black/25 shadow-xs"
+                            style={{ backgroundColor: thm.dot }}
+                          />
+                          <span>{thm.label}</span>
+                        </div>
+                        {isSelected && <Check size={12} className="text-accent shrink-0 ml-1.5" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="w-px h-6 bg-panel-border mx-1" />
