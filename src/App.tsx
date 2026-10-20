@@ -739,6 +739,23 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem("app_theme", theme);
+    document.documentElement.setAttribute("data-theme", theme);
+    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    let color = "#0B0C0D"; // default for BLACK
+    if (theme === "TRUE_BLACK") color = "#000000";
+    else if (theme === "LIGHT") color = "#e2e8f0";
+    else if (theme === "PAPER") color = "#f5f5f0";
+    else if (theme === "RED") color = "#0d0404";
+    else if (theme === "NAVY") color = "#06090e";
+    
+    if (metaThemeColor) {
+      metaThemeColor.setAttribute("content", color);
+    } else {
+      const meta = document.createElement("meta");
+      meta.name = "theme-color";
+      meta.content = color;
+      document.head.appendChild(meta);
+    }
   }, [theme]);
 
   useEffect(() => {
@@ -1608,8 +1625,10 @@ export default function App() {
   }, [t]);
 
   const toggleCleanViewRef = useRef(toggleCleanView);
-  toggleCleanViewRef.current = toggleCleanView;
   const [dragTarget, setDragTarget] = useState<"add" | "new" | null>(null);
+  const [isMainDragging, setIsMainDragging] = useState(false);
+  const [mainDragTarget, setMainDragTarget] = useState<"add" | "new" | null>(null);
+  const mainDragCounterRef = useRef<number>(0);
 
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(
@@ -2084,21 +2103,37 @@ export default function App() {
     localStorage.setItem("app_sidebarFontSize", sidebarFontSize);
   }, [sidebarFontSize]);
 
-  const [sidebarOrder, setSidebarOrder] = useState(() => {
+  const [sidebarOrder, setSidebarOrder] = useState<Array<{ id: string }>>(() => {
     try {
       const saved = localStorage.getItem("sidebarOrder");
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (!parsed.some((s: any) => s.id === "navigation")) {
+          const formationIdx = parsed.findIndex((s: any) => s.id === "formation");
+          if (formationIdx !== -1) parsed.splice(formationIdx + 1, 0, { id: "navigation" });
+          else parsed.unshift({ id: "navigation" });
+        }
+        return parsed;
+      }
     } catch (e) {}
-    return [{ id: "formation" }, { id: "datasets" }, { id: "trackInfo" }];
+    return [{ id: "formation" }, { id: "navigation" }, { id: "datasets" }, { id: "trackInfo" }];
   });
   const [isFormationExpanded, setIsFormationExpanded] = useState(() => {
     const saved = localStorage.getItem("isFormationExpanded");
+    return saved ? saved === "true" : true;
+  });
+  const [isNavExpanded, setIsNavExpanded] = useState(() => {
+    const saved = localStorage.getItem("isNavExpanded");
     return saved ? saved === "true" : true;
   });
   const [isDataSetsExpanded, setIsDataSetsExpanded] = useState(() => {
     const saved = localStorage.getItem("isDataSetsExpanded");
     return saved ? saved === "true" : true;
   });
+  const [isBottomPanelWide, setIsBottomPanelWide] = useState(() => {
+    return localStorage.getItem("app_bottom_panel_wide") === "true";
+  });
+
   const [isTrackInfoCollapsed, setIsTrackInfoCollapsed] = useState(() => {
     const saved = localStorage.getItem("isTrackInfoCollapsed");
     return saved ? saved === "true" : true;
@@ -2245,8 +2280,14 @@ export default function App() {
     localStorage.setItem("isFormationExpanded", String(isFormationExpanded));
   }, [isFormationExpanded]);
   useEffect(() => {
+    localStorage.setItem("isNavExpanded", String(isNavExpanded));
+  }, [isNavExpanded]);
+  useEffect(() => {
     localStorage.setItem("isDataSetsExpanded", String(isDataSetsExpanded));
   }, [isDataSetsExpanded]);
+  useEffect(() => {
+    localStorage.setItem("app_bottom_panel_wide", String(isBottomPanelWide));
+  }, [isBottomPanelWide]);
   useEffect(() => {
     localStorage.setItem("isTrackInfoCollapsed", String(isTrackInfoCollapsed));
   }, [isTrackInfoCollapsed]);
@@ -2302,22 +2343,6 @@ export default function App() {
   // Apply Theme
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
-    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
-    let color = "#0B0C0D"; // default for BLACK
-    if (theme === "TRUE_BLACK") color = "#000000";
-    else if (theme === "LIGHT") color = "#e2e8f0";
-    else if (theme === "PAPER") color = "#f5f5f0";
-    else if (theme === "RED") color = "#0d0404";
-    else if (theme === "NAVY") color = "#06090e";
-    
-    if (metaThemeColor) {
-      metaThemeColor.setAttribute("content", color);
-    } else {
-      const meta = document.createElement("meta");
-      meta.name = "theme-color";
-      meta.content = color;
-      document.head.appendChild(meta);
-    }
   }, [theme]);
 
   // Clean up dragged/grabbed/hover states when entering or exiting full screen
@@ -5282,7 +5307,9 @@ Images imported: ${importedImages}`);
     e.preventDefault();
     e.stopPropagation();
     setDragTarget(null);
-    // reset global counter by simulating drag end
+    setMainDragTarget(null);
+    setIsMainDragging(false);
+    mainDragCounterRef.current = 0;
     
     if (e.dataTransfer && e.dataTransfer.items) {
       setIsReadingDirectory(true);
@@ -5296,6 +5323,9 @@ Images imported: ${importedImages}`);
       if (forceNewDataset || !targetDatasetId || targetDatasetId === "all") {
         const dsName = folderNames.length > 0 ? folderNames[0] : "NEW DATASET";
         const ds = await createDataset(dsName.toUpperCase());
+        if (activeCategoryId) {
+          await updateDatasetCategory(ds.id, activeCategoryId);
+        }
         targetDatasetId = ds.id;
         setActiveDatasetId(ds.id);
         await loadDatasets();
@@ -5307,6 +5337,9 @@ Images imported: ${importedImages}`);
     } else if (e.dataTransfer && e.dataTransfer.files) {
       if (forceNewDataset || !activeDatasetId || activeDatasetId === "all") {
          const ds = await createDataset("NEW DATASET");
+         if (activeCategoryId) {
+           await updateDatasetCategory(ds.id, activeCategoryId);
+         }
          setActiveDatasetId(ds.id);
          await loadDatasets();
          await processFiles(e.dataTransfer.files, ds.id, true);
@@ -6473,41 +6506,53 @@ Images imported: ${importedImages}`);
               </div>
             )}
 
-            <div className="mt-4 pt-4 border-t border-panel-border flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono text-text-muted uppercase tracking-widest">
-                  {t("NAVIGATION HISTORY", "閲覧ナビゲーション")}
-                </span>
-                <span className="text-[9px] font-mono text-accent">
-                  {navIndex + 1} / {navHistory.length}
-                </span>
-              </div>
-              <div className="flex gap-2">
-                <SolidButton
-                  disabled={!canNavBack}
-                  onClick={handleNavBack}
-                  className={cn(
-                    "flex-1 justify-center text-[10px] h-8 gap-1 font-mono transition-opacity cursor-pointer",
-                    !canNavBack && "opacity-40 cursor-not-allowed"
-                  )}
-                  title={t("Go back to previous folder/dataset view", "前の閲覧状態に戻る")}
-                >
-                  <ChevronLeft size={14} /> BACK (戻る)
-                </SolidButton>
-                <SolidButton
-                  disabled={!canNavNext}
-                  onClick={handleNavNext}
-                  className={cn(
-                    "flex-1 justify-center text-[10px] h-8 gap-1 font-mono transition-opacity cursor-pointer",
-                    !canNavNext && "opacity-40 cursor-not-allowed"
-                  )}
-                  title={t("Go forward to next folder/dataset view", "次の閲覧状態に進む")}
-                >
-                  NEXT (進む) <ChevronRight size={14} />
-                </SolidButton>
-              </div>
-            </div>
-            
+                  </Panel>
+                );
+              } else if (section.id === "navigation") {
+                return (
+                  <Panel
+                    key="navigation"
+                    title={
+                      <div className="flex items-center justify-between w-full pr-1">
+                        <div className="flex items-center gap-1.5">
+                          <Undo size={13} className="text-accent" />
+                          <span>{t("NAVIGATION HISTORY", "閲覧ナビゲーション")}</span>
+                        </div>
+                        <span className="text-[9px] font-mono text-accent font-bold tabular-nums">
+                          {navIndex + 1} / {navHistory.length}
+                        </span>
+                      </div>
+                    }
+                    className="shrink-0"
+                    isCollapsible
+                    isExpanded={isNavExpanded}
+                    onToggle={() => setIsNavExpanded(!isNavExpanded)}
+                    dragHandle
+                  >
+                    <div className="flex gap-2">
+                      <SolidButton
+                        disabled={!canNavBack}
+                        onClick={handleNavBack}
+                        className={cn(
+                          "flex-1 justify-center text-[10px] h-8 gap-1.5 font-mono transition-opacity cursor-pointer",
+                          !canNavBack && "opacity-40 cursor-not-allowed"
+                        )}
+                        title={t("Go back to previous folder/dataset view", "前の閲覧状態に戻る")}
+                      >
+                        <ChevronLeft size={14} /> BACK (戻る)
+                      </SolidButton>
+                      <SolidButton
+                        disabled={!canNavNext}
+                        onClick={handleNavNext}
+                        className={cn(
+                          "flex-1 justify-center text-[10px] h-8 gap-1.5 font-mono transition-opacity cursor-pointer",
+                          !canNavNext && "opacity-40 cursor-not-allowed"
+                        )}
+                        title={t("Go forward to next folder/dataset view", "次の閲覧状態に進む")}
+                      >
+                        NEXT (進む) <ChevronRight size={14} />
+                      </SolidButton>
+                    </div>
                   </Panel>
                 );
               } else if (section.id === "datasets") {
@@ -6970,22 +7015,36 @@ Images imported: ${importedImages}`);
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setBottomPanelHeight((prev) => (prev > 450 ? 330 : 540));
+                              if (isBottomPanelWide) {
+                                setIsBottomPanelWide(false);
+                                setBottomPanelHeight(330);
+                              } else {
+                                setIsBottomPanelWide(true);
+                              }
                             }}
-                            className="px-1.5 py-0.5 border border-panel-border hover:border-accent hover:text-accent rounded-xs transition-colors cursor-pointer text-text-muted"
-                            title={t("Toggle wide panel height (or drag top/bottom border)", "パネルの高さを拡大・縮小（枠線のドラッグでも伸縮可能）")}
+                            className={cn(
+                              "px-1.5 py-0.5 border rounded-xs transition-all cursor-pointer font-bold",
+                              isBottomPanelWide
+                                ? "border-accent bg-accent/20 text-accent shadow-xs"
+                                : "border-panel-border hover:border-accent hover:text-accent text-text-muted"
+                            )}
+                            title={t("Toggle wide panel (expands to the bottom) or compact", "ワイド表示（最下部まで全開）／コンパクト表示切替")}
                           >
-                            {bottomPanelHeight > 450 ? "COMPACT" : "WIDE"}
+                            {isBottomPanelWide ? "COMPACT" : "WIDE"}
                           </button>
                         </div>
                       )
                     }
                     className={cn(
-                      "shrink-0 flex flex-col items-center min-w-0 w-full relative group/bpanel",
+                      "flex flex-col items-center min-w-0 w-full relative group/bpanel",
                       !isResizingBottomPanel && "transition-all duration-200",
-                      isTrackInfoCollapsed ? "h-[34px]" : "",
+                      isTrackInfoCollapsed
+                        ? "h-[34px] shrink-0"
+                        : isBottomPanelWide
+                        ? "flex-1 min-h-[280px]"
+                        : "shrink-0",
                     )}
-                    style={!isTrackInfoCollapsed ? { height: `${bottomPanelHeight}px` } : undefined}
+                    style={!isTrackInfoCollapsed && !isBottomPanelWide ? { height: `${bottomPanelHeight}px` } : undefined}
                     contentClassName={cn(
                       "flex flex-col w-full min-w-0 transition-opacity duration-300 relative",
                       isTrackInfoCollapsed
@@ -7003,9 +7062,10 @@ Images imported: ${importedImages}`);
                         <div
                           className="absolute -top-3 left-0 right-0 h-4 cursor-row-resize z-40 flex items-center justify-center opacity-0 group-hover/bpanel:opacity-100 hover:!opacity-100 transition-opacity"
                           title={t("Drag up to expand height, down to shrink (Double click to reset)", "上にドラッグして広げる、下にドラッグして縮める（ダブルクリックで切替）")}
-                          onDoubleClick={() => setBottomPanelHeight((prev) => (prev > 450 ? 330 : 540))}
+                          onDoubleClick={() => setIsBottomPanelWide((prev) => !prev)}
                           onPointerDown={(e) => {
                             e.preventDefault();
+                            setIsBottomPanelWide(false);
                             setIsResizingBottomPanel(true);
                             const startY = e.clientY;
                             const startH = bottomPanelHeight;
@@ -7029,9 +7089,10 @@ Images imported: ${importedImages}`);
                         <div
                           className="absolute -bottom-3 left-0 right-0 h-4 cursor-row-resize z-40 flex items-center justify-center opacity-0 group-hover/bpanel:opacity-100 hover:!opacity-100 transition-opacity"
                           title={t("Drag down to expand height, up to shrink (Double click to reset)", "下にドラッグして広げる、上にドラッグして縮める（ダブルクリックで切替）")}
-                          onDoubleClick={() => setBottomPanelHeight((prev) => (prev > 450 ? 330 : 540))}
+                          onDoubleClick={() => setIsBottomPanelWide((prev) => !prev)}
                           onPointerDown={(e) => {
                             e.preventDefault();
+                            setIsBottomPanelWide(false);
                             setIsResizingBottomPanel(true);
                             const startY = e.clientY;
                             const startH = bottomPanelHeight;
@@ -8845,6 +8906,49 @@ Images imported: ${importedImages}`);
             <div
               ref={scatterContainerRef}
               className={cn("w-full flex-1 relative overflow-hidden")}
+              onDragEnter={(e) => {
+                if (!e.dataTransfer.types.includes("Files")) return;
+                e.preventDefault();
+                e.stopPropagation();
+                mainDragCounterRef.current++;
+                setIsMainDragging(true);
+                if (!mainDragTarget) {
+                  setMainDragTarget(activeDatasetId ? "add" : "new");
+                }
+              }}
+              onDragOver={(e) => {
+                if (!e.dataTransfer.types.includes("Files")) return;
+                e.preventDefault();
+                e.stopPropagation();
+                e.dataTransfer.dropEffect = "copy";
+                if (!isMainDragging) {
+                  setIsMainDragging(true);
+                }
+              }}
+              onDragLeave={(e) => {
+                if (!e.dataTransfer.types.includes("Files")) return;
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget as Node)) {
+                  return;
+                }
+                mainDragCounterRef.current--;
+                if (mainDragCounterRef.current <= 0 || !e.relatedTarget) {
+                  mainDragCounterRef.current = 0;
+                  setIsMainDragging(false);
+                  setMainDragTarget(null);
+                }
+              }}
+              onDrop={(e) => {
+                if (!e.dataTransfer.types.includes("Files")) return;
+                e.preventDefault();
+                e.stopPropagation();
+                mainDragCounterRef.current = 0;
+                setIsMainDragging(false);
+                const isNew = mainDragTarget === "new" || !activeDatasetId;
+                handleFilesDrop(e, isNew);
+                setMainDragTarget(null);
+              }}
               onClickCapture={(e) => {
                 if (suppressNextClickRef.current) {
                   suppressNextClickRef.current = false;
@@ -8914,7 +9018,7 @@ Images imported: ${importedImages}`);
                   }}
                   onDragStart={(e) => e.preventDefault()}
                   className={cn(
-                    "w-full h-full absolute inset-0 p-4 select-none touch-pan-x",
+                    "w-full h-full absolute inset-0 p-4 select-none touch-pan-x isolate z-0",
                     (viewMode === "grid-sq" ||
                       viewMode === "grid-ma" ||
                       viewMode === "list") &&
@@ -9429,6 +9533,141 @@ Images imported: ${importedImages}`);
                   </div>
                 </div>
               )}
+
+              {/* MAIN VIEW DRAG & DROP OVERLAY (ADD TO ACTIVE / CREATE BY FOLDER) */}
+              <AnimatePresence>
+                {isMainDragging && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.12 }}
+                    className="absolute inset-0 z-[80] bg-black/85 backdrop-blur-md p-6 flex flex-col md:flex-row gap-4 items-stretch justify-center select-none"
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.dataTransfer.dropEffect = "copy";
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget as Node)) {
+                        return;
+                      }
+                      mainDragCounterRef.current = 0;
+                      setIsMainDragging(false);
+                      setMainDragTarget(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      mainDragCounterRef.current = 0;
+                      setIsMainDragging(false);
+                      const isNew = mainDragTarget === "new" || !activeDatasetId;
+                      handleFilesDrop(e, isNew);
+                      setMainDragTarget(null);
+                    }}
+                  >
+                    {/* ADD TO ACTIVE DATASET ZONE */}
+                    <div
+                      className={cn(
+                        "flex-1 border-2 border-dashed rounded-lg flex flex-col items-center justify-center p-6 text-center transition-all duration-150 cursor-pointer",
+                        mainDragTarget === "add"
+                          ? "border-accent bg-accent/25 text-accent shadow-2xl scale-[1.01]"
+                          : "border-panel-border/80 bg-panel-bg/70 text-text-muted hover:border-text-secondary"
+                      )}
+                      onDragEnter={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setMainDragTarget("add");
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setMainDragTarget("add");
+                        e.dataTransfer.dropEffect = "copy";
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        mainDragCounterRef.current = 0;
+                        setIsMainDragging(false);
+                        handleFilesDrop(e, false);
+                        setMainDragTarget(null);
+                      }}
+                    >
+                      <div className="pointer-events-none flex flex-col items-center justify-center w-full">
+                        <div className={cn(
+                          "w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-colors",
+                          mainDragTarget === "add" ? "bg-accent/30 text-accent" : "bg-panel-border/50 text-text-muted"
+                        )}>
+                          <FolderPlus size={32} className="stroke-[1.8]" />
+                        </div>
+                        <span className="font-mono text-base md:text-lg font-bold tracking-widest uppercase mb-1">
+                          {t("ADD TO ACTIVE LIST", "現在のリストに追加")}
+                        </span>
+                        <span className="font-mono text-xs opacity-80 max-w-sm truncate px-2">
+                          {activeDatasetId
+                            ? t(
+                                `Add files directly to active list "${datasets.find((d) => d.id === activeDatasetId)?.name || "ACTIVE"}"`,
+                                `現在のリスト「${datasets.find((d) => d.id === activeDatasetId)?.name || "ACTIVE"}」に直接追加`
+                              )
+                            : t("No active list (will create new dataset)", "現在未選択（新規リストを作成して追加）")}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* CREATE BY FOLDER ZONE */}
+                    <div
+                      className={cn(
+                        "flex-1 border-2 border-dashed rounded-lg flex flex-col items-center justify-center p-6 text-center transition-all duration-150 cursor-pointer",
+                        mainDragTarget === "new"
+                          ? "border-accent bg-accent/25 text-accent shadow-2xl scale-[1.01]"
+                          : "border-panel-border/80 bg-panel-bg/70 text-text-muted hover:border-text-secondary"
+                      )}
+                      onDragEnter={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setMainDragTarget("new");
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setMainDragTarget("new");
+                        e.dataTransfer.dropEffect = "copy";
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        mainDragCounterRef.current = 0;
+                        setIsMainDragging(false);
+                        handleFilesDrop(e, true);
+                        setMainDragTarget(null);
+                      }}
+                    >
+                      <div className="pointer-events-none flex flex-col items-center justify-center w-full">
+                        <div className={cn(
+                          "w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-colors",
+                          mainDragTarget === "new" ? "bg-accent/30 text-accent" : "bg-panel-border/50 text-text-muted"
+                        )}>
+                          <FolderOpen size={32} className="stroke-[1.8]" />
+                        </div>
+                        <span className="font-mono text-base md:text-lg font-bold tracking-widest uppercase mb-1">
+                          {t("CREATE BY FOLDER", "フォルダー名でリスト作成")}
+                        </span>
+                        <span className="font-mono text-xs opacity-80 max-w-sm truncate px-2">
+                          {activeCategoryId
+                            ? t(
+                                `Create new list under folder "${categories.find((c) => c.id === activeCategoryId)?.name || ""}"`,
+                                `フォルダー「${categories.find((c) => c.id === activeCategoryId)?.name || ""}」内に新規リストを作成`
+                              )
+                            : t("Create a new dataset automatically from folder name", "フォルダー名から新しいリスト（データセット）を自動作成")}
+                        </span>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </Panel>
         </div>
