@@ -376,74 +376,7 @@ export default function App() {
     }
   }, [activeDatasetId]);
 
-  // Navigation History (BACK / NEXT 閲覧ナビゲーション履歴)
-  const [navHistory, setNavHistory] = useState<Array<{
-    activeDatasetId: string | null;
-    activeCategoryId: string | null;
-    isCategoryImagesView: boolean;
-  }>>(() => [
-    {
-      activeDatasetId: (() => {
-        const saved = localStorage.getItem("app_activeDatasetId");
-        return saved === "all" ? null : saved || null;
-      })(),
-      activeCategoryId: localStorage.getItem("app_activeCategoryId") || null,
-      isCategoryImagesView: false,
-    },
-  ]);
-  const [navIndex, setNavIndex] = useState<number>(0);
-  const isNavigatingRef = useRef<boolean>(false);
 
-  useEffect(() => {
-    if (isNavigatingRef.current) {
-      isNavigatingRef.current = false;
-      return;
-    }
-    const current = navHistory[navIndex];
-    if (
-      current &&
-      current.activeDatasetId === activeDatasetId &&
-      current.activeCategoryId === activeCategoryId &&
-      current.isCategoryImagesView === isCategoryImagesView
-    ) {
-      return;
-    }
-    const newState = { activeDatasetId, activeCategoryId, isCategoryImagesView };
-    setNavHistory((prev) => {
-      const sliced = prev.slice(0, navIndex + 1);
-      return [...sliced, newState];
-    });
-    setNavIndex((prev) => prev + 1);
-  }, [activeDatasetId, activeCategoryId, isCategoryImagesView]);
-
-  const canNavBack = navIndex > 0;
-  const canNavNext = navIndex < navHistory.length - 1;
-
-  const handleNavBack = () => {
-    if (!canNavBack) return;
-    const targetIndex = navIndex - 1;
-    const targetState = navHistory[targetIndex];
-    if (targetState) {
-      isNavigatingRef.current = true;
-      setNavIndex(targetIndex);
-      setActiveDatasetId(targetState.activeDatasetId);
-      setActiveCategoryId(targetState.activeCategoryId);
-      setIsCategoryImagesView(targetState.isCategoryImagesView);
-    }
-  };
-
-  const handleNavNext = () => {
-    if (!canNavNext) return;
-    const targetIndex = navIndex + 1;
-    const targetState = navHistory[targetIndex];
-    if (targetState) {
-      isNavigatingRef.current = true;
-      setNavIndex(targetIndex);
-      setActiveDatasetId(targetState.activeDatasetId);
-      setActiveCategoryId(targetState.activeCategoryId);
-      setIsCategoryImagesView(targetState.isCategoryImagesView);
-    }
-  };
   const [datasetViewMode, setDatasetViewMode] = useState<"list" | "dropdown">(
     "list",
   );
@@ -521,6 +454,149 @@ export default function App() {
     list: 0,
     free: 0,
   });
+
+  // Navigation History (BACK / NEXT 閲覧ナビゲーション履歴 - フォーメーション・スクロール位置保持)
+  const [navHistory, setNavHistory] = useState<Array<{
+    activeDatasetId: string | null;
+    activeCategoryId: string | null;
+    isCategoryImagesView: boolean;
+    viewMode: ViewMode;
+    orientationFilter: "all" | "portrait" | "landscape";
+    scales: Record<string, number>;
+    gaps: Record<string, number>;
+    sortField: "name" | "size" | "type" | "date" | "custom" | "random";
+    searchQuery: string;
+    scrollTop: number;
+  }>>(() => [
+    {
+      activeDatasetId: (() => {
+        const saved = localStorage.getItem("app_activeDatasetId");
+        return saved === "all" ? null : saved || null;
+      })(),
+      activeCategoryId: localStorage.getItem("app_activeCategoryId") || null,
+      isCategoryImagesView: false,
+      viewMode: (localStorage.getItem("app_viewMode") as ViewMode) || "grid-sq",
+      orientationFilter: "all",
+      scales: { "grid-sq": 140, "grid-ma": 140, list: 140, free: 350 },
+      gaps: { "grid-sq": 24, "grid-ma": 24, list: 0, free: 0 },
+      sortField: "name",
+      searchQuery: "",
+      scrollTop: 0,
+    },
+  ]);
+  const [navIndex, setNavIndex] = useState<number>(0);
+  const isNavigatingRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    if (isNavigatingRef.current) {
+      isNavigatingRef.current = false;
+      return;
+    }
+    const currentScrollTop = scrollContainerRef.current?.scrollTop || 0;
+    const current = navHistory[navIndex];
+
+    if (
+      current &&
+      current.activeDatasetId === activeDatasetId &&
+      current.activeCategoryId === activeCategoryId &&
+      current.isCategoryImagesView === isCategoryImagesView &&
+      current.viewMode === viewMode &&
+      current.orientationFilter === orientationFilter &&
+      current.searchQuery === searchQuery
+    ) {
+      return;
+    }
+
+    const newState = {
+      activeDatasetId,
+      activeCategoryId,
+      isCategoryImagesView,
+      viewMode,
+      orientationFilter,
+      scales: { ...scales },
+      gaps: { ...gaps },
+      sortField,
+      searchQuery,
+      scrollTop: 0,
+    };
+
+    setNavHistory((prev) => {
+      const updatedPrev = [...prev];
+      if (updatedPrev[navIndex]) {
+        updatedPrev[navIndex] = {
+          ...updatedPrev[navIndex],
+          scrollTop: currentScrollTop,
+        };
+      }
+      const sliced = updatedPrev.slice(0, navIndex + 1);
+      return [...sliced, newState];
+    });
+    setNavIndex((prev) => prev + 1);
+  }, [
+    activeDatasetId,
+    activeCategoryId,
+    isCategoryImagesView,
+    viewMode,
+    orientationFilter,
+    searchQuery,
+  ]);
+
+  const canNavBack = navIndex > 0;
+  const canNavNext = navIndex < navHistory.length - 1;
+
+  const applyNavState = (targetIndex: number) => {
+    const targetState = navHistory[targetIndex];
+    if (!targetState) return;
+
+    const currentScrollTop = scrollContainerRef.current?.scrollTop || 0;
+    setNavHistory((prev) => {
+      const updated = [...prev];
+      if (updated[navIndex]) {
+        updated[navIndex] = {
+          ...updated[navIndex],
+          scrollTop: currentScrollTop,
+        };
+      }
+      return updated;
+    });
+
+    isNavigatingRef.current = true;
+    setNavIndex(targetIndex);
+    setActiveDatasetId(targetState.activeDatasetId);
+    setActiveCategoryId(targetState.activeCategoryId);
+    setIsCategoryImagesView(targetState.isCategoryImagesView);
+    if (targetState.viewMode) setViewMode(targetState.viewMode);
+    if (targetState.orientationFilter) setOrientationFilter(targetState.orientationFilter);
+    if (targetState.scales) setScales(targetState.scales);
+    if (targetState.gaps) setGaps(targetState.gaps);
+    if (targetState.sortField) setSortField(targetState.sortField);
+    if (targetState.searchQuery !== undefined) {
+      setSearchQuery(targetState.searchQuery);
+      setSearchInput(targetState.searchQuery);
+    }
+
+    const targetScrollTop = targetState.scrollTop || 0;
+    const doRestore = () => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = targetScrollTop;
+      }
+    };
+    doRestore();
+    setTimeout(doRestore, 30);
+    setTimeout(doRestore, 100);
+    setTimeout(doRestore, 250);
+    setTimeout(doRestore, 450);
+  };
+
+  const handleNavBack = () => {
+    if (!canNavBack) return;
+    applyNavState(navIndex - 1);
+  };
+
+  const handleNavNext = () => {
+    if (!canNavNext) return;
+    applyNavState(navIndex + 1);
+  };
 
   const [isOnline, setIsOnline] = useState<boolean>(() =>
     typeof navigator !== "undefined" ? navigator.onLine : true
@@ -663,23 +739,6 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem("app_theme", theme);
-    document.documentElement.setAttribute("data-theme", theme);
-    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
-    let color = "#0B0C0D"; // default for BLACK
-    if (theme === "TRUE_BLACK") color = "#000000";
-    else if (theme === "LIGHT") color = "#e2e8f0";
-    else if (theme === "PAPER") color = "#f5f5f0";
-    else if (theme === "RED") color = "#0d0404";
-    else if (theme === "NAVY") color = "#06090e";
-    
-    if (metaThemeColor) {
-      metaThemeColor.setAttribute("content", color);
-    } else {
-      const meta = document.createElement("meta");
-      meta.name = "theme-color";
-      meta.content = color;
-      document.head.appendChild(meta);
-    }
   }, [theme]);
 
   useEffect(() => {
@@ -2243,6 +2302,22 @@ export default function App() {
   // Apply Theme
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
+    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    let color = "#0B0C0D"; // default for BLACK
+    if (theme === "TRUE_BLACK") color = "#000000";
+    else if (theme === "LIGHT") color = "#e2e8f0";
+    else if (theme === "PAPER") color = "#f5f5f0";
+    else if (theme === "RED") color = "#0d0404";
+    else if (theme === "NAVY") color = "#06090e";
+    
+    if (metaThemeColor) {
+      metaThemeColor.setAttribute("content", color);
+    } else {
+      const meta = document.createElement("meta");
+      meta.name = "theme-color";
+      meta.content = color;
+      document.head.appendChild(meta);
+    }
   }, [theme]);
 
   // Clean up dragged/grabbed/hover states when entering or exiting full screen
@@ -4700,10 +4775,11 @@ Images imported: ${importedImages}`);
       if (
         key === "f" ||
         key === "F" ||
-        key === "F11" ||
-        code === "F11" ||
         code === "NumpadDivide" ||
-        key === "/"
+        key === "/" ||
+        code === "Slash" ||
+        key === "F11" ||
+        code === "F11"
       ) {
         if (e.repeat) return;
         e.preventDefault();
@@ -4743,8 +4819,6 @@ Images imported: ${importedImages}`);
         code === "KeyU" ||
         code === "NumpadMultiply" ||
         key === "*" ||
-        code === "NumLock" ||
-        key === "NumLock" ||
         key === "Clear"
       ) {
         if (e.repeat) return;
@@ -7076,7 +7150,7 @@ Images imported: ${importedImages}`);
                                 </span>
 
                                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-btn-bg border border-accent/40 text-accent text-center min-w-[24px]">
-                                  U / テンキー * / NumLock
+                                  U / テンキー *
                                 </kbd>
                                 <span className="text-text-secondary truncate font-bold text-accent">
                                   {t("Toggle Clean View (Hide Header & Sidebar)", "クリーン表示（ヘッダー・サイドバー非表示）")}
