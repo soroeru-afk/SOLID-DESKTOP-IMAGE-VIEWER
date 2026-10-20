@@ -764,7 +764,7 @@ export default function App() {
     else if (theme === "PAPER") color = "#f5f5f0";
     else if (theme === "RED") color = "#0d0404";
     else if (theme === "NAVY") color = "#06090e";
-    
+
     if (metaThemeColor) {
       metaThemeColor.setAttribute("content", color);
     } else {
@@ -6788,25 +6788,6 @@ Images imported: ${importedImages}`);
               </div>
             </div>
             
-            <div className="flex gap-2 shrink-0">
-              <SolidButton
-                onClick={handleExportAll}
-                className="flex-1 justify-center text-[10px]"
-                title="Export all data to a local folder"
-                disabled={isLoading || isReadingDirectory}
-              >
-                EXPORT DATA
-              </SolidButton>
-              <SolidButton
-                onClick={handleImportAll}
-                className="flex-1 justify-center text-[10px]"
-                title="Import data from a local folder"
-                disabled={isLoading || isReadingDirectory}
-              >
-                IMPORT DATA
-              </SolidButton>
-            </div>
-
             <div className="pt-3 border-t border-panel-border overflow-y-scroll flex flex-col gap-1 min-h-[80px] flex-1 scrollbar-dark pr-1">
               {datasetViewMode === "list" ? (
                 <CategoryTree
@@ -7820,7 +7801,41 @@ Images imported: ${importedImages}`);
                               )}
                             </div>
 
-                            {/* 6. RESET GENERAL SETTINGS */}
+                            {/* 6. DATA BACKUP (EXPORT & IMPORT DATA) */}
+                            <div className="flex flex-col gap-1.5 p-2 bg-panel-bg border border-panel-border rounded-xs">
+                              <div className="flex items-center justify-between font-mono text-[10px] text-text-muted tracking-wider uppercase font-bold border-b border-panel-border pb-1">
+                                <div className="flex items-center gap-1.5">
+                                  <Download size={12} className="text-accent" />
+                                  <span>{t("DATA BACKUP (EXPORT / IMPORT)", "データバックアップ")}</span>
+                                </div>
+                              </div>
+                              <div className="text-[9px] text-text-secondary leading-normal">
+                                {t(
+                                  "Export all database image data to local backup or import saved data.",
+                                  "全データベース情報をローカルに保存、またはバックアップデータから復元します。"
+                                )}
+                              </div>
+                              <div className="flex gap-2 pt-1">
+                                <SolidButton
+                                  onClick={handleExportAll}
+                                  className="flex-1 justify-center text-[10px] py-1.5"
+                                  title="Export all data to a local folder"
+                                  disabled={isLoading || isReadingDirectory}
+                                >
+                                  EXPORT DATA
+                                </SolidButton>
+                                <SolidButton
+                                  onClick={handleImportAll}
+                                  className="flex-1 justify-center text-[10px] py-1.5"
+                                  title="Import data from a local folder"
+                                  disabled={isLoading || isReadingDirectory}
+                                >
+                                  IMPORT DATA
+                                </SolidButton>
+                              </div>
+                            </div>
+
+                            {/* 7. RESET GENERAL SETTINGS */}
                             <div className="pt-1.5 border-t border-panel-border flex items-center justify-between">
                               <span className="text-[10px] text-text-muted font-mono">{t("GENERAL SETTINGS", "一般設定の初期化")}</span>
                               <button
