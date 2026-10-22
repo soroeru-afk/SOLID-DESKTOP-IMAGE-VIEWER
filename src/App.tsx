@@ -8350,9 +8350,9 @@ Images imported: ${importedImages}`);
                                         type="button"
                                         onClick={() => handleRestoreQuickStock(stk)}
                                         className={cn(
-                                          "group relative aspect-square flex flex-col items-center justify-center rounded-[3px] border-2 transition-all cursor-pointer select-none shadow-xs",
+                                          "group relative aspect-square flex flex-col items-center justify-center rounded-none border-2 transition-all cursor-pointer select-none shadow-xs",
                                           isActive
-                                            ? "border-accent bg-accent/15 ring-2 ring-accent/30 shadow-md"
+                                            ? "border-accent bg-accent/20 ring-1 ring-accent shadow-md"
                                             : "border-panel-border bg-panel-bg hover:border-accent hover:bg-white/5 hover:shadow-md"
                                         )}
                                         title={`#${idx + 1} ${stk.name}\n${stk.datasetName || stk.categoryName || "ALL"} • ${pct}% (${new Date(stk.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`}
@@ -8374,7 +8374,7 @@ Images imported: ${importedImages}`);
                                         </span>
 
                                         {/* BOTTOM-RIGHT PERCENT / POS */}
-                                        <span className="absolute bottom-1 right-1 text-[8px] font-mono px-1 py-0.2 rounded font-bold leading-none bg-root-bg/90 text-text-secondary border border-panel-border/60">
+                                        <span className="absolute bottom-1 right-1 text-[8px] font-mono px-1 py-0.2 rounded-none font-bold leading-none bg-root-bg/90 text-text-secondary border border-panel-border/60">
                                           {pct <= 5 ? "TOP" : pct >= 95 ? "BTM" : `${pct}%`}
                                         </span>
 
@@ -8384,7 +8384,7 @@ Images imported: ${importedImages}`);
                                             e.stopPropagation();
                                             handleDeleteQuickStock(stk.id);
                                           }}
-                                          className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:scale-110 transition-all shadow-xs z-10 cursor-pointer"
+                                          className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-none bg-red-600 hover:bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:scale-110 transition-all shadow-xs z-10 cursor-pointer"
                                           title={t("Delete stock", "ストックを削除")}
                                         >
                                           <X size={9} />
@@ -8399,10 +8399,16 @@ Images imported: ${importedImages}`);
                                   {quickStocks.map((stk, idx) => {
                                   const isEditing = editingStockId === stk.id;
                                   const pct = Math.round(stk.scrollRatio * 100);
+                                  const isActive = activeStockId === stk.id;
                                   return (
                                     <div
                                       key={stk.id}
-                                      className="group flex flex-col gap-1 p-2 bg-panel-bg/90 hover:bg-panel-bg border border-panel-border hover:border-accent rounded-xs transition-all text-[10px] select-none"
+                                      className={cn(
+                                        "group flex flex-col gap-1 p-2 rounded-none transition-all text-[10px] select-none border",
+                                        isActive
+                                          ? "bg-accent/15 border-2 border-accent shadow-xs ring-1 ring-accent/40"
+                                          : "bg-panel-bg/90 hover:bg-panel-bg border-panel-border hover:border-accent"
+                                      )}
                                     >
                                       {/* TOP: NAME & POSITION BADGE */}
                                       <div className="flex items-center justify-between gap-1.5">
@@ -8424,22 +8430,30 @@ Images imported: ${importedImages}`);
                                               handleRenameQuickStock(stk.id, editingStockName);
                                               setEditingStockId(null);
                                             }}
-                                            className="flex-1 bg-black/40 border border-accent px-1 py-0.5 text-text-primary text-[10px] rounded outline-none font-mono"
+                                            className="flex-1 bg-black/40 border border-accent px-1 py-0.5 text-text-primary text-[10px] rounded-none outline-none font-mono"
                                           />
                                         ) : (
                                           <button
                                             type="button"
                                             onClick={() => handleRestoreQuickStock(stk)}
-                                            className="flex-1 text-left font-mono font-bold text-text-primary hover:text-accent truncate cursor-pointer transition-colors"
+                                            className={cn(
+                                              "flex-1 text-left font-mono font-bold truncate cursor-pointer transition-colors flex items-center gap-1.5",
+                                              isActive ? "text-accent" : "text-text-primary hover:text-accent"
+                                            )}
                                             title={t("Click to jump to this position", "クリックしてこの位置へジャンプ")}
                                           >
-                                            {stk.name}
+                                            {isActive && (
+                                              <span className="w-1.5 h-1.5 bg-accent shrink-0 inline-block" title="ACTIVE" />
+                                            )}
+                                            <span className="truncate">{stk.name}</span>
                                           </button>
                                         )}
                                         <span
                                           className={cn(
-                                            "shrink-0 font-mono text-[9px] px-1.5 py-0.2 rounded font-bold uppercase",
-                                            pct <= 5
+                                            "shrink-0 font-mono text-[9px] px-1.5 py-0.2 rounded-none font-bold uppercase",
+                                            isActive
+                                              ? "bg-accent text-accent-text border border-accent"
+                                              : pct <= 5
                                               ? "bg-panel-border/50 text-text-secondary border border-panel-border"
                                               : pct >= 95
                                               ? "bg-panel-border/50 text-text-secondary border border-panel-border"
@@ -8482,10 +8496,15 @@ Images imported: ${importedImages}`);
                                           <button
                                             type="button"
                                             onClick={(e) => handleUpdateQuickStock(stk.id, e)}
-                                            className="p-1 text-text-muted hover:text-accent transition-colors"
+                                            className={cn(
+                                              "p-1 transition-all cursor-pointer rounded-none",
+                                              isActive
+                                                ? "text-accent bg-accent/25 hover:bg-accent hover:text-accent-text border border-accent font-bold"
+                                                : "text-text-muted hover:text-accent border border-transparent"
+                                            )}
                                             title={t("Overwrite with current scroll position", "現在の位置で上書き更新")}
                                           >
-                                            <RefreshCw size={10} />
+                                            <RefreshCw size={11} />
                                           </button>
                                           {/* EDIT NAME */}
                                           <button
@@ -8513,7 +8532,12 @@ Images imported: ${importedImages}`);
                                           <button
                                             type="button"
                                             onClick={() => handleRestoreQuickStock(stk)}
-                                            className="px-1.5 py-0.5 bg-accent/20 hover:bg-accent text-accent hover:text-accent-text border border-accent/40 rounded-xs font-bold text-[9px] transition-colors ml-0.5"
+                                            className={cn(
+                                              "px-1.5 py-0.5 rounded-none font-bold text-[9px] transition-colors ml-0.5 cursor-pointer",
+                                              isActive
+                                                ? "bg-accent text-accent-text border border-accent shadow-xs"
+                                                : "bg-accent/20 hover:bg-accent text-accent hover:text-accent-text border border-accent/40"
+                                            )}
                                             title={t("Restore this view and jump to scroll position", "この位置へ復元ジャンプ")}
                                           >
                                             JUMP
@@ -11643,9 +11667,9 @@ Images imported: ${importedImages}`);
                             setIsQuickStockDrawerOpen(false);
                           }}
                           className={cn(
-                            "group relative aspect-square flex flex-col items-center justify-center rounded-[3px] border-2 transition-all cursor-pointer select-none shadow-xs",
+                            "group relative aspect-square flex flex-col items-center justify-center rounded-none border-2 transition-all cursor-pointer select-none shadow-xs",
                             isActive
-                              ? "border-accent bg-accent/15 ring-2 ring-accent/30 shadow-md"
+                              ? "border-accent bg-accent/20 ring-1 ring-accent shadow-md"
                               : "border-panel-border bg-root-bg hover:border-accent hover:bg-white/5 hover:shadow-md"
                           )}
                           title={`#${idx + 1} ${stk.name}\n${stk.datasetName || stk.categoryName || "ALL"} • ${pct}% (${new Date(stk.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`}
@@ -11667,7 +11691,7 @@ Images imported: ${importedImages}`);
                           </span>
 
                           {/* BOTTOM-RIGHT PERCENT / POS */}
-                          <span className="absolute bottom-1 right-1 text-[9px] font-mono px-1 py-0.2 rounded font-bold leading-none bg-panel-bg/90 text-text-secondary border border-panel-border/60">
+                          <span className="absolute bottom-1 right-1 text-[9px] font-mono px-1 py-0.2 rounded-none font-bold leading-none bg-panel-bg/90 text-text-secondary border border-panel-border/60">
                             {pct <= 5 ? "TOP" : pct >= 95 ? "BTM" : `${pct}%`}
                           </span>
 
@@ -11677,7 +11701,7 @@ Images imported: ${importedImages}`);
                               e.stopPropagation();
                               handleDeleteQuickStock(stk.id);
                             }}
-                            className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:scale-110 transition-all shadow-xs z-10 cursor-pointer"
+                            className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-none bg-red-600 hover:bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:scale-110 transition-all shadow-xs z-10 cursor-pointer"
                             title={t("Delete stock", "ストックを削除")}
                           >
                             <X size={9} />
@@ -11692,10 +11716,16 @@ Images imported: ${importedImages}`);
                     {quickStocks.map((stk, idx) => {
                     const isEditing = editingStockId === stk.id;
                     const pct = Math.round(stk.scrollRatio * 100);
+                    const isActive = activeStockId === stk.id;
                     return (
                       <div
                         key={stk.id}
-                        className="group flex flex-col gap-1.5 p-2.5 bg-root-bg/50 hover:bg-root-bg/80 border border-panel-border hover:border-accent rounded-xs transition-all text-[11px] select-none"
+                        className={cn(
+                          "group flex flex-col gap-1.5 p-2.5 rounded-none transition-all text-[11px] select-none border",
+                          isActive
+                            ? "bg-accent/15 border-2 border-accent shadow-xs ring-1 ring-accent/40"
+                            : "bg-root-bg/50 hover:bg-root-bg/80 border-panel-border hover:border-accent"
+                        )}
                       >
                         {/* TOP ROW: NAME & POSITION BADGE */}
                         <div className="flex items-center justify-between gap-2">
@@ -11717,7 +11747,7 @@ Images imported: ${importedImages}`);
                                 handleRenameQuickStock(stk.id, editingStockName);
                                 setEditingStockId(null);
                               }}
-                              className="flex-1 bg-black/50 border border-accent px-1.5 py-0.5 text-text-primary text-[11px] rounded outline-none"
+                              className="flex-1 bg-black/50 border border-accent px-1.5 py-0.5 text-text-primary text-[11px] rounded-none outline-none font-mono"
                             />
                           ) : (
                             <button
@@ -11726,16 +11756,24 @@ Images imported: ${importedImages}`);
                                 handleRestoreQuickStock(stk);
                                 setIsQuickStockDrawerOpen(false);
                               }}
-                              className="flex-1 text-left font-bold text-text-primary hover:text-accent truncate cursor-pointer transition-colors"
+                              className={cn(
+                                "flex-1 text-left font-bold truncate cursor-pointer transition-colors flex items-center gap-1.5 font-mono",
+                                isActive ? "text-accent" : "text-text-primary hover:text-accent"
+                              )}
                               title={t("Click to jump to this position", "クリックしてこの位置へジャンプ")}
                             >
-                              {stk.name}
+                              {isActive && (
+                                <span className="w-1.5 h-1.5 bg-accent shrink-0 inline-block" title="ACTIVE" />
+                              )}
+                              <span className="truncate">{stk.name}</span>
                             </button>
                           )}
                           <span
                             className={cn(
-                              "shrink-0 text-[10px] px-2 py-0.5 rounded font-bold uppercase",
-                              pct <= 5
+                              "shrink-0 text-[10px] px-2 py-0.5 rounded-none font-bold uppercase font-mono",
+                              isActive
+                                ? "bg-accent text-accent-text border border-accent"
+                                : pct <= 5
                                 ? "bg-panel-border/50 text-text-secondary border border-panel-border"
                                 : pct >= 95
                                 ? "bg-panel-border/50 text-text-secondary border border-panel-border"
@@ -11764,7 +11802,7 @@ Images imported: ${importedImages}`);
                               type="button"
                               onClick={(e) => handleMoveQuickStock(stk.id, "up", e)}
                               disabled={idx === 0}
-                              className="p-1 hover:text-text-primary disabled:opacity-20 transition-colors"
+                              className="p-1 hover:text-text-primary disabled:opacity-20 transition-colors cursor-pointer"
                               title={t("Move up in list", "上へ並び替え")}
                             >
                               <ArrowUp size={12} />
@@ -11774,7 +11812,7 @@ Images imported: ${importedImages}`);
                               type="button"
                               onClick={(e) => handleMoveQuickStock(stk.id, "down", e)}
                               disabled={idx === quickStocks.length - 1}
-                              className="p-1 hover:text-text-primary disabled:opacity-20 transition-colors"
+                              className="p-1 hover:text-text-primary disabled:opacity-20 transition-colors cursor-pointer"
                               title={t("Move down in list", "下へ並び替え")}
                             >
                               <ArrowDown size={12} />
@@ -11783,7 +11821,12 @@ Images imported: ${importedImages}`);
                             <button
                               type="button"
                               onClick={(e) => handleUpdateQuickStock(stk.id, e)}
-                              className="p-1 text-text-muted hover:text-accent transition-colors"
+                              className={cn(
+                                "p-1 transition-all cursor-pointer rounded-none",
+                                isActive
+                                  ? "text-accent bg-accent/25 hover:bg-accent hover:text-accent-text border border-accent font-bold"
+                                  : "text-text-muted hover:text-accent border border-transparent"
+                              )}
                               title={t("Overwrite with current scroll position", "現在の位置で上書き更新")}
                             >
                               <RefreshCw size={12} />
@@ -11796,7 +11839,7 @@ Images imported: ${importedImages}`);
                                 setEditingStockId(stk.id);
                                 setEditingStockName(stk.name);
                               }}
-                              className="p-1 hover:text-text-primary transition-colors"
+                              className="p-1 hover:text-text-primary transition-colors cursor-pointer"
                               title={t("Rename stock", "名前を変更")}
                             >
                               <Edit2 size={12} />
@@ -11805,7 +11848,7 @@ Images imported: ${importedImages}`);
                             <button
                               type="button"
                               onClick={(e) => handleDeleteQuickStock(stk.id, e)}
-                              className="p-1 hover:text-red-400 transition-colors"
+                              className="p-1 hover:text-red-400 transition-colors cursor-pointer"
                               title={t("Delete stock", "削除")}
                             >
                               <X size={12} />
@@ -11817,7 +11860,12 @@ Images imported: ${importedImages}`);
                                 handleRestoreQuickStock(stk);
                                 setIsQuickStockDrawerOpen(false);
                               }}
-                              className="px-2.5 py-0.5 bg-accent/20 hover:bg-accent text-accent hover:text-accent-text border border-accent/40 rounded-xs font-bold text-[10px] transition-colors ml-1"
+                              className={cn(
+                                "px-2.5 py-0.5 rounded-none font-bold text-[10px] transition-colors ml-1 cursor-pointer",
+                                isActive
+                                  ? "bg-accent text-accent-text border border-accent shadow-xs"
+                                  : "bg-accent/20 hover:bg-accent text-accent hover:text-accent-text border border-accent/40"
+                              )}
                               title={t("Restore this view and jump to scroll position", "この位置へ復元ジャンプ")}
                             >
                               JUMP
