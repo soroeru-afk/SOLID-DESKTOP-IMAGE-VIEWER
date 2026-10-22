@@ -1152,7 +1152,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                           <div
                             onClick={(e) => handleSelectWithShift("category", cat.id, e)}
                             className={cn(
-                              "w-4 h-4 rounded border flex items-center justify-center shrink-0 cursor-pointer transition-all",
+                              "w-4 h-4 rounded-none border flex items-center justify-center shrink-0 cursor-pointer transition-all",
                               isCatSelected
                                 ? "bg-accent border-accent text-accent-text"
                                 : "border-panel-border/80 hover:border-accent hover:bg-accent/10"
@@ -1578,7 +1578,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                           <div
                             onClick={(e) => handleSelectWithShift("dataset", ds.id, e)}
                             className={cn(
-                              "w-4 h-4 rounded border flex items-center justify-center shrink-0 cursor-pointer transition-all",
+                              "w-4 h-4 rounded-none border flex items-center justify-center shrink-0 cursor-pointer transition-all",
                               isDsSelected
                                 ? "bg-accent border-accent text-accent-text"
                                 : "border-panel-border/80 hover:border-accent hover:bg-accent/10"

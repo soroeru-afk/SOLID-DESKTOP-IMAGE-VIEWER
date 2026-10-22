@@ -427,20 +427,26 @@ export default function App() {
   const isLightTheme = theme === "LIGHT" || theme === "PAPER";
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const themeMenuRef = useRef<HTMLDivElement>(null);
+  const [isCustomMenuOpen, setIsCustomMenuOpen] = useState(false);
+  const customMenuRef = useRef<HTMLDivElement>(null);
+  const [isCustomOrderingPending, setIsCustomOrderingPending] = useState(false);
 
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
       if (themeMenuRef.current && !themeMenuRef.current.contains(e.target as Node)) {
         setIsThemeMenuOpen(false);
       }
+      if (customMenuRef.current && !customMenuRef.current.contains(e.target as Node)) {
+        setIsCustomMenuOpen(false);
+      }
     };
-    if (isThemeMenuOpen) {
+    if (isThemeMenuOpen || isCustomMenuOpen) {
       document.addEventListener("mousedown", handleOutsideClick);
     }
     return () => {
       document.removeEventListener("mousedown", handleOutsideClick);
     };
-  }, [isThemeMenuOpen]);
+  }, [isThemeMenuOpen, isCustomMenuOpen]);
 
   const cycleTheme = () => {
     const themes: Array<"NAVY" | "BLACK" | "TRUE_BLACK" | "RED" | "LIGHT" | "PAPER"> = ["NAVY", "BLACK", "TRUE_BLACK", "RED", "LIGHT", "PAPER"];
@@ -764,7 +770,7 @@ export default function App() {
     else if (theme === "PAPER") color = "#f5f5f0";
     else if (theme === "RED") color = "#0d0404";
     else if (theme === "NAVY") color = "#06090e";
-
+    
     if (metaThemeColor) {
       metaThemeColor.setAttribute("content", color);
     } else {
@@ -2708,7 +2714,7 @@ function createPRNG(seed: number) {
       let comparison = 0;
       switch (sortField) {
         case "name":
-          comparison = a.name.localeCompare(b.name);
+          comparison = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
           break;
         case "size":
           comparison = a.size - b.size;
@@ -2721,7 +2727,7 @@ function createPRNG(seed: number) {
           break;
         case "custom":
           comparison = (a.orderIndex ?? 0) - (b.orderIndex ?? 0);
-          if (comparison === 0) comparison = (a.addedAt || a.lastModified) - (b.addedAt || b.lastModified);
+          if (comparison === 0) comparison = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
           return comparison; // カスタム順は常に0..Nの絶対配置（反転させない）
       }
       return sortOrders[sortField] === "asc" ? comparison : -comparison;
@@ -3453,9 +3459,16 @@ function createPRNG(seed: number) {
       }
 
       if (newFiles.length > 0) {
+        // ファイル名自然順（01, 02... 10...）でソート
+        newFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
+        const baseOrderIndex = existingImages.length > 0
+          ? Math.max(0, ...existingImages.map(img => img.orderIndex ?? 0)) + 1
+          : 0;
+
         // Compute autoBg asynchronously for each file
         const records = await Promise.all(
-          newFiles.map(async (f) => {
+          newFiles.map(async (f, idx) => {
             const meta = await analyzeImageBlob(f);
             return {
               id: `${datasetId}-${f.name}-${f.lastModified}-${f.size}`,
@@ -3465,6 +3478,7 @@ function createPRNG(seed: number) {
               size: f.size,
               lastModified: f.lastModified,
               addedAt: Date.now(),
+              orderIndex: baseOrderIndex + idx,
               data: f,
               autoBg: meta.bg,
               width: meta.width,
@@ -4533,6 +4547,92 @@ Images imported: ${importedImages}`);
     }
   };
 
+  // カスタム並び替えの基準プリセット選択ハンドラー（一旦その並びで整列＆EDITモード起動）
+  const handleApplyBaseForCustom = (
+    field: "name" | "date" | "size" | "type",
+    order: "asc" | "desc",
+    label: string
+  ) => {
+    setIsCustomMenuOpen(false);
+
+    // 1. 現在の画像を基準フィールド・昇降順で整列
+    const sorted = [...images].sort((a, b) => {
+      let cmp = 0;
+      if (field === "name") {
+        cmp = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+      } else if (field === "date") {
+        cmp = (a.addedAt || a.lastModified) - (b.addedAt || b.lastModified);
+      } else if (field === "size") {
+        cmp = a.size - b.size;
+      } else if (field === "type") {
+        cmp = a.type.localeCompare(b.type);
+      }
+      return order === "asc" ? cmp : -cmp;
+    });
+
+    // 2. 一時的な orderIndex を付与
+    const updated = sorted.map((img, idx) => ({
+      ...img,
+      orderIndex: idx,
+    }));
+
+    setImages(updated);
+    setSortField("custom");
+    setSortOrders((prev) => ({ ...prev, custom: "asc" }));
+    setIsSelectionMode(true); // 自動でEDITモード起動
+    setIsCustomOrderingPending(true); // 適用ボタン表示
+    setSelectedImageIds(new Set());
+
+    showNotification(
+      language === "JP"
+        ? `「${label}」を基準に並び替えました。微調整後に『適用』を押して保存してください`
+        : `Sorted by ${label}. Adjust order and click 'APPLY' to save.`
+    );
+  };
+
+  // カスタム並び順の確定・永続保存ハンドラー
+  const handleSaveCustomOrder = async () => {
+    if (sortedImages.length === 0) return;
+    setIsLoading(true);
+    try {
+      // 現在の sortedImages の並び順（0..N）で恒久 orderIndex を確定
+      const updates = sortedImages.map((img, idx) => ({
+        id: img.id,
+        orderIndex: idx,
+      }));
+
+      // ステートの images にも反映
+      setImages((prev) => {
+        const copy = [...prev];
+        for (const u of updates) {
+          const item = copy.find((c) => c.id === u.id);
+          if (item) item.orderIndex = u.orderIndex;
+        }
+        return copy;
+      });
+
+      // IndexedDB へ保存
+      await updateImagesOrder(updates);
+
+      setIsSelectionMode(false);
+      setIsCustomOrderingPending(false);
+      setSelectedImageIds(new Set());
+      setSortField("custom");
+      setSortOrders((prev) => ({ ...prev, custom: "asc" }));
+
+      showNotification(
+        language === "JP"
+          ? "現在の並び順をカスタム順（CUSTOM）として保存しました！"
+          : "Custom order saved successfully!"
+      );
+    } catch (err) {
+      console.error("Failed to save custom order", err);
+      showNotification(language === "JP" ? "カスタム順の保存に失敗しました" : "Failed to save custom order");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleCustomMove = async (direction: "top" | "bottom" | "up" | "down") => {
     if (selectedImageIds.size === 0) return;
     setIsLoading(true);
@@ -5542,8 +5642,8 @@ Images imported: ${importedImages}`);
           viewMode === "free"
             ? {
                 opacity:
-                  isSelectionMode && !isMultiSelected
-                    ? 0.5
+                  isSelectionMode && selectedImageIds.size > 0 && !isMultiSelected
+                    ? 0.8
                     : 1,
                 scale: 1,
                 x: (img.randomX * containerWidth) / 100,
@@ -5552,8 +5652,8 @@ Images imported: ${importedImages}`);
               }
             : {
                 opacity:
-                  isSelectionMode && !isMultiSelected
-                    ? 0.5
+                  isSelectionMode && selectedImageIds.size > 0 && !isMultiSelected
+                    ? 0.8
                     : 1,
                 scale: 1,
                 x: 0,
@@ -5957,18 +6057,18 @@ Images imported: ${importedImages}`);
           )}
         >
           <div className={cn(
-            "w-5 h-5 flex items-center justify-center transition-colors shadow-sm rounded-sm outline outline-1",
+            "w-5 h-5 flex items-center justify-center transition-colors shadow-sm rounded-none border",
             isMultiSelected 
-              ? "bg-accent outline-accent text-root-bg" 
-              : "bg-black/40 outline-white/50"
+              ? "bg-accent border-accent text-root-bg" 
+              : "bg-black/60 border-white/70"
           )}>
-            {isMultiSelected && <Check size={14} />}
+            {isMultiSelected && <Check size={14} strokeWidth={2.5} />}
           </div>
         </div>
       )}
 
-      {/* Custom Sort Reorder Handle (カスタムソート時の並び替え用専用ハンドル) */}
-      {sortField === "custom" && viewMode !== "free" && (
+      {/* Custom Sort Reorder Handle (カスタムソート時の並び替え用専用ハンドル: EDITモード時のみ表示。Masonry時は誤操作防止のため非表示) */}
+      {isSelectionMode && sortField === "custom" && viewMode !== "free" && viewMode !== "grid-ma" && (
         <div
           className={cn(
             "image-sort-handle z-20 cursor-grab active:cursor-grabbing select-none transition-all flex items-center justify-center",
@@ -8520,16 +8620,55 @@ Images imported: ${importedImages}`);
             }
             headerRight={
               isSelectionMode ? (
-                <div className="flex items-center gap-4">
-                  <span className="text-[10px] uppercase text-text-primary bg-accent/20 px-2 py-0.5 rounded-sm outline outline-1 outline-accent/50 mr-2 flex items-center gap-1 font-mono">
+                <div className="flex items-center gap-3">
+                  {/* カオルさまご指定の「適用（カスタム順として保存）」ボタン: テーマ調和モノトーン */}
+                  <button
+                    type="button"
+                    onClick={handleSaveCustomOrder}
+                    className={cn(
+                      "h-6 px-2.5 font-mono text-[10px] font-bold rounded-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer select-none",
+                      isLightTheme
+                        ? "bg-black hover:bg-neutral-800 text-white border border-black"
+                        : "bg-white hover:bg-neutral-200 text-black border border-white"
+                    )}
+                    title={t("Save current order permanently as Custom sort", "現在の並び順をカスタム順として登録・保存")}
+                  >
+                    <Check size={12} className="shrink-0" />
+                    <span>{t("APPLY CUSTOM", "適用 (カスタム保存)")}</span>
+                  </button>
+
+                  <div className="w-px h-3.5 bg-panel-border shrink-0" />
+
+                  <span className="text-[10px] uppercase text-text-primary bg-accent/20 px-2 py-0.5 rounded-none border border-accent/50 mr-1 flex items-center gap-1 font-mono">
                     <Check size={12} className="text-accent" />{" "}
                     {selectedImageIds.size} SELECTED
                   </span>
                   <button
                     onClick={handleSelectAll}
-                    className="text-[10px] uppercase font-mono tracking-wider transition-colors text-text-secondary hover:text-text-primary"
+                    className="text-[10px] uppercase font-mono tracking-wider transition-colors text-text-secondary hover:text-text-primary cursor-pointer"
                   >
                     {selectedImageIds.size === sortedImages.length && sortedImages.length > 0 ? "DESELECT ALL" : "SELECT ALL"}
+                  </button>
+                  {/* CANCELボタンをSELECT ALLのすぐ隣に配置: 視認性の高い工業的スクエアスタイル */}
+                  <button
+                    onClick={() => {
+                      setIsSelectionMode(false);
+                      const wasPending = isCustomOrderingPending;
+                      setIsCustomOrderingPending(false);
+                      setSelectedImageIds(new Set());
+                      setLastSelectedIdx(null);
+                      if (wasPending) {
+                        if (activeDatasetId) {
+                          loadImages(activeDatasetId);
+                        } else if (activeCategoryId) {
+                          loadImagesForCategory(activeCategoryId);
+                        }
+                      }
+                    }}
+                    className="h-6 px-2.5 text-[10px] uppercase font-mono font-bold tracking-wider text-text-primary hover:text-red-400 rounded-none border border-panel-border hover:border-red-400/60 bg-panel-bg hover:bg-panel-border/40 transition-colors cursor-pointer select-none flex items-center justify-center shadow-xs"
+                    title={t("Cancel and exit Edit mode", "キャンセルして通常表示に戻る")}
+                  >
+                    CANCEL
                   </button>
                   <div className="flex items-center gap-1 border-l border-r border-panel-border px-2 mx-1">
                     <button
@@ -8703,16 +8842,6 @@ Images imported: ${importedImages}`);
                   >
                     DELETE
                   </button>
-                  <button
-                    onClick={() => {
-                      setIsSelectionMode(false);
-                      setSelectedImageIds(new Set());
-                      setLastSelectedIdx(null);
-                    }}
-                    className="text-[10px] uppercase font-mono tracking-wider text-text-secondary hover:text-text-primary"
-                  >
-                    CANCEL
-                  </button>
                 </div>
               ) : (
                 <div className="flex items-center gap-6">
@@ -8761,49 +8890,123 @@ Images imported: ${importedImages}`);
                       ))}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] uppercase text-text-muted">
-                      SORT:
-                    </span>
-                    <div className="flex items-center border border-panel-border bg-panel-bg rounded-[2px] overflow-hidden">
-                      {(["name", "size", "type", "date", "custom", "random"] as const).map((f) => (
-                        <button
-                          key={f}
-                          onClick={() => {
-                            if (f === "random") {
-                              setSortField("random");
-                              setRandomSeed((prev) => prev + 1);
-                            } else if (f === "custom") {
-                              setSortField("custom");
-                              setSortOrders((prev) => ({ ...prev, custom: "asc" }));
-                            } else if (sortField === f) {
-                              setSortOrders((prev) => ({
-                                ...prev,
-                                [f]: prev[f] === "asc" ? "desc" : "asc",
-                              }));
-                            } else {
-                              setSortField(f);
-                            }
-                          }}
-                          className={cn(
-                            "h-6 min-w-[72px] flex items-center justify-center text-[9px] uppercase font-mono tracking-wider transition-colors border-r border-panel-border last:border-r-0 px-2",
-                            sortField === f
-                              ? "text-accent bg-accent/5"
-                              : "text-text-secondary hover:text-text-primary hover:bg-root-bg",
-                          )}
-                        >
-                          <span className="relative flex items-center justify-center">
-                            <span>{f}</span>
-                            {f !== "random" && f !== "custom" && (
-                              <span className={cn("absolute left-full ml-1 flex items-center justify-center", sortField === f ? "opacity-100" : "opacity-0")}>
-                                {sortField === f ? (sortOrders[f] === "asc" ? "↑" : "↓") : "↑"}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase text-text-muted">
+                        SORT:
+                      </span>
+                      <div className="flex items-center border border-panel-border bg-panel-bg rounded-[2px]">
+                        {(["name", "size", "type", "date", "custom", "random"] as const).map((f) => {
+                          if (f === "custom") {
+                            return (
+                              <div key="custom" className="relative flex items-center h-6 border-r border-panel-border" ref={customMenuRef}>
+                                {/* CUSTOMメインボタン */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSortField("custom");
+                                    setSortOrders((prev) => ({ ...prev, custom: "asc" }));
+                                  }}
+                                  className={cn(
+                                    "h-full px-2 flex items-center justify-center text-[9px] uppercase font-mono tracking-wider transition-colors cursor-pointer select-none",
+                                    sortField === "custom"
+                                      ? "text-accent bg-accent/15 font-bold"
+                                      : "text-text-secondary hover:text-text-primary hover:bg-root-bg"
+                                  )}
+                                  title={t("Custom sort order", "カスタム並び順")}
+                                >
+                                  custom
+                                </button>
+
+                                {/* [+] 基準選択プルダウン展開ボタン */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsCustomMenuOpen((prev) => !prev);
+                                  }}
+                                  className={cn(
+                                    "h-full px-1.5 border-l border-panel-border flex items-center justify-center text-text-muted hover:text-accent hover:bg-white/5 transition-colors cursor-pointer select-none",
+                                    isCustomMenuOpen && "text-accent bg-accent/20"
+                                  )}
+                                  title={t("Select base order (Name, Date, Size, Type) & edit", "基準順序を選んで並び替え編集")}
+                                >
+                                  <Plus size={11} className={cn("transition-transform duration-150", isCustomMenuOpen && "rotate-45")} />
+                                </button>
+
+                                {/* プルダウンメニュー */}
+                                {isCustomMenuOpen && (
+                                  <div
+                                    className={cn(
+                                      "absolute top-full right-0 mt-1 z-50 w-60 py-1 rounded shadow-2xl border border-panel-border bg-panel-bg backdrop-blur-md select-none text-left",
+                                      theme === "TRUE_BLACK" && "bg-neutral-950 !border-neutral-700"
+                                    )}
+                                  >
+                                    <div className="flex items-center justify-between px-3 py-1.5 text-[10px] font-bold border-b border-panel-border text-text-muted">
+                                      <span>{t("SELECT BASE FOR CUSTOM", "カスタム基準の選択")}</span>
+                                      <span className="text-[9px] text-accent font-normal">{t("EDIT MODE", "編集起動")}</span>
+                                    </div>
+                                    <div className="py-1">
+                                      {[
+                                        { id: "name-asc", label: "NAME: A → Z (名前 昇順)", field: "name", order: "asc" },
+                                        { id: "name-desc", label: "NAME: Z → A (名前 降順)", field: "name", order: "desc" },
+                                        { id: "date-desc", label: "DATE: 新しい順 (最新↓)", field: "date", order: "desc" },
+                                        { id: "date-asc", label: "DATE: 古い順 (時系列↑)", field: "date", order: "asc" },
+                                        { id: "size-desc", label: "SIZE: 大きい順 (大→小)", field: "size", order: "desc" },
+                                        { id: "size-asc", label: "SIZE: 小さい順 (小→大)", field: "size", order: "asc" },
+                                        { id: "type-asc", label: "TYPE: 形式別 (拡張子順)", field: "type", order: "asc" },
+                                      ].map((item) => (
+                                        <button
+                                          key={item.id}
+                                          type="button"
+                                          onClick={() => handleApplyBaseForCustom(item.field as any, item.order as any, item.label)}
+                                          className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-mono text-text-secondary hover:text-text-primary hover:bg-white/5 transition-colors text-left cursor-pointer"
+                                        >
+                                          <span>{item.label}</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <button
+                              key={f}
+                              onClick={() => {
+                                if (f === "random") {
+                                  setSortField("random");
+                                  setRandomSeed((prev) => prev + 1);
+                                } else if (sortField === f) {
+                                  setSortOrders((prev) => ({
+                                    ...prev,
+                                    [f]: prev[f] === "asc" ? "desc" : "asc",
+                                  }));
+                                } else {
+                                  setSortField(f);
+                                }
+                              }}
+                              className={cn(
+                                "h-6 min-w-[72px] flex items-center justify-center text-[9px] uppercase font-mono tracking-wider transition-colors border-r border-panel-border last:border-r-0 px-2 cursor-pointer",
+                                sortField === f
+                                  ? "text-accent bg-accent/5 font-bold"
+                                  : "text-text-secondary hover:text-text-primary hover:bg-root-bg",
+                              )}
+                            >
+                              <span className="relative flex items-center justify-center">
+                                <span>{f}</span>
+                                {f !== "random" && (
+                                  <span className={cn("absolute left-full ml-1 flex items-center justify-center", sortField === f ? "opacity-100" : "opacity-0")}>
+                                    {sortOrders[f] === "asc" ? "↑" : "↓"}
+                                  </span>
+                                )}
                               </span>
-                            )}
-                          </span>
-                        </button>
-                      ))}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
                   <button
                     onClick={() => {
                       if (activeDatasetId) {
@@ -9232,8 +9435,7 @@ Images imported: ${importedImages}`);
                       );
                     }
 
-                    // 3. Image Grid View (Dataset or Folder All-Images View)
-                    const isSortable = !searchQuery.trim() && (viewMode === "grid-sq" || viewMode === "list" || viewMode === "grid-ma") && sortField === "custom";
+                    const isSortable = isSelectionMode && !searchQuery.trim() && (viewMode === "grid-sq" || viewMode === "list") && sortField === "custom";
                     const Container: any = isSortable ? ReactSortable : "div";
                     const containerProps = isSortable ? {
                       list: sortedImages.map(img => ({ ...img, id: img.id })),
