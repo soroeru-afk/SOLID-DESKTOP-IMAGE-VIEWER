@@ -123,11 +123,15 @@ export const StockDrawer: React.FC<StockDrawerProps> = ({
                   return (
                     <div
                       key={stk.id}
+                      onClick={() => {
+                        onRestoreStock(stk);
+                        onClose();
+                      }}
                       className={cn(
-                        "group flex flex-col gap-1.5 p-2.5 rounded-none transition-all text-[11px] select-none border",
+                        "group flex flex-col gap-1.5 p-2.5 rounded-none transition-all text-[11px] select-none cursor-pointer",
                         isActive
                           ? "bg-accent/15 border-2 border-accent shadow-xs ring-1 ring-accent/40"
-                          : "bg-root-bg/50 hover:bg-root-bg/80 border-panel-border hover:border-accent"
+                          : "bg-root-bg/50 hover:bg-root-bg/80 border border-panel-border hover:border-accent"
                       )}
                     >
                       {/* TOP ROW: NAME & POSITION BADGE */}
@@ -137,6 +141,7 @@ export const StockDrawer: React.FC<StockDrawerProps> = ({
                             type="text"
                             autoFocus
                             value={editingStockName}
+                            onClick={(e) => e.stopPropagation()}
                             onChange={(e) => setEditingStockName(e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") {
@@ -155,7 +160,8 @@ export const StockDrawer: React.FC<StockDrawerProps> = ({
                         ) : (
                           <button
                             type="button"
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               onRestoreStock(stk);
                               onClose();
                             }}
@@ -166,7 +172,7 @@ export const StockDrawer: React.FC<StockDrawerProps> = ({
                             title={t("Click to jump to this position", "クリックしてこの位置へジャンプ")}
                           >
                             {isActive && (
-                              <span className="w-1.5 h-1.5 bg-accent shrink-0 inline-block" title="ACTIVE" />
+                              <span className="text-accent font-black text-[11px] leading-none shrink-0 select-none">■</span>
                             )}
                             <span className="truncate">{stk.name}</span>
                           </button>
@@ -258,7 +264,8 @@ export const StockDrawer: React.FC<StockDrawerProps> = ({
                           {/* JUMP BUTTON */}
                           <button
                             type="button"
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               onRestoreStock(stk);
                               onClose();
                             }}

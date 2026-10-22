@@ -74,11 +74,12 @@ export const StockPanel: React.FC<StockPanelProps> = ({
             return (
               <div
                 key={stk.id}
+                onClick={() => onRestoreStock(stk)}
                 className={cn(
-                  "group flex flex-col gap-1 p-2 rounded-none transition-all text-[10px] select-none border",
+                  "group flex flex-col gap-1 p-2 rounded-none transition-all text-[10px] select-none cursor-pointer",
                   isActive
                     ? "bg-accent/15 border-2 border-accent shadow-xs ring-1 ring-accent/40"
-                    : "bg-panel-bg/90 hover:bg-panel-bg border-panel-border hover:border-accent"
+                    : "bg-panel-bg/90 hover:bg-panel-bg border border-panel-border hover:border-accent"
                 )}
               >
                 {/* TOP: NAME & POSITION BADGE */}
@@ -88,6 +89,7 @@ export const StockPanel: React.FC<StockPanelProps> = ({
                       type="text"
                       autoFocus
                       value={editingStockName}
+                      onClick={(e) => e.stopPropagation()}
                       onChange={(e) => setEditingStockName(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
@@ -106,7 +108,10 @@ export const StockPanel: React.FC<StockPanelProps> = ({
                   ) : (
                     <button
                       type="button"
-                      onClick={() => onRestoreStock(stk)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRestoreStock(stk);
+                      }}
                       className={cn(
                         "flex-1 text-left font-mono font-bold truncate cursor-pointer transition-colors flex items-center gap-1.5",
                         isActive ? "text-accent" : "text-text-primary hover:text-accent"
@@ -114,7 +119,7 @@ export const StockPanel: React.FC<StockPanelProps> = ({
                       title={t("Click to jump to this position", "クリックしてこの位置へジャンプ")}
                     >
                       {isActive && (
-                        <span className="w-1.5 h-1.5 bg-accent shrink-0 inline-block" title="ACTIVE" />
+                        <span className="text-accent font-black text-[10px] leading-none shrink-0 select-none">■</span>
                       )}
                       <span className="truncate">{stk.name}</span>
                     </button>
@@ -202,7 +207,10 @@ export const StockPanel: React.FC<StockPanelProps> = ({
                     {/* JUMP BUTTON */}
                     <button
                       type="button"
-                      onClick={() => onRestoreStock(stk)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRestoreStock(stk);
+                      }}
                       className={cn(
                         "px-1.5 py-0.5 rounded-none font-bold text-[9px] transition-colors ml-0.5 cursor-pointer",
                         isActive

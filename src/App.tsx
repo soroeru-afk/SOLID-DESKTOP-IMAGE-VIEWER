@@ -8403,11 +8403,12 @@ Images imported: ${importedImages}`);
                                   return (
                                     <div
                                       key={stk.id}
+                                      onClick={() => handleRestoreQuickStock(stk)}
                                       className={cn(
-                                        "group flex flex-col gap-1 p-2 rounded-none transition-all text-[10px] select-none border",
+                                        "group flex flex-col gap-1 p-2 rounded-none transition-all text-[10px] select-none cursor-pointer",
                                         isActive
                                           ? "bg-accent/15 border-2 border-accent shadow-xs ring-1 ring-accent/40"
-                                          : "bg-panel-bg/90 hover:bg-panel-bg border-panel-border hover:border-accent"
+                                          : "bg-panel-bg/90 hover:bg-panel-bg border border-panel-border hover:border-accent"
                                       )}
                                     >
                                       {/* TOP: NAME & POSITION BADGE */}
@@ -8417,6 +8418,7 @@ Images imported: ${importedImages}`);
                                             type="text"
                                             autoFocus
                                             value={editingStockName}
+                                            onClick={(e) => e.stopPropagation()}
                                             onChange={(e) => setEditingStockName(e.target.value)}
                                             onKeyDown={(e) => {
                                               if (e.key === "Enter") {
@@ -8435,7 +8437,10 @@ Images imported: ${importedImages}`);
                                         ) : (
                                           <button
                                             type="button"
-                                            onClick={() => handleRestoreQuickStock(stk)}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleRestoreQuickStock(stk);
+                                            }}
                                             className={cn(
                                               "flex-1 text-left font-mono font-bold truncate cursor-pointer transition-colors flex items-center gap-1.5",
                                               isActive ? "text-accent" : "text-text-primary hover:text-accent"
@@ -8443,7 +8448,7 @@ Images imported: ${importedImages}`);
                                             title={t("Click to jump to this position", "クリックしてこの位置へジャンプ")}
                                           >
                                             {isActive && (
-                                              <span className="w-1.5 h-1.5 bg-accent shrink-0 inline-block" title="ACTIVE" />
+                                              <span className="text-accent font-black text-[10px] leading-none shrink-0 select-none">■</span>
                                             )}
                                             <span className="truncate">{stk.name}</span>
                                           </button>
@@ -8475,7 +8480,10 @@ Images imported: ${importedImages}`);
                                           {/* MOVE UP */}
                                           <button
                                             type="button"
-                                            onClick={(e) => handleMoveQuickStock(stk.id, "up", e)}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleMoveQuickStock(stk.id, "up", e);
+                                            }}
                                             disabled={idx === 0}
                                             className="p-1 hover:text-text-primary disabled:opacity-20 transition-colors"
                                             title={t("Move up in list", "上へ並び替え")}
@@ -8485,7 +8493,10 @@ Images imported: ${importedImages}`);
                                           {/* MOVE DOWN */}
                                           <button
                                             type="button"
-                                            onClick={(e) => handleMoveQuickStock(stk.id, "down", e)}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleMoveQuickStock(stk.id, "down", e);
+                                            }}
                                             disabled={idx === quickStocks.length - 1}
                                             className="p-1 hover:text-text-primary disabled:opacity-20 transition-colors"
                                             title={t("Move down in list", "下へ並び替え")}
@@ -8495,7 +8506,10 @@ Images imported: ${importedImages}`);
                                           {/* OVERWRITE / UPDATE */}
                                           <button
                                             type="button"
-                                            onClick={(e) => handleUpdateQuickStock(stk.id, e)}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleUpdateQuickStock(stk.id, e);
+                                            }}
                                             className={cn(
                                               "p-1 transition-all cursor-pointer rounded-none",
                                               isActive
@@ -8522,7 +8536,10 @@ Images imported: ${importedImages}`);
                                           {/* DELETE */}
                                           <button
                                             type="button"
-                                            onClick={(e) => handleDeleteQuickStock(stk.id, e)}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleDeleteQuickStock(stk.id, e);
+                                            }}
                                             className="p-1 hover:text-red-400 transition-colors"
                                             title={t("Delete stock", "削除")}
                                           >
@@ -8531,7 +8548,10 @@ Images imported: ${importedImages}`);
                                           {/* JUMP BUTTON */}
                                           <button
                                             type="button"
-                                            onClick={() => handleRestoreQuickStock(stk)}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleRestoreQuickStock(stk);
+                                            }}
                                             className={cn(
                                               "px-1.5 py-0.5 rounded-none font-bold text-[9px] transition-colors ml-0.5 cursor-pointer",
                                               isActive
@@ -11720,11 +11740,15 @@ Images imported: ${importedImages}`);
                     return (
                       <div
                         key={stk.id}
+                        onClick={() => {
+                          handleRestoreQuickStock(stk);
+                          setIsQuickStockDrawerOpen(false);
+                        }}
                         className={cn(
-                          "group flex flex-col gap-1.5 p-2.5 rounded-none transition-all text-[11px] select-none border",
+                          "group flex flex-col gap-1.5 p-2.5 rounded-none transition-all text-[11px] select-none cursor-pointer",
                           isActive
                             ? "bg-accent/15 border-2 border-accent shadow-xs ring-1 ring-accent/40"
-                            : "bg-root-bg/50 hover:bg-root-bg/80 border-panel-border hover:border-accent"
+                            : "bg-root-bg/50 hover:bg-root-bg/80 border border-panel-border hover:border-accent"
                         )}
                       >
                         {/* TOP ROW: NAME & POSITION BADGE */}
@@ -11734,6 +11758,7 @@ Images imported: ${importedImages}`);
                               type="text"
                               autoFocus
                               value={editingStockName}
+                              onClick={(e) => e.stopPropagation()}
                               onChange={(e) => setEditingStockName(e.target.value)}
                               onKeyDown={(e) => {
                                 if (e.key === "Enter") {
@@ -11752,7 +11777,8 @@ Images imported: ${importedImages}`);
                           ) : (
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 handleRestoreQuickStock(stk);
                                 setIsQuickStockDrawerOpen(false);
                               }}
@@ -11763,7 +11789,7 @@ Images imported: ${importedImages}`);
                               title={t("Click to jump to this position", "クリックしてこの位置へジャンプ")}
                             >
                               {isActive && (
-                                <span className="w-1.5 h-1.5 bg-accent shrink-0 inline-block" title="ACTIVE" />
+                                <span className="text-accent font-black text-[11px] leading-none shrink-0 select-none">■</span>
                               )}
                               <span className="truncate">{stk.name}</span>
                             </button>
@@ -11800,7 +11826,10 @@ Images imported: ${importedImages}`);
                             {/* MOVE UP */}
                             <button
                               type="button"
-                              onClick={(e) => handleMoveQuickStock(stk.id, "up", e)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMoveQuickStock(stk.id, "up", e);
+                              }}
                               disabled={idx === 0}
                               className="p-1 hover:text-text-primary disabled:opacity-20 transition-colors cursor-pointer"
                               title={t("Move up in list", "上へ並び替え")}
@@ -11810,7 +11839,10 @@ Images imported: ${importedImages}`);
                             {/* MOVE DOWN */}
                             <button
                               type="button"
-                              onClick={(e) => handleMoveQuickStock(stk.id, "down", e)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMoveQuickStock(stk.id, "down", e);
+                              }}
                               disabled={idx === quickStocks.length - 1}
                               className="p-1 hover:text-text-primary disabled:opacity-20 transition-colors cursor-pointer"
                               title={t("Move down in list", "下へ並び替え")}
@@ -11820,7 +11852,10 @@ Images imported: ${importedImages}`);
                             {/* OVERWRITE */}
                             <button
                               type="button"
-                              onClick={(e) => handleUpdateQuickStock(stk.id, e)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleUpdateQuickStock(stk.id, e);
+                              }}
                               className={cn(
                                 "p-1 transition-all cursor-pointer rounded-none",
                                 isActive
@@ -11847,7 +11882,10 @@ Images imported: ${importedImages}`);
                             {/* DELETE */}
                             <button
                               type="button"
-                              onClick={(e) => handleDeleteQuickStock(stk.id, e)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteQuickStock(stk.id, e);
+                              }}
                               className="p-1 hover:text-red-400 transition-colors cursor-pointer"
                               title={t("Delete stock", "削除")}
                             >
@@ -11856,7 +11894,8 @@ Images imported: ${importedImages}`);
                             {/* JUMP BUTTON */}
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 handleRestoreQuickStock(stk);
                                 setIsQuickStockDrawerOpen(false);
                               }}
