@@ -197,6 +197,126 @@
     --btn-active-border-r: #5c1414;
     --btn-active-text: #ffffff;
   }
+
+  :root[data-theme="BROWN"] {
+    --bg-app: #1a1614;
+    --bg-panel: #241e1b;
+    --bg-panel-header: #2e2723;
+    --border-panel: #453c37;
+    --border-inner: #38302c;
+    --text-main: #e0d3c8;
+    --text-sub: #96887e;
+    --text-dim: #6b5f58;
+    --accent: #d6a076;
+    --accent-glow: rgba(214, 160, 118, 0.3);
+    --accent-text: #1a1614;
+    --folder-icon-color: #b45309;
+
+    --btn-bg: #241e1b;
+    --btn-border: #453c37;
+    --btn-border-b: #110e0d;
+    --btn-border-r: #1a1614;
+    --btn-text: #96887e;
+    --btn-hover-bg: #2e2723;
+    --btn-hover-text: #e0d3c8;
+    --btn-hover-border-t: #574b45;
+
+    --btn-active-bg: #d6a076;
+    --btn-active-border: #e8be9e;
+    --btn-active-border-b: #966845;
+    --btn-active-border-r: #b58560;
+    --btn-active-text: #1a1614;
+  }
+
+  :root[data-theme="PINK"] {
+    --bg-app: #1a1215;
+    --bg-panel: #241a1d;
+    --bg-panel-header: #2f2226;
+    --border-panel: #4a353c;
+    --border-inner: #38282e;
+    --text-main: #f5e6ea;
+    --text-sub: #b8969e;
+    --text-dim: #85646d;
+    --accent: #e06b8b;
+    --accent-glow: rgba(224, 107, 139, 0.3);
+    --accent-text: #ffffff;
+    --folder-icon-color: #e06b8b;
+
+    --btn-bg: #241a1d;
+    --btn-border: #4a353c;
+    --btn-border-b: #100b0d;
+    --btn-border-r: #181113;
+    --btn-text: #b8969e;
+    --btn-hover-bg: #2f2226;
+    --btn-hover-text: #f5e6ea;
+    --btn-hover-border-t: #5e434c;
+
+    --btn-active-bg: #e06b8b;
+    --btn-active-border: #f298b0;
+    --btn-active-border-b: #a13c55;
+    --btn-active-border-r: #b84664;
+    --btn-active-text: #ffffff;
+  }
+
+  :root[data-theme="MOCHA"] {
+    --bg-app: #1c1816;
+    --bg-panel: #26211e;
+    --bg-panel-header: #302a27;
+    --border-panel: #4a413d;
+    --border-inner: #38312d;
+    --text-main: #ebdcd5;
+    --text-sub: #a89890;
+    --text-dim: #736762;
+    --accent: #c49d88;
+    --accent-glow: rgba(196, 157, 136, 0.3);
+    --accent-text: #1c1816;
+    --folder-icon-color: #a8785d;
+
+    --btn-bg: #26211e;
+    --btn-border: #4a413d;
+    --btn-border-b: #120f0e;
+    --btn-border-r: #1c1816;
+    --btn-text: #a89890;
+    --btn-hover-bg: #302a27;
+    --btn-hover-text: #ebdcd5;
+    --btn-hover-border-t: #5e534f;
+
+    --btn-active-bg: #c49d88;
+    --btn-active-border: #dbbba8;
+    --btn-active-border-b: #8a6552;
+    --btn-active-border-r: #a67c66;
+    --btn-active-text: #1c1816;
+  }
+
+  :root[data-theme="OLIVE"] {
+    --bg-app: #141a0e;
+    --bg-panel: #1c2414;
+    --bg-panel-header: #242f1b;
+    --border-panel: #3c4a2e;
+    --border-inner: #2c3821;
+    --text-main: #e4ebd8;
+    --text-sub: #9ca88f;
+    --text-dim: #69755f;
+    --accent: #88b855;
+    --accent-glow: rgba(136, 184, 85, 0.3);
+    --accent-text: #141a0e;
+    --folder-icon-color: #70b312;
+
+    --btn-bg: #1c2414;
+    --btn-border: #3c4a2e;
+    --btn-border-b: #0d1209;
+    --btn-border-r: #141a0e;
+    --btn-text: #9ca88f;
+    --btn-hover-bg: #242f1b;
+    --btn-hover-text: #e4ebd8;
+    --btn-hover-border-t: #4e613c;
+
+    --btn-active-bg: #88b855;
+    --btn-active-border: #a2cd73;
+    --btn-active-border-b: #588031;
+    --btn-active-border-r: #6e9c3e;
+    --btn-active-text: #141a0e;
+  }
 }
 
 @theme {

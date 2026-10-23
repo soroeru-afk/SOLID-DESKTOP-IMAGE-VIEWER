@@ -414,13 +414,13 @@ export default function App() {
     document.documentElement.setAttribute("data-font", appFont);
   }, [appFont]);
 
-  const [theme, setTheme] = useState<"NAVY" | "BLACK" | "TRUE_BLACK" | "RED" | "LIGHT" | "PAPER">(
-    () => {
-      const saved = localStorage.getItem("app_theme");
+  const [theme, setTheme] = useState<
+    "NAVY" | "BLACK" | "TRUE_BLACK" | "PAPER" | "PINK" | "LIGHT" | "BROWN" | "MOCHA" | "OLIVE" | "RED"
+  >(() => {
+    const saved = localStorage.getItem("app_theme");
 
-  return (saved as "NAVY" | "BLACK" | "TRUE_BLACK" | "RED" | "LIGHT" | "PAPER") || "BLACK";
-    }
-  );
+    return (saved as any) || "BLACK";
+  });
   const [canvasBg, setCanvasBg] = useState<
     "theme" | "auto" | "black" | "white" | "checker"
   >("theme");
@@ -449,7 +449,9 @@ export default function App() {
   }, [isThemeMenuOpen, isCustomMenuOpen]);
 
   const cycleTheme = () => {
-    const themes: Array<"NAVY" | "BLACK" | "TRUE_BLACK" | "RED" | "LIGHT" | "PAPER"> = ["NAVY", "BLACK", "TRUE_BLACK", "RED", "LIGHT", "PAPER"];
+    const themes: Array<
+      "NAVY" | "BLACK" | "TRUE_BLACK" | "PAPER" | "PINK" | "LIGHT" | "BROWN" | "MOCHA" | "OLIVE" | "RED"
+    > = ["NAVY", "BLACK", "TRUE_BLACK", "PAPER", "PINK", "LIGHT", "BROWN", "MOCHA", "OLIVE", "RED"];
     setTheme((prev) => themes[(themes.indexOf(prev as any) + 1) % themes.length]);
   };
 
@@ -770,6 +772,10 @@ export default function App() {
     else if (theme === "PAPER") color = "#f5f5f0";
     else if (theme === "RED") color = "#0d0404";
     else if (theme === "NAVY") color = "#06090e";
+    else if (theme === "BROWN") color = "#1a1614";
+    else if (theme === "PINK") color = "#1a1215";
+    else if (theme === "MOCHA") color = "#1c1816";
+    else if (theme === "OLIVE") color = "#141a0e";
     
     if (metaThemeColor) {
       metaThemeColor.setAttribute("content", color);
@@ -2249,7 +2255,7 @@ export default function App() {
     maxAttempts: number;
     count: number;
   } | null>(null);
-  type AppTheme = "NAVY" | "BLACK" | "TRUE_BLACK" | "RED" | "LIGHT" | "PAPER";
+  type AppTheme = "NAVY" | "BLACK" | "TRUE_BLACK" | "PAPER" | "PINK" | "LIGHT" | "BROWN" | "MOCHA" | "OLIVE" | "RED";
   const DEFAULT_THEME_FOLDER_COLORS: Record<AppTheme, string> = {
     NAVY: "#fbbf24",
     LIGHT: "#d97706",
@@ -2257,6 +2263,10 @@ export default function App() {
     BLACK: "#fbbf24",
     TRUE_BLACK: "#fbbf24",
     RED: "#f87171",
+    BROWN: "#b45309",
+    PINK: "#e06b8b",
+    MOCHA: "#a8785d",
+    OLIVE: "#70b312",
   };
   const [themeFolderColors, setThemeFolderColors] = useState<Record<AppTheme, string>>(() => {
     const saved = localStorage.getItem("theme_folder_colors");
@@ -2269,6 +2279,10 @@ export default function App() {
           BLACK: "#fbbf24",
           TRUE_BLACK: "#fbbf24",
           RED: "#f87171",
+          BROWN: "#b45309",
+          PINK: "#e06b8b",
+          MOCHA: "#a8785d",
+          OLIVE: "#70b312",
           ...JSON.parse(saved),
         };
       } catch (e) {}
@@ -2280,6 +2294,10 @@ export default function App() {
       BLACK: "#fbbf24",
       TRUE_BLACK: "#fbbf24",
       RED: "#f87171",
+      BROWN: "#b45309",
+      PINK: "#e06b8b",
+      MOCHA: "#a8785d",
+      OLIVE: "#70b312",
     };
   });
   const [colorCategoryModalTarget, setColorCategoryModalTarget] = useState<CategoryRecord | null>(null);
@@ -5533,6 +5551,18 @@ Images imported: ${importedImages}`);
       if (curTheme === "TRUE_BLACK") {
         return "bg-black"; // TRUE_BLACK時は完全なピュアブラック
       }
+      if (curTheme === "BROWN") {
+        return "bg-[#1a1614]"; // BROWN時はダークブラウン
+      }
+      if (curTheme === "PINK") {
+        return "bg-[#1a1215]"; // PINK時はダークピンク
+      }
+      if (curTheme === "MOCHA") {
+        return "bg-[#1c1816]"; // MOCHA時はダークモカ
+      }
+      if (curTheme === "OLIVE") {
+        return "bg-[#141a0e]"; // OLIVE時はダークオリーブ
+      }
       return "bg-root-bg";
     }
     if (canvasBg === "auto") {
@@ -6261,16 +6291,24 @@ Images imported: ${importedImages}`);
                   style={{
                     backgroundColor:
                       theme === "NAVY"
-                        ? "#2563eb"
+                        ? "#38bdf8"
                         : theme === "BLACK"
                         ? "#334155"
                         : theme === "TRUE_BLACK"
                         ? "#000000"
+                        : theme === "PAPER"
+                        ? "#d94f26"
+                        : theme === "PINK"
+                        ? "#e06b8b"
                         : theme === "LIGHT"
                         ? "#0284c7"
-                        : theme === "PAPER"
+                        : theme === "BROWN"
                         ? "#b45309"
-                        : "#dc2626",
+                        : theme === "MOCHA"
+                        ? "#a88b79"
+                        : theme === "OLIVE"
+                        ? "#84cc16"
+                        : "#ef4444",
                   }}
                 />
                 <span className="truncate">
@@ -6312,12 +6350,16 @@ Images imported: ${importedImages}`);
                 {/* テーマリスト */}
                 <div className="py-1">
                   {[
-                    { id: "NAVY", label: "NAVY", dot: "#2563eb" },
+                    { id: "NAVY", label: "NAVY", dot: "#38bdf8" },
                     { id: "BLACK", label: "BLACK", dot: "#334155" },
                     { id: "TRUE_BLACK", label: "TRUE BLACK", dot: "#000000" },
+                    { id: "PAPER", label: "PAPER", dot: "#d94f26" },
+                    { id: "PINK", label: "PINK", dot: "#e06b8b" },
                     { id: "LIGHT", label: "LIGHT", dot: "#0284c7" },
-                    { id: "PAPER", label: "PAPER", dot: "#b45309" },
-                    { id: "RED", label: "RED", dot: "#dc2626" },
+                    { id: "BROWN", label: "BROWN", dot: "#b45309" },
+                    { id: "MOCHA", label: "MOCHA", dot: "#a88b79" },
+                    { id: "OLIVE", label: "OLIVE", dot: "#84cc16" },
+                    { id: "RED", label: "RED", dot: "#ef4444" },
                   ].map((thm) => {
                     const isSelected = theme === thm.id;
                     return (
@@ -7966,10 +8008,14 @@ Images imported: ${importedImages}`);
                               <div className="grid grid-cols-2 gap-1.5 font-mono text-[10px]">
                                 {[
                                   { id: "NAVY", label: "NAVY (ネイビー)", bg: "#06090e", panel: "#0b111a", accent: "#3b82f6" },
-                                  { id: "LIGHT", label: "LIGHT (ライト)", bg: "#e2e8f0", panel: "#f8fafc", accent: "#0f172a" },
-                                  { id: "PAPER", label: "PAPER (セピア)", bg: "#f5f5f0", panel: "#ffffff", accent: "#d94f26" },
                                   { id: "BLACK", label: "BLACK (ブラック)", bg: "#0B0C0D", panel: "#14161A", accent: "#e2e5e9" },
                                   { id: "TRUE_BLACK", label: "TRUE BLACK (有機EL)", bg: "#000000", panel: "#0a0a0a", accent: "#ffffff" },
+                                  { id: "PAPER", label: "PAPER (セピア)", bg: "#f5f5f0", panel: "#ffffff", accent: "#d94f26" },
+                                  { id: "PINK", label: "PINK (ピンク)", bg: "#1a1215", panel: "#241a1d", accent: "#e06b8b" },
+                                  { id: "LIGHT", label: "LIGHT (ライト)", bg: "#e2e8f0", panel: "#f8fafc", accent: "#0f172a" },
+                                  { id: "BROWN", label: "BROWN (ブラウン)", bg: "#1a1614", panel: "#241e1b", accent: "#d6a076" },
+                                  { id: "MOCHA", label: "MOCHA (モカ)", bg: "#1c1816", panel: "#26211e", accent: "#c49d88" },
+                                  { id: "OLIVE", label: "OLIVE (オリーブ)", bg: "#141a0e", panel: "#1c2414", accent: "#88b855" },
                                   { id: "RED", label: "RED (レッド)", bg: "#0d0404", panel: "#170707", accent: "#d33c3c" },
                                 ].map((thm) => (
                                   <button
