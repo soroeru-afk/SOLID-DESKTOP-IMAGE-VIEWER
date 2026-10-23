@@ -419,7 +419,7 @@ export default function App() {
   >(() => {
     const saved = localStorage.getItem("app_theme");
 
-    return (saved as any) || "BLACK";
+    return (saved as "NAVY" | "BLACK" | "TRUE_BLACK" | "PAPER" | "PINK" | "LIGHT" | "BROWN" | "MOCHA" | "OLIVE" | "RED") || "BLACK";
   });
   const [canvasBg, setCanvasBg] = useState<
     "theme" | "auto" | "black" | "white" | "checker"
@@ -775,7 +775,7 @@ export default function App() {
     else if (theme === "BROWN") color = "#1a1614";
     else if (theme === "PINK") color = "#1a1215";
     else if (theme === "MOCHA") color = "#1c1816";
-    else if (theme === "OLIVE") color = "#141a0e";
+    else if (theme === "OLIVE") color = "#12160d";
     
     if (metaThemeColor) {
       metaThemeColor.setAttribute("content", color);
@@ -2266,7 +2266,7 @@ export default function App() {
     BROWN: "#b45309",
     PINK: "#e06b8b",
     MOCHA: "#a8785d",
-    OLIVE: "#70b312",
+    OLIVE: "#658348",
   };
   const [themeFolderColors, setThemeFolderColors] = useState<Record<AppTheme, string>>(() => {
     const saved = localStorage.getItem("theme_folder_colors");
@@ -2282,7 +2282,7 @@ export default function App() {
           BROWN: "#b45309",
           PINK: "#e06b8b",
           MOCHA: "#a8785d",
-          OLIVE: "#70b312",
+          OLIVE: "#658348",
           ...JSON.parse(saved),
         };
       } catch (e) {}
@@ -2297,7 +2297,7 @@ export default function App() {
       BROWN: "#b45309",
       PINK: "#e06b8b",
       MOCHA: "#a8785d",
-      OLIVE: "#70b312",
+      OLIVE: "#658348",
     };
   });
   const [colorCategoryModalTarget, setColorCategoryModalTarget] = useState<CategoryRecord | null>(null);
@@ -5561,7 +5561,7 @@ Images imported: ${importedImages}`);
         return "bg-[#1c1816]"; // MOCHA時はダークモカ
       }
       if (curTheme === "OLIVE") {
-        return "bg-[#141a0e]"; // OLIVE時はダークオリーブ
+        return "bg-[#12160d]"; // OLIVE時はダークオリーブ
       }
       return "bg-root-bg";
     }
@@ -6307,8 +6307,8 @@ Images imported: ${importedImages}`);
                         : theme === "MOCHA"
                         ? "#a88b79"
                         : theme === "OLIVE"
-                        ? "#84cc16"
-                        : "#ef4444",
+                        ? "#658348"
+                        : "#dc2626",
                   }}
                 />
                 <span className="truncate">
@@ -6358,8 +6358,8 @@ Images imported: ${importedImages}`);
                     { id: "LIGHT", label: "LIGHT", dot: "#0284c7" },
                     { id: "BROWN", label: "BROWN", dot: "#b45309" },
                     { id: "MOCHA", label: "MOCHA", dot: "#a88b79" },
-                    { id: "OLIVE", label: "OLIVE", dot: "#84cc16" },
-                    { id: "RED", label: "RED", dot: "#ef4444" },
+                    { id: "OLIVE", label: "OLIVE", dot: "#658348" },
+                    { id: "RED", label: "RED", dot: "#dc2626" },
                   ].map((thm) => {
                     const isSelected = theme === thm.id;
                     return (
@@ -8015,7 +8015,7 @@ Images imported: ${importedImages}`);
                                   { id: "LIGHT", label: "LIGHT (ライト)", bg: "#e2e8f0", panel: "#f8fafc", accent: "#0f172a" },
                                   { id: "BROWN", label: "BROWN (ブラウン)", bg: "#1a1614", panel: "#241e1b", accent: "#d6a076" },
                                   { id: "MOCHA", label: "MOCHA (モカ)", bg: "#1c1816", panel: "#26211e", accent: "#c49d88" },
-                                  { id: "OLIVE", label: "OLIVE (オリーブ)", bg: "#141a0e", panel: "#1c2414", accent: "#88b855" },
+                                  { id: "OLIVE", label: "OLIVE (オリーブ)", bg: "#12160d", panel: "#191e13", accent: "#688647" },
                                   { id: "RED", label: "RED (レッド)", bg: "#0d0404", panel: "#170707", accent: "#d33c3c" },
                                 ].map((thm) => (
                                   <button
