@@ -822,6 +822,7 @@ export default function App() {
   const isScrollTrackingUpdateRef = useRef(false);
   const scrollTimerRef = useRef<number | null>(null);
   const isScrollingRef = useRef(false);
+  const lastScaleOrGapChangeTimeRef = useRef<number>(0);
 
   useEffect(() => {
     selectedImageRef.current = selectedImage;
@@ -859,15 +860,14 @@ export default function App() {
     const containerRect = container.getBoundingClientRect();
     const viewportCenterY = containerRect.height / 2;
 
-    // 1. 現在選択されている画像が画面内にあれば最優先でアンカーとする
+    // 1. カオルさまが選択した対象画像（selectedImage）があれば、画面内外問わず最優先でアンカーとする！
     let anchorEl: HTMLElement | null = null;
+    let isExplicitSelection = false;
     if (selectedImageRef.current) {
       const selEl = document.getElementById(`image-card-${selectedImageRef.current.id}`);
       if (selEl) {
-        const r = selEl.getBoundingClientRect();
-        if (r.bottom > containerRect.top && r.top < containerRect.bottom) {
-          anchorEl = selEl;
-        }
+        anchorEl = selEl;
+        isExplicitSelection = true;
       }
     }
 
@@ -915,22 +915,36 @@ export default function App() {
     const id = anchorEl.id.replace("image-card-", "");
     const rect = anchorEl.getBoundingClientRect();
     const currentOffsetY = (rect.top + rect.height / 2) - containerRect.top;
-    // 画面中央付近（中央±25%以内）にあれば画面中央に固定、それ以外は現在の視線オフセットを正確に維持
+    // 選択画像がある場合は、何度最小・最大にしても常に画面中央（Focus位置）に保たれるよう viewportCenterY を設定！
+    // 未選択時のみ、視線オフセットまたは中央を維持
     const isNearCenter = Math.abs(currentOffsetY - viewportCenterY) < containerRect.height * 0.25;
-    const targetOffsetY = isNearCenter ? viewportCenterY : currentOffsetY;
+    const targetOffsetY = isExplicitSelection ? viewportCenterY : (isNearCenter ? viewportCenterY : currentOffsetY);
 
     return { id, targetOffsetY, isTop: false, isBottom: false };
   }, [viewMode]);
 
   const adjustAnchorScroll = React.useCallback(() => {
-    if (!scaleAnchorRef.current) return;
     const container = scrollContainerRef.current;
     if (!container || viewMode === "free") {
       scaleAnchorRef.current = null;
       return;
     }
 
-    const anchor = scaleAnchorRef.current;
+    // scaleAnchorRef が存在するか、あるいは選択中画像があればフェイルセーフとしてアンカーとする
+    let anchor = scaleAnchorRef.current;
+    if (!anchor && selectedImageRef.current) {
+      const selEl = document.getElementById(`image-card-${selectedImageRef.current.id}`);
+      if (selEl) {
+        anchor = {
+          id: selectedImageRef.current.id,
+          targetOffsetY: container.getBoundingClientRect().height / 2,
+          isTop: false,
+          isBottom: false,
+        };
+      }
+    }
+    if (!anchor) return;
+
     if (anchor.isTop) {
       container.scrollTop = 0;
     } else if (anchor.isBottom) {
@@ -952,24 +966,39 @@ export default function App() {
         }
       }
     }
-
-    if (!isSliderInteractingRef.current) {
-      scaleAnchorRef.current = null;
-    }
   }, [viewMode]);
 
   // 画像サイズ(itemScale)・隙間(gridGap)の変更時に、今見ている画像の位置を維持
+  // SquareのCSS Grid再計算やMasonryの列数再構築に対応するため、複数フレームに渡って確実に追従
   useLayoutEffect(() => {
-    if (!scaleAnchorRef.current) return;
     adjustAnchorScroll();
-    const rafId = requestAnimationFrame(() => {
+    const rafId1 = requestAnimationFrame(() => {
       adjustAnchorScroll();
+      const rafId2 = requestAnimationFrame(() => {
+        adjustAnchorScroll();
+      });
+      return () => cancelAnimationFrame(rafId2);
     });
-    return () => cancelAnimationFrame(rafId);
+    const tId1 = setTimeout(() => {
+      adjustAnchorScroll();
+    }, 40);
+    const tId2 = setTimeout(() => {
+      adjustAnchorScroll();
+      if (!isSliderInteractingRef.current) {
+        scaleAnchorRef.current = null;
+      }
+    }, 120);
+
+    return () => {
+      cancelAnimationFrame(rafId1);
+      clearTimeout(tId1);
+      clearTimeout(tId2);
+    };
   }, [itemScale, gridGap, adjustAnchorScroll]);
 
   const setItemScale = (val: number) => {
     if (val === itemScale) return;
+    lastScaleOrGapChangeTimeRef.current = performance.now();
     if (!scaleAnchorRef.current) {
       scaleAnchorRef.current = captureScrollAnchor();
     }
@@ -978,6 +1007,7 @@ export default function App() {
 
   const setGridGap = (val: number) => {
     if (val === gridGap) return;
+    lastScaleOrGapChangeTimeRef.current = performance.now();
     if (!scaleAnchorRef.current) {
       scaleAnchorRef.current = captureScrollAnchor();
     }
@@ -3273,10 +3303,18 @@ function createPRNG(seed: number) {
   // スクロール時に画面中央の画像へ選択枠（selectedImage）をリアルタイム追従させるイベントハンドラー
   const handleContainerScroll = React.useCallback(() => {
     if (isFullscreen || viewMode === "free" || sortedImages.length === 0) return;
+    // スライダー操作中・スケール変更直後は、選択画像が別画像に上書きされるのを完全に防ぐ！
+    if (isSliderInteractingRef.current || performance.now() - lastScaleOrGapChangeTimeRef.current < 500) {
+      return;
+    }
     isScrollingRef.current = true;
     if (scrollTimerRef.current) cancelAnimationFrame(scrollTimerRef.current);
 
     scrollTimerRef.current = requestAnimationFrame(() => {
+      if (isSliderInteractingRef.current || performance.now() - lastScaleOrGapChangeTimeRef.current < 500) {
+        isScrollingRef.current = false;
+        return;
+      }
       const centerImg = getCenterImage();
       if (centerImg && centerImg.id !== selectedImageRef.current?.id) {
         isScrollTrackingUpdateRef.current = true;
@@ -4981,7 +5019,7 @@ Images imported: ${importedImages}`);
     if (selectedImage && !isFullscreen && !isScrollingRef.current) {
       const el = document.getElementById(`image-card-${selectedImage.id}`);
       if (el) {
-        el.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' });
+        el.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'nearest' });
       }
     }
   }, [selectedImage, isFullscreen]);
@@ -5885,6 +5923,18 @@ Images imported: ${importedImages}`);
             setLastDraggedImageId(null);
             suppressNextClickRef.current = false;
             setIsFullscreen(true);
+          } else {
+            const container = scrollContainerRef.current;
+            const el = document.getElementById(`image-card-${img.id}`);
+            if (el && container && viewMode !== "free") {
+              el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+              scaleAnchorRef.current = {
+                id: img.id,
+                targetOffsetY: container.getBoundingClientRect().height / 2,
+                isTop: false,
+                isBottom: false,
+              };
+            }
           }
         }
       }}
@@ -6350,7 +6400,10 @@ Images imported: ${importedImages}`);
                   isSliderInteractingRef.current = false;
                   requestAnimationFrame(() => {
                     adjustAnchorScroll();
-                    scaleAnchorRef.current = null;
+                    setTimeout(() => {
+                      adjustAnchorScroll();
+                      scaleAnchorRef.current = null;
+                    }, 80);
                   });
                   (e.currentTarget as HTMLElement).blur();
                 }}
@@ -6358,7 +6411,10 @@ Images imported: ${importedImages}`);
                   isSliderInteractingRef.current = false;
                   requestAnimationFrame(() => {
                     adjustAnchorScroll();
-                    scaleAnchorRef.current = null;
+                    setTimeout(() => {
+                      adjustAnchorScroll();
+                      scaleAnchorRef.current = null;
+                    }, 80);
                   });
                   (e.currentTarget as HTMLElement).blur();
                 }}
@@ -6366,16 +6422,23 @@ Images imported: ${importedImages}`);
                   isSliderInteractingRef.current = false;
                   requestAnimationFrame(() => {
                     adjustAnchorScroll();
-                    scaleAnchorRef.current = null;
+                    setTimeout(() => {
+                      adjustAnchorScroll();
+                      scaleAnchorRef.current = null;
+                    }, 80);
                   });
                 }}
                 onPointerCancel={() => {
                   isSliderInteractingRef.current = false;
-                  scaleAnchorRef.current = null;
+                  setTimeout(() => {
+                    scaleAnchorRef.current = null;
+                  }, 80);
                 }}
                 onBlur={() => {
                   isSliderInteractingRef.current = false;
-                  scaleAnchorRef.current = null;
+                  setTimeout(() => {
+                    scaleAnchorRef.current = null;
+                  }, 80);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
@@ -6404,7 +6467,10 @@ Images imported: ${importedImages}`);
                   isSliderInteractingRef.current = false;
                   requestAnimationFrame(() => {
                     adjustAnchorScroll();
-                    scaleAnchorRef.current = null;
+                    setTimeout(() => {
+                      adjustAnchorScroll();
+                      scaleAnchorRef.current = null;
+                    }, 80);
                   });
                   (e.currentTarget as HTMLElement).blur();
                 }}
@@ -6412,7 +6478,10 @@ Images imported: ${importedImages}`);
                   isSliderInteractingRef.current = false;
                   requestAnimationFrame(() => {
                     adjustAnchorScroll();
-                    scaleAnchorRef.current = null;
+                    setTimeout(() => {
+                      adjustAnchorScroll();
+                      scaleAnchorRef.current = null;
+                    }, 80);
                   });
                   (e.currentTarget as HTMLElement).blur();
                 }}
@@ -6420,16 +6489,23 @@ Images imported: ${importedImages}`);
                   isSliderInteractingRef.current = false;
                   requestAnimationFrame(() => {
                     adjustAnchorScroll();
-                    scaleAnchorRef.current = null;
+                    setTimeout(() => {
+                      adjustAnchorScroll();
+                      scaleAnchorRef.current = null;
+                    }, 80);
                   });
                 }}
                 onPointerCancel={() => {
                   isSliderInteractingRef.current = false;
-                  scaleAnchorRef.current = null;
+                  setTimeout(() => {
+                    scaleAnchorRef.current = null;
+                  }, 80);
                 }}
                 onBlur={() => {
                   isSliderInteractingRef.current = false;
-                  scaleAnchorRef.current = null;
+                  setTimeout(() => {
+                    scaleAnchorRef.current = null;
+                  }, 80);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
@@ -6494,7 +6570,7 @@ Images imported: ${importedImages}`);
                   style={{
                     backgroundColor:
                       theme === "NAVY"
-                        ? "#38bdf8"
+                        ? "#2563eb"
                         : theme === "BLACK"
                         ? "#334155"
                         : theme === "TRUE_BLACK"
@@ -6553,7 +6629,7 @@ Images imported: ${importedImages}`);
                 {/* テーマリスト */}
                 <div className="py-1">
                   {[
-                    { id: "NAVY", label: "NAVY", dot: "#38bdf8" },
+                    { id: "NAVY", label: "NAVY", dot: "#2563eb" },
                     { id: "BLACK", label: "BLACK", dot: "#334155" },
                     { id: "TRUE_BLACK", label: "TRUE BLACK", dot: "#000000" },
                     { id: "PAPER", label: "PAPER", dot: "#d94f26" },
@@ -9652,7 +9728,7 @@ Images imported: ${importedImages}`);
                     (viewMode === "grid-sq" ||
                       viewMode === "grid-ma" ||
                       viewMode === "list") &&
-                      "overflow-y-auto overflow-x-hidden pb-8",
+                      "overflow-y-auto overflow-x-hidden pb-[45vh]",
                     viewMode === "free" && "overflow-hidden",
                     isListDragging && "cursor-ns-resize",
                   )}
