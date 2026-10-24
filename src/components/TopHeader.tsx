@@ -67,7 +67,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
 }) => {
   return (
     <header className="flex justify-between items-center shrink-0 h-10">
-      <div className="flex items-start gap-3">
+      <div className="flex items-center gap-3">
         <div className="w-8 h-8 bg-panel-border flex items-center justify-center rounded-none text-accent">
           <ScatterChart size={18} />
         </div>

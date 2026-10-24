@@ -881,7 +881,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
   };
 
   return (
-    <div className="absolute inset-0 flex flex-col overflow-hidden">
+    <div data-explorer="true" className="absolute inset-0 flex flex-col overflow-hidden explorer-view">
       {/* Background Watermark */}
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none z-0 overflow-hidden">
         <div className="text-[10vw] font-black tracking-tight text-panel-border/25 leading-none text-center select-none">
@@ -894,7 +894,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
         <div className="w-full max-w-[1700px] flex flex-col items-center">
           {/* View Style Switcher Buttons & Overview Bar */}
           <div className="flex flex-wrap items-center justify-between w-full gap-3 mb-6 select-none">
-            <div className="text-text-muted text-xs tracking-widest uppercase font-mono bg-panel-bg/90 backdrop-blur-md px-4 py-1.5 border border-panel-border shadow-sm flex items-center gap-2">
+            <div className="explorer-title-pill text-text-muted text-xs tracking-widest uppercase font-mono bg-panel-bg/90 backdrop-blur-md px-4 py-1.5 border border-panel-border shadow-sm flex items-center gap-2">
               <Folder size={13} className="text-accent" />
               <span>
                 {currentCategory ? currentCategory.name : t("ROOT EXPLORER", "ルート階層")}
@@ -905,10 +905,10 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono text-text-muted hidden sm:inline-block">
+              <span className="explorer-grip-hint text-[10px] font-mono text-text-muted hidden sm:inline-block">
                 {t("💡 GRIP (⋮⋮) TO DRAG FOLDERS & DATASETS", "💡 グリップ (⋮⋮) でフォルダーやセットを自由に移動")}
               </span>
-              <div className="flex items-center border border-panel-border bg-panel-bg/90 backdrop-blur-md p-1 text-[10px] font-mono shadow-sm">
+              <div className="explorer-mode-group flex items-center border border-panel-border bg-panel-bg/90 backdrop-blur-md p-1 text-[10px] font-mono shadow-sm">
                 {(["text", "popup", "card", "cover", "list"] as const).map((mode) => (
                   <button
                     key={mode}
@@ -929,7 +929,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
           </div>
 
           {/* K-Navigator Style Bulk Selection & Action Toolbar */}
-          <div className="w-full bg-panel-bg/95 border border-panel-border p-2 px-3 mb-6 flex flex-wrap items-center justify-between gap-3 text-xs font-mono shadow-sm backdrop-blur-md rounded-xs">
+          <div className="explorer-toolbar w-full bg-panel-bg/95 border border-panel-border p-2 px-3 mb-6 flex flex-wrap items-center justify-between gap-3 text-xs font-mono shadow-sm backdrop-blur-md rounded-xs">
             <div className="flex items-center gap-3">
               {/* SELECT ALL Checkbox Button */}
               <button
@@ -953,7 +953,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
               {/* Selection Count Indicator */}
               <div
                 className={cn(
-                  "px-3 py-1.5 rounded-xs font-bold transition-all border flex items-center gap-1.5",
+                  "explorer-select-count px-3 py-1.5 rounded-xs font-bold transition-all border flex items-center gap-1.5",
                   totalSelected > 0
                     ? "bg-accent text-accent-text border-accent shadow-xs"
                     : "bg-root-bg/50 border-panel-border text-text-muted opacity-60"
@@ -983,7 +983,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                 disabled={totalSelected === 0}
                 onClick={handleMoveSelectionUp}
                 className={cn(
-                  "flex items-center gap-1 px-2.5 py-1.5 rounded-xs font-bold border transition-all shadow-xs",
+                  "explorer-action-btn flex items-center gap-1 px-2.5 py-1.5 rounded-xs font-bold border transition-all shadow-xs",
                   totalSelected > 0
                     ? "bg-panel-bg border-accent/60 text-accent hover:bg-accent/15 hover:border-accent cursor-pointer"
                     : "bg-panel-bg/40 border-panel-border/40 text-text-muted opacity-40 cursor-not-allowed"
@@ -999,7 +999,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                 disabled={totalSelected === 0}
                 onClick={handleMoveSelectionDown}
                 className={cn(
-                  "flex items-center gap-1 px-2.5 py-1.5 rounded-xs font-bold border transition-all shadow-xs",
+                  "explorer-action-btn flex items-center gap-1 px-2.5 py-1.5 rounded-xs font-bold border transition-all shadow-xs",
                   totalSelected > 0
                     ? "bg-panel-bg border-accent/60 text-accent hover:bg-accent/15 hover:border-accent cursor-pointer"
                     : "bg-panel-bg/40 border-panel-border/40 text-text-muted opacity-40 cursor-not-allowed"
@@ -1016,7 +1016,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                 disabled={totalSelected < 2 && (currentSubcategories.length < 2 && currentDatasets.length < 2)}
                 onClick={handleReverseOrder}
                 className={cn(
-                  "flex items-center gap-1 px-2.5 py-1.5 rounded-xs font-bold border transition-all shadow-xs",
+                  "explorer-action-btn flex items-center gap-1 px-2.5 py-1.5 rounded-xs font-bold border transition-all shadow-xs",
                   totalSelected >= 2 || (totalSelected === 0 && (currentSubcategories.length >= 2 || currentDatasets.length >= 2))
                     ? "bg-panel-bg border-accent/60 text-accent hover:bg-accent/15 hover:border-accent cursor-pointer"
                     : "bg-panel-bg/40 border-panel-border/40 text-text-muted opacity-40 cursor-not-allowed"
@@ -1036,7 +1036,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                 disabled={totalSelected === 0}
                 onClick={handleOpenBulkRenameModal}
                 className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-xs font-bold border transition-all shadow-xs",
+                  "explorer-action-btn flex items-center gap-1.5 px-3 py-1.5 rounded-xs font-bold border transition-all shadow-xs",
                   totalSelected > 0
                     ? "bg-panel-bg border-accent/60 text-accent hover:bg-accent/15 hover:border-accent cursor-pointer"
                     : "bg-panel-bg/40 border-panel-border/40 text-text-muted opacity-40 cursor-not-allowed"
@@ -1051,7 +1051,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                 disabled={totalSelected === 0}
                 onClick={() => setShowBulkMoveModal(true)}
                 className={cn(
-                  "flex items-center gap-1.5 px-3.5 py-1.5 rounded-xs font-bold border transition-all shadow-xs",
+                  "explorer-action-btn flex items-center gap-1.5 px-3.5 py-1.5 rounded-xs font-bold border transition-all shadow-xs",
                   totalSelected > 0
                     ? "bg-panel-bg border-accent/60 text-accent hover:bg-accent/15 hover:border-accent cursor-pointer"
                     : "bg-panel-bg/40 border-panel-border/40 text-text-muted opacity-40 cursor-not-allowed"
@@ -1066,7 +1066,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                 disabled={totalSelected === 0}
                 onClick={() => setShowBulkDeleteModal(true)}
                 className={cn(
-                  "flex items-center gap-1.5 px-3.5 py-1.5 rounded-xs font-bold border transition-all shadow-xs",
+                  "explorer-action-btn flex items-center gap-1.5 px-3.5 py-1.5 rounded-xs font-bold border transition-all shadow-xs",
                   totalSelected > 0
                     ? "bg-red-500/10 border-red-500/50 text-red-400 hover:bg-red-500 hover:text-white hover:border-red-500 cursor-pointer"
                     : "bg-panel-bg/40 border-panel-border/40 text-text-muted opacity-40 cursor-not-allowed"
@@ -1094,7 +1094,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
           {/* 1. Subcategories Grid (DRAGGABLE & DROPPABLE FOLDERS!) */}
           {currentSubcategories.length > 0 && (
             <div className="w-full flex flex-col gap-2 mb-8">
-              <div className="flex items-center gap-2 font-mono text-xs text-text-muted uppercase tracking-widest px-1">
+              <div className="explorer-section-header flex items-center gap-2 font-mono text-xs text-text-muted uppercase tracking-widest px-1">
                 <Folder size={13} className="text-folder-icon" />
                 <span>{t("FOLDERS", "フォルダー")} ({currentSubcategories.length})</span>
                 {activeDragItem && (
@@ -1316,6 +1316,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                         {homeViewMode === "cover" && coverUrl && onCycleCategoryCoverPosition && (
                           <button
                             type="button"
+                            data-overlay-badge="true"
                             onClick={(e) => onCycleCategoryCoverPosition(cat.id, e)}
                             className="absolute top-2 right-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 hover:bg-black text-white hover:text-amber-400 font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-white/25 backdrop-blur-xs flex items-center gap-0.5 shadow-md cursor-pointer transition-colors"
                             title={t("Cycle crop position", "トリミング位置切替")}
@@ -1350,7 +1351,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                                 <span>{t("FOLDER", "フォルダー")}</span>
                               </div>
                             )}
-                            <div className="absolute top-2 left-2 bg-black/70 px-2 py-0.5 rounded text-[9px] font-mono text-folder-icon border border-folder-icon/30 backdrop-blur-xs flex items-center gap-1">
+                            <div data-overlay-badge="true" className="absolute top-2 left-2 bg-black/70 px-2 py-0.5 rounded text-[9px] font-mono text-folder-icon border border-folder-icon/30 backdrop-blur-xs flex items-center gap-1">
                               <Folder size={10} />
                               <span>{t("DIR", "フォルダ")}</span>
                             </div>
@@ -1359,6 +1360,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                             {onSetCategoryCoverImage && (
                               <button
                                 type="button"
+                                data-overlay-badge="true"
                                 onClick={(e) => handleOpenCategoryCoverModal(cat, e)}
                                 className={cn(
                                   "absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 hover:bg-black text-white hover:text-amber-400 font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-white/20 backdrop-blur-xs flex items-center gap-1 shadow-sm z-10",
@@ -1374,6 +1376,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                             {coverUrl && onCycleCategoryCoverPosition && (
                               <button
                                 type="button"
+                                data-overlay-badge="true"
                                 onClick={(e) => onCycleCategoryCoverPosition(cat.id, e)}
                                 className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 hover:bg-black text-white hover:text-amber-400 font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-white/25 backdrop-blur-xs flex items-center gap-0.5 shadow-sm z-10 transition-colors"
                                 title={t("Cycle crop position", "トリミング位置切替")}
@@ -1526,7 +1529,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
           {/* 2. Datasets Grid (DRAGGABLE DATASET CARDS!) */}
           {currentDatasets.length > 0 && (
             <div className="w-full flex flex-col gap-2">
-              <div className="flex items-center gap-2 font-mono text-xs text-text-muted uppercase tracking-widest px-1">
+              <div className="explorer-section-header flex items-center gap-2 font-mono text-xs text-text-muted uppercase tracking-widest px-1">
                 <Layers size={13} className="text-accent" />
                 <span>{t("DATASETS", "データセット")} ({currentDatasets.length})</span>
               </div>
@@ -1724,6 +1727,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                               <div className="absolute top-2 right-2 z-20 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button
                                   type="button"
+                                  data-overlay-badge="true"
                                   onClick={(e) => handleOpenDatasetCoverModal(ds, e)}
                                   className="bg-black/80 hover:bg-black text-white hover:text-amber-400 font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-white/25 backdrop-blur-xs flex items-center gap-0.5 shadow-md cursor-pointer transition-colors"
                                   title={t("Select Cover Art", "カバー画像を選択")}
@@ -1733,6 +1737,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                                 </button>
                                 <button
                                   type="button"
+                                  data-overlay-badge="true"
                                   onClick={(e) => onCycleCoverPosition(ds.id, e)}
                                   className="bg-black/80 hover:bg-black text-white hover:text-amber-400 font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-white/25 backdrop-blur-xs flex items-center gap-0.5 shadow-md cursor-pointer transition-colors"
                                   title={t("Cycle crop position", "トリミング位置切替")}
@@ -1789,6 +1794,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                               <div className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 z-10">
                                 <button
                                   type="button"
+                                  data-overlay-badge="true"
                                   onClick={(e) => handleOpenDatasetCoverModal(ds, e)}
                                   className="bg-black/80 hover:bg-black text-white hover:text-amber-400 font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-white/25 backdrop-blur-xs flex items-center gap-0.5 shadow-md cursor-pointer transition-colors"
                                   title={t("Select Cover Art", "カバー画像を選択")}
@@ -1798,6 +1804,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                                 </button>
                                 <button
                                   type="button"
+                                  data-overlay-badge="true"
                                   onClick={(e) => onCycleCoverPosition(ds.id, e)}
                                   className="bg-black/80 hover:bg-black text-white hover:text-amber-400 font-mono text-[8px] font-bold px-1.5 py-0.5 rounded border border-white/25 backdrop-blur-xs flex items-center gap-0.5 shadow-md cursor-pointer transition-colors"
                                   title={t("Cycle crop position", "トリミング位置切替")}

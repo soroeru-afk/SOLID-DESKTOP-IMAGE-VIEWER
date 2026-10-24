@@ -774,7 +774,7 @@ export default function App() {
     else if (theme === "NAVY") color = "#06090e";
     else if (theme === "BROWN") color = "#1a1614";
     else if (theme === "PINK") color = "#1a1215";
-    else if (theme === "MOCHA") color = "#1c1816";
+    else if (theme === "MOCHA") color = "#59483a";
     else if (theme === "OLIVE") color = "#12160d";
     
     if (metaThemeColor) {
@@ -2265,7 +2265,7 @@ export default function App() {
     RED: "#f87171",
     BROWN: "#b45309",
     PINK: "#e06b8b",
-    MOCHA: "#a8785d",
+    MOCHA: "#8c6853",
     OLIVE: "#658348",
   };
   const [themeFolderColors, setThemeFolderColors] = useState<Record<AppTheme, string>>(() => {
@@ -2281,7 +2281,7 @@ export default function App() {
           RED: "#f87171",
           BROWN: "#b45309",
           PINK: "#e06b8b",
-          MOCHA: "#a8785d",
+          MOCHA: "#8c6853",
           OLIVE: "#658348",
           ...JSON.parse(saved),
         };
@@ -2296,7 +2296,7 @@ export default function App() {
       RED: "#f87171",
       BROWN: "#b45309",
       PINK: "#e06b8b",
-      MOCHA: "#a8785d",
+      MOCHA: "#8c6853",
       OLIVE: "#658348",
     };
   });
@@ -5558,7 +5558,7 @@ Images imported: ${importedImages}`);
         return "bg-[#1a1215]"; // PINK時はダークピンク
       }
       if (curTheme === "MOCHA") {
-        return "bg-[#1c1816]"; // MOCHA時はダークモカ
+        return "bg-[#f8ede2]"; // MOCHA時は明るいウォームモカベージュ
       }
       if (curTheme === "OLIVE") {
         return "bg-[#12160d]"; // OLIVE時はダークオリーブ
@@ -5581,7 +5581,7 @@ Images imported: ${importedImages}`);
     if (canvasBg === "theme") {
       if (selectedImage?.autoBg === "checkerboard") return true;
       const curTheme = theme.toUpperCase();
-      return curTheme === "LIGHT" || curTheme === "PAPER";
+      return curTheme === "LIGHT" || curTheme === "PAPER" || curTheme === "MOCHA";
     }
     if (canvasBg === "auto") {
       return selectedImage?.autoBg === "white" || selectedImage?.autoBg === "checkerboard";
@@ -6305,7 +6305,7 @@ Images imported: ${importedImages}`);
                         : theme === "BROWN"
                         ? "#b45309"
                         : theme === "MOCHA"
-                        ? "#a88b79"
+                        ? "#8c6853"
                         : theme === "OLIVE"
                         ? "#658348"
                         : "#dc2626",
@@ -6357,7 +6357,7 @@ Images imported: ${importedImages}`);
                     { id: "PINK", label: "PINK", dot: "#e06b8b" },
                     { id: "LIGHT", label: "LIGHT", dot: "#0284c7" },
                     { id: "BROWN", label: "BROWN", dot: "#b45309" },
-                    { id: "MOCHA", label: "MOCHA", dot: "#a88b79" },
+                    { id: "MOCHA", label: "MOCHA", dot: "#8c6853" },
                     { id: "OLIVE", label: "OLIVE", dot: "#658348" },
                     { id: "RED", label: "RED", dot: "#dc2626" },
                   ].map((thm) => {
@@ -8014,7 +8014,7 @@ Images imported: ${importedImages}`);
                                   { id: "PINK", label: "PINK (ピンク)", bg: "#1a1215", panel: "#241a1d", accent: "#e06b8b" },
                                   { id: "LIGHT", label: "LIGHT (ライト)", bg: "#e2e8f0", panel: "#f8fafc", accent: "#0f172a" },
                                   { id: "BROWN", label: "BROWN (ブラウン)", bg: "#1a1614", panel: "#241e1b", accent: "#d6a076" },
-                                  { id: "MOCHA", label: "MOCHA (モカ)", bg: "#1c1816", panel: "#26211e", accent: "#c49d88" },
+                                  { id: "MOCHA", label: "MOCHA (モカ)", bg: "#f8ede2", panel: "#fdf6ee", accent: "#59483a" },
                                   { id: "OLIVE", label: "OLIVE (オリーブ)", bg: "#12160d", panel: "#191e13", accent: "#688647" },
                                   { id: "RED", label: "RED (レッド)", bg: "#0d0404", panel: "#170707", accent: "#d33c3c" },
                                 ].map((thm) => (
@@ -9121,7 +9121,7 @@ Images imported: ${importedImages}`);
                 </div>
               )
             }
-            className="flex-1 relative overflow-hidden"
+            className="main-content-panel flex-1 relative overflow-hidden"
             contentClassName="p-0 overflow-hidden flex flex-col flex-1 relative"
           >
             {/* Top Fixed Opaque Breadcrumb Bar for ALL Views (Folder Explorer, Category Images, and Dataset) */}

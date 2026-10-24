@@ -259,33 +259,33 @@
   }
 
   :root[data-theme="MOCHA"] {
-    --bg-app: #1c1816;
-    --bg-panel: #26211e;
-    --bg-panel-header: #302a27;
-    --border-panel: #4a413d;
-    --border-inner: #38312d;
-    --text-main: #ebdcd5;
-    --text-sub: #a89890;
-    --text-dim: #736762;
-    --accent: #c49d88;
-    --accent-glow: rgba(196, 157, 136, 0.3);
-    --accent-text: #1c1816;
-    --folder-icon-color: #a8785d;
+    --bg-app: #59483a;
+    --bg-panel: #f8ede2;
+    --bg-panel-header: #47382d;
+    --border-panel: #47382d;
+    --border-inner: #3a2e25;
+    --text-main: #fdf5eb;
+    --text-sub: #c9b8ab;
+    --text-dim: #998577;
+    --accent: #b88667;
+    --accent-glow: rgba(184, 134, 103, 0.25);
+    --accent-text: #ffffff;
+    --folder-icon-color: #a07255;
 
-    --btn-bg: #26211e;
-    --btn-border: #4a413d;
-    --btn-border-b: #120f0e;
-    --btn-border-r: #1c1816;
-    --btn-text: #a89890;
-    --btn-hover-bg: #302a27;
-    --btn-hover-text: #ebdcd5;
-    --btn-hover-border-t: #5e534f;
+    --btn-bg: #47382d;
+    --btn-border: #634f40;
+    --btn-border-b: #241c15;
+    --btn-border-r: #2e241c;
+    --btn-text: #e8dbd1;
+    --btn-hover-bg: #524135;
+    --btn-hover-text: #ffffff;
+    --btn-hover-border-t: #786150;
 
-    --btn-active-bg: #c49d88;
-    --btn-active-border: #dbbba8;
-    --btn-active-border-b: #8a6552;
-    --btn-active-border-r: #a67c66;
-    --btn-active-text: #1c1816;
+    --btn-active-bg: #8c6853;
+    --btn-active-border: #ab856d;
+    --btn-active-border-b: #573e30;
+    --btn-active-border-r: #6e4f3d;
+    --btn-active-text: #ffffff;
   }
 
   :root[data-theme="OLIVE"] {
@@ -455,4 +455,690 @@ input[type=range]::-webkit-slider-thumb {
 input[type=range]:focus::-webkit-slider-thumb {
   background: var(--color-btn-active-bg);
 }
+
+/* ==========================================================================
+   MOCHA THEME PRECISE HIGH CONTRAST & VISIBILITY (厳密スコープ設定)
+   ========================================================================== */
+
+/* 1. TOP HEADER: TRANSPARENT WITH DARK CONTROLS */
+:root[data-theme="MOCHA"] header {
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme="MOCHA"] header select,
+:root[data-theme="MOCHA"] header .bg-panel-bg {
+  background-color: #3b2e25 !important;
+  border-color: #5c473a !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="MOCHA"] header select option {
+  background-color: #3b2e25 !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="MOCHA"] header select {
+  color: #ffffff !important;
+  font-weight: 700 !important;
+}
+
+:root[data-theme="MOCHA"] header .text-text-primary {
+  color: #ffffff !important;
+}
+
+:root[data-theme="MOCHA"] header .text-text-muted {
+  color: #d1c0b4 !important;
+}
+
+:root[data-theme="MOCHA"] header button {
+  color: #ffffff !important;
+}
+
+/* 2. SECTION HEADERS: 04 DATA BANKS, 01 FORMATION ENGINE, 02 DATA SETS */
+.bg-panel-header,
+.bg-panel-header:hover {
+  background-color: var(--color-panel-header) !important;
+}
+
+:root[data-theme="MOCHA"] .bg-panel-header,
+:root[data-theme="MOCHA"] .bg-panel-header:hover {
+  background-color: #47382d !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="MOCHA"] .bg-panel-header h3 {
+  color: #ffffff !important;
+}
+
+:root[data-theme="MOCHA"] .bg-panel-header .bg-panel-bg {
+  background-color: #35281e !important;
+  border-color: #544032 !important;
+}
+
+:root[data-theme="MOCHA"] .bg-panel-header input {
+  background-color: transparent !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="MOCHA"] .bg-panel-header input::placeholder {
+  color: #b5a396 !important;
+}
+
+:root[data-theme="MOCHA"] .bg-panel-header button {
+  color: #e5d7cc !important;
+}
+
+:root[data-theme="MOCHA"] .bg-panel-header button:hover {
+  color: #ffffff !important;
+}
+
+:root[data-theme="MOCHA"] .bg-panel-header button.text-accent,
+:root[data-theme="MOCHA"] .bg-panel-header .text-accent {
+  color: #dfb295 !important;
+}
+
+:root[data-theme="MOCHA"] .bg-panel-header .text-text-secondary {
+  color: #d5c4b8 !important;
+}
+
+:root[data-theme="MOCHA"] .bg-panel-header .text-text-muted {
+  color: #b5a396 !important;
+}
+
+:root[data-theme="MOCHA"] .bg-panel-header .bg-root-bg {
+  background-color: #291e17 !important;
+}
+
+/* 3. BREADCRUMB ROW ACTION BUTTONS IN MAIN PANEL ONLY */
+:root[data-theme="MOCHA"] .main-content-panel .flex.items-center.gap-2.font-mono button {
+  background-color: #eddcd0 !important;
+  border-color: #bfaaa0 !important;
+  color: #1e130c !important;
+  font-weight: 700 !important;
+}
+
+:root[data-theme="MOCHA"] .main-content-panel .flex.items-center.gap-2.font-mono button:hover {
+  background-color: #e2ccbd !important;
+  border-color: #7a3a16 !important;
+  color: #000000 !important;
+}
+
+:root[data-theme="MOCHA"] .main-content-panel .flex.items-center.gap-2.font-mono button svg {
+  color: #7a3a16 !important;
+}
+
+/* 4. 02 DATA SETS TREE ITEMS (IN SIDEBAR ONLY) */
+:root[data-theme="MOCHA"] aside .bg-panel-bg [draggable],
+:root[data-theme="MOCHA"] aside .bg-panel-bg div:has(> span > .lucide-folders) {
+  color: #1e130c !important;
+}
+
+:root[data-theme="MOCHA"] aside .bg-panel-bg [draggable] span,
+:root[data-theme="MOCHA"] aside .bg-panel-bg div:has(> span > .lucide-folders) span {
+  color: #1e130c !important;
+  font-weight: 600 !important;
+}
+
+:root[data-theme="MOCHA"] aside .bg-panel-bg [draggable] span.text-text-muted,
+:root[data-theme="MOCHA"] aside .bg-panel-bg div:has(> span > .lucide-folders) span.text-text-muted {
+  color: #543928 !important;
+  font-weight: 700 !important;
+}
+
+:root[data-theme="MOCHA"] aside .bg-panel-bg [draggable] svg,
+:root[data-theme="MOCHA"] aside .bg-panel-bg div:has(> span > .lucide-folders) svg {
+  color: #7a3a16 !important;
+}
+
+:root[data-theme="MOCHA"] aside .bg-panel-bg [draggable].bg-accent\/15 {
+  background-color: rgba(122, 58, 22, 0.15) !important;
+  border-color: rgba(122, 58, 22, 0.6) !important;
+}
+
+:root[data-theme="MOCHA"] aside .bg-panel-bg [draggable].bg-accent\/15 span {
+  color: #7a3a16 !important;
+  font-weight: 700 !important;
+}
+
+/* 5. JOG & AUTO SCROLL CONTROLLER (RESTORED TO NEUTRAL DARK - MATCHING BROWN/BLACK) */
+:root[data-theme="MOCHA"] [data-scroll-controls="true"] {
+  --text-main: #d4d4d8 !important;
+  --text-sub: #a1a1aa !important;
+  --text-dim: #71717a !important;
+  --accent: #f59e0b !important;
+}
+
+:root[data-theme="MOCHA"] [data-scroll-controls="true"] > div:last-child {
+  background-color: rgba(24, 24, 27, 0.95) !important;
+  border-color: rgba(63, 63, 70, 0.8) !important;
+  color: #d4d4d8 !important;
+}
+
+:root[data-theme="MOCHA"] [data-scroll-controls="true"] button {
+  background-color: transparent !important;
+  border: none !important;
+  color: #d4d4d8 !important;
+}
+
+:root[data-theme="MOCHA"] [data-scroll-controls="true"] button:hover {
+  background-color: #27272a !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="MOCHA"] [data-scroll-controls="true"] button svg {
+  color: inherit !important;
+}
+
+:root[data-theme="MOCHA"] [data-scroll-controls="true"] div[title*="ホイール回転"] {
+  background-color: transparent !important;
+  border-color: rgba(63, 63, 70, 0.7) !important;
+}
+
+:root[data-theme="MOCHA"] [data-scroll-controls="true"] div[title*="ホイール回転"]:hover {
+  background-color: rgba(39, 39, 42, 0.5) !important;
+}
+
+:root[data-theme="MOCHA"] [data-scroll-controls="true"] div[title*="ホイール回転"] * {
+  color: inherit;
+}
+
+:root[data-theme="MOCHA"] [data-scroll-controls="true"] .bg-amber-500\/20,
+:root[data-theme="MOCHA"] [data-scroll-controls="true"] .bg-amber-500\/15 {
+  background-color: rgba(245, 158, 11, 0.2) !important;
+}
+
+:root[data-theme="MOCHA"] [data-scroll-controls="true"] .text-amber-400,
+:root[data-theme="MOCHA"] [data-scroll-controls="true"] .text-amber-500 {
+  color: #fbbf24 !important;
+}
+
+:root[data-theme="MOCHA"] [data-scroll-controls="true"] .bg-sky-500\/30 {
+  background-color: rgba(14, 165, 233, 0.3) !important;
+}
+
+/* 6. BOTTOM PANEL TABS CONTENT ONLY (.group/bpanel) */
+
+/* General typography inside bottom panel open tab */
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto {
+  color: #1e130c;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto .text-text-muted {
+  color: #543928 !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto .text-text-secondary {
+  color: #25160e !important;
+}
+
+/* 04 STOCK: Store Position Button (Action Bar) */
+:root[data-theme="MOCHA"] .group\/bpanel button[title*="Quick Stock"],
+:root[data-theme="MOCHA"] .group\/bpanel button[title*="ストックに保存"],
+:root[data-theme="MOCHA"] .group\/bpanel button[title*="STORE"] {
+  background-color: #eddcd0 !important;
+  border-color: #bfaaa0 !important;
+  color: #1e130c !important;
+  font-weight: 700 !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel button[title*="Quick Stock"]:hover,
+:root[data-theme="MOCHA"] .group\/bpanel button[title*="ストックに保存"]:hover,
+:root[data-theme="MOCHA"] .group\/bpanel button[title*="STORE"]:hover {
+  background-color: #e2ccbd !important;
+  border-color: #7a3a16 !important;
+  color: #000000 !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel button[title*="Quick Stock"] *,
+:root[data-theme="MOCHA"] .group\/bpanel button[title*="ストックに保存"] *,
+:root[data-theme="MOCHA"] .group\/bpanel button[title*="STORE"] * {
+  color: #1e130c !important;
+  font-weight: 700 !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel button[title*="Quick Stock"] svg,
+:root[data-theme="MOCHA"] .group\/bpanel button[title*="ストックに保存"] svg,
+:root[data-theme="MOCHA"] .group\/bpanel button[title*="STORE"] svg {
+  color: #7a3a16 !important;
+  fill: #7a3a16 !important;
+}
+
+/* 04 STOCK: Clear Button */
+:root[data-theme="MOCHA"] .group\/bpanel button[title*="Clear all"],
+:root[data-theme="MOCHA"] .group\/bpanel button[title*="全ストックを削除"] {
+  background-color: #ffffff !important;
+  border-color: #d1c0b5 !important;
+  color: #543928 !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel button[title*="Clear all"]:hover,
+:root[data-theme="MOCHA"] .group\/bpanel button[title*="全ストックを削除"]:hover {
+  border-color: #f87171 !important;
+  color: #dc2626 !important;
+}
+
+/* 04 STOCK: Card styling (clean white card with dark text, NO brown strip across title) */
+:root[data-theme="MOCHA"] .group\/bpanel .group.flex.flex-col.gap-1 {
+  background-color: #ffffff !important;
+  border-color: #d1c0b5 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .group.flex.flex-col.gap-1.bg-accent\/15 {
+  background-color: #eddcd0 !important;
+  border-color: #7a3a16 !important;
+}
+
+/* Stock Card Title button: Transparent, dark bold text */
+:root[data-theme="MOCHA"] .group\/bpanel .group.flex.flex-col.gap-1 button[title*="クリックしてこの位置へジャンプ"] {
+  background-color: transparent !important;
+  border: none !important;
+  color: #1e130c !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .group.flex.flex-col.gap-1 button[title*="クリックしてこの位置へジャンプ"]:hover {
+  background-color: transparent !important;
+  color: #7a3a16 !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .group.flex.flex-col.gap-1 span {
+  color: #1e130c !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .group.flex.flex-col.gap-1 .text-text-muted,
+:root[data-theme="MOCHA"] .group\/bpanel .group.flex.flex-col.gap-1 .text-text-muted span {
+  color: #543928 !important;
+  font-weight: 600 !important;
+}
+
+/* Percentage badge */
+:root[data-theme="MOCHA"] .group\/bpanel .group.flex.flex-col.gap-1 span.uppercase {
+  background-color: #eddcd0 !important;
+  color: #1e130c !important;
+  border-color: #c4b0a2 !important;
+  font-weight: 700 !important;
+}
+
+/* Action icons inside stock card */
+:root[data-theme="MOCHA"] .group\/bpanel .group.flex.flex-col.gap-1 .flex.items-center.gap-1 button {
+  background-color: transparent !important;
+  border: none !important;
+  color: #543928 !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .group.flex.flex-col.gap-1 .flex.items-center.gap-1 button:hover {
+  color: #1e130c !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .group.flex.flex-col.gap-1 .flex.items-center.gap-1 button svg {
+  color: inherit !important;
+}
+
+/* Small JUMP button at bottom-right */
+:root[data-theme="MOCHA"] .group\/bpanel button[title*="復元ジャンプ"] {
+  background-color: #7a3a16 !important;
+  color: #ffffff !important;
+  border-color: #632d0f !important;
+  font-weight: 700 !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel button[title*="復元ジャンプ"]:hover {
+  background-color: #94481e !important;
+  color: #ffffff !important;
+}
+
+/* [03 CMD]: Shortcut descriptions & Key badges */
+:root[data-theme="MOCHA"] .group\/bpanel .grid.grid-cols-\[auto_1fr\] span {
+  color: #1e130c !important;
+  font-weight: 600 !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .grid.grid-cols-\[auto_1fr\] span.text-accent {
+  color: #7a3a16 !important;
+  font-weight: 700 !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .grid.grid-cols-\[auto_1fr\] kbd {
+  background-color: #3b2c21 !important;
+  border-color: #594537 !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .grid.grid-cols-\[auto_1fr\] kbd.text-accent {
+  background-color: #4a2512 !important;
+  border-color: #8c4518 !important;
+  color: #ffd8bf !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .grid.grid-cols-\[auto_1fr\] kbd.text-amber-400 {
+  background-color: #3d2c18 !important;
+  border-color: #785220 !important;
+  color: #fbbf24 !important;
+}
+
+/* [COLOR] & [GENERAL]: Option cards in bottom panel (grid-cols-2) */
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto .grid.grid-cols-2 button {
+  background-color: #ffffff !important;
+  border-color: #cbbab0 !important;
+  color: #1e130c !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto .grid.grid-cols-2 button:hover {
+  background-color: #f7efe9 !important;
+  border-color: #7a3a16 !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto .grid.grid-cols-2 button * {
+  color: #1e130c !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto .grid.grid-cols-2 button .text-text-muted {
+  color: #543928 !important;
+}
+
+/* Active option card inside bottom panel (e.g. active MOCHA theme, SINGLE CLICK) */
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto .grid.grid-cols-2 button.ring-1,
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto .grid.grid-cols-2 button.border-accent {
+  background-color: #eddcd0 !important;
+  border-color: #7a3a16 !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto .grid.grid-cols-2 button.ring-1 *,
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto .grid.grid-cols-2 button.border-accent * {
+  color: #1e130c !important;
+  font-weight: 700 !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto .grid.grid-cols-2 button.ring-1 span.truncate,
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto .grid.grid-cols-2 button.border-accent span.truncate {
+  color: #7a3a16 !important;
+}
+
+/* Presets inside bottom panel (Sensitivity, Opacity, Font Size) */
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto .flex.items-center.gap-1 button {
+  background-color: #ffffff !important;
+  border-color: #cbbab0 !important;
+  color: #1e130c !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto .flex.items-center.gap-1 button:hover {
+  background-color: #f7efe9 !important;
+  border-color: #7a3a16 !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto .flex.items-center.gap-1 button.border-accent,
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto .flex.items-center.gap-1 button.bg-accent\/20 {
+  background-color: #eddcd0 !important;
+  border-color: #7a3a16 !important;
+  color: #7a3a16 !important;
+  font-weight: 700 !important;
+}
+
+/* Notes & Status Boxes inside bottom panel (AUTO SCROLL NOTES, OFFLINE CACHE) */
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto .p-2.bg-panel-bg.border {
+  background-color: #ffffff !important;
+  border-color: #d1c0b5 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto .p-2.bg-panel-bg.border * {
+  color: #2b1810 !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto .p-2.bg-panel-bg.border .font-bold {
+  color: #1e130c !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto .p-2.bg-panel-bg.border button {
+  background-color: #eddcd0 !important;
+  border-color: #bfaaa0 !important;
+  color: #1e130c !important;
+}
+
+:root[data-theme="MOCHA"] .group\/bpanel .overflow-y-auto .border-t.border-panel-border button {
+  background-color: #eddcd0 !important;
+  border-color: #bfaaa0 !important;
+  color: #1e130c !important;
+  font-weight: 700 !important;
+}
+
+/* ==========================================================================
+   7. CATEGORY EXPLORER VIEW (MAIN PANEL) IN MOCHA THEME
+   High-contrast, industrial, crisp legible text across all view modes
+   ========================================================================== */
+
+/* Overview Bar: ROOT EXPLORER & Item Counts */
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-title-pill {
+  background-color: #f8ede2 !important;
+  border-color: #cbbab0 !important;
+  color: #543928 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-title-pill svg {
+  color: #7a3a16 !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-title-pill span {
+  color: #543928 !important;
+  font-weight: 600 !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-title-pill span.text-text-primary {
+  color: #1e130c !important;
+  font-weight: 700 !important;
+}
+
+/* Grip drag hint */
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-grip-hint {
+  color: #7a3a16 !important;
+  font-weight: 600 !important;
+}
+
+/* Mode Switcher Buttons (TEXT | POPUP | CARD | COVER | LIST) */
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-mode-group {
+  background-color: #f8ede2 !important;
+  border-color: #cbbab0 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-mode-group button {
+  color: #543928 !important;
+  font-weight: 600 !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-mode-group button:hover {
+  background-color: #eddcd0 !important;
+  color: #1e130c !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-mode-group button.bg-accent {
+  background-color: #7a3a16 !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+}
+
+/* K-Navigator Bulk Toolbar */
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-toolbar {
+  background-color: #f8ede2 !important;
+  border-color: #cbbab0 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* Select All Button */
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-toolbar button:has(svg.lucide-square),
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-toolbar button:has(svg.lucide-check-square) {
+  background-color: #ffffff !important;
+  border-color: #cbbab0 !important;
+  color: #1e130c !important;
+  font-weight: 600 !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-toolbar button:has(svg.lucide-check-square) {
+  background-color: #eddcd0 !important;
+  border-color: #7a3a16 !important;
+  color: #7a3a16 !important;
+  font-weight: 700 !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-toolbar button:has(svg.lucide-square) svg {
+  color: #543928 !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-toolbar button:has(svg.lucide-check-square) svg {
+  color: #7a3a16 !important;
+}
+
+/* Selection Count Indicator (0 ITEMS SELECTED) */
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-select-count {
+  background-color: #eddcd0 !important;
+  border-color: #cbbab0 !important;
+  color: #543928 !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-select-count * {
+  color: #543928 !important;
+  font-weight: 700 !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-select-count.bg-accent {
+  background-color: #7a3a16 !important;
+  border-color: #7a3a16 !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-select-count.bg-accent * {
+  color: #ffffff !important;
+}
+
+/* Cancel Button */
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-toolbar button:has(svg.lucide-x) {
+  background-color: #ffffff !important;
+  border-color: #cbbab0 !important;
+  color: #543928 !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-toolbar button:has(svg.lucide-x):hover {
+  border-color: #7a3a16 !important;
+  color: #1e130c !important;
+}
+
+/* Action Buttons (UP, DOWN, REVERSE, RENAME, Move to..., DELETE) */
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-action-btn:disabled {
+  background-color: #f1e4d8 !important;
+  border-color: #d1c0b5 !important;
+  color: #7d6859 !important;
+  opacity: 0.8 !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-action-btn:disabled * {
+  color: #7d6859 !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-action-btn:not(:disabled) {
+  background-color: #ffffff !important;
+  border-color: #7a3a16 !important;
+  color: #7a3a16 !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-action-btn:not(:disabled):hover {
+  background-color: #eddcd0 !important;
+  border-color: #54270f !important;
+  color: #1e130c !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-action-btn:not(:disabled) * {
+  color: inherit !important;
+}
+
+/* Delete Button When Enabled */
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-action-btn.text-red-400:not(:disabled) {
+  background-color: #fef2f2 !important;
+  border-color: #f87171 !important;
+  color: #b91c1c !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-action-btn.text-red-400:not(:disabled):hover {
+  background-color: #b91c1c !important;
+  border-color: #b91c1c !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-action-btn.text-red-400:not(:disabled):hover * {
+  color: #ffffff !important;
+}
+
+/* Section Headers: FOLDERS, DATASETS */
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-section-header {
+  color: #543928 !important;
+  font-weight: 700 !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .explorer-section-header svg {
+  color: #7a3a16 !important;
+}
+
+/* Cards & List Mode Items in CategoryExplorer */
+:root[data-theme="MOCHA"] [data-explorer="true"] .bg-panel-bg\/85,
+:root[data-theme="MOCHA"] [data-explorer="true"] .bg-panel-bg\/90 {
+  background-color: #f8ede2 !important;
+  border-color: #cbbab0 !important;
+  color: #1e130c !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .bg-panel-bg\/85:hover,
+:root[data-theme="MOCHA"] [data-explorer="true"] .bg-panel-bg\/90:hover {
+  border-color: #7a3a16 !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .font-mono.text-sm.font-bold,
+:root[data-theme="MOCHA"] [data-explorer="true"] span.font-bold.truncate {
+  color: #1e130c !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] .text-text-muted {
+  color: #543928 !important;
+}
+
+/* Card Bottom Action Buttons (COVER, MOVE) */
+:root[data-theme="MOCHA"] [data-explorer="true"] button.bg-panel-border\/50 {
+  background-color: #eddcd0 !important;
+  border-color: #bfaaa0 !important;
+  color: #1e130c !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] button.bg-panel-border\/50:hover {
+  background-color: #7a3a16 !important;
+  border-color: #7a3a16 !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] button.bg-panel-border\/50:hover * {
+  color: #ffffff !important;
+}
+
+/* Overlay Badges & Buttons on Cards (COVER, POS: MID, DIR) */
+:root[data-theme="MOCHA"] [data-explorer="true"] [data-overlay-badge="true"] {
+  background-color: rgba(0, 0, 0, 0.85) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] [data-overlay-badge="true"] * {
+  color: #ffffff !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] [data-overlay-badge="true"] .text-amber-400 {
+  color: #fbbf24 !important;
+}
+
+:root[data-theme="MOCHA"] [data-explorer="true"] [data-overlay-badge="true"] svg.text-amber-400 {
+  color: #fbbf24 !important;
+}
+
 

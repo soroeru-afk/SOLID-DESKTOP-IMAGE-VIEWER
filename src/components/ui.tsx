@@ -26,7 +26,7 @@ export const Panel = React.forwardRef<HTMLDivElement, PanelProps>(
             className={cn(
               "flex items-center px-4 py-2 bg-panel-header w-full",
               (!isCollapsible || isExpanded) && "border-b border-panel-border",
-              isCollapsible && "cursor-pointer select-none hover:bg-white/5"
+              isCollapsible && "cursor-pointer select-none"
             )}
             onClick={isCollapsible ? onToggle : undefined}
           >
