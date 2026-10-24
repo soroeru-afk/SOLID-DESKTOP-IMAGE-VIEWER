@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from "react";
+import React, { useEffect, useState, useMemo, useRef, useLayoutEffect } from "react";
 import {
   motion,
   AnimatePresence,
@@ -815,13 +815,7 @@ export default function App() {
   const itemScale = scales[scaleKey] ?? scales[viewMode] ?? (viewMode === "free" ? 350 : 140);
   const gridGap = gaps[scaleKey] ?? gaps[viewMode] ?? 24;
 
-  const setItemScale = (val: number) => {
-    setScales((prev) => ({ ...prev, [scaleKey]: val }));
-  };
 
-  const setGridGap = (val: number) => {
-    setGaps((prev) => ({ ...prev, [scaleKey]: val }));
-  };
 
   const [selectedImage, setSelectedImage] = useState<LoadedImage | null>(null);
   const selectedImageRef = useRef<LoadedImage | null>(null);
@@ -845,7 +839,147 @@ export default function App() {
   const imgY = useMotionValue(0);
   const [imgDims, setImgDims] = useState({ w: 0, h: 0 });
 
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  interface ScrollAnchorState {
+    id: string;
+    targetOffsetY: number;
+    isTop: boolean;
+    isBottom: boolean;
+  }
+
+  const scaleAnchorRef = useRef<ScrollAnchorState | null>(null);
+  const isSliderInteractingRef = useRef<boolean>(false);
+
+  // 画像サイズ(SIZE)・隙間(GAP)変更時に、現在見ている画像の位置を保持するアンカー捕捉関数
+  const captureScrollAnchor = React.useCallback((): ScrollAnchorState | null => {
+    const container = scrollContainerRef.current;
+    if (!container || viewMode === "free") return null;
+
+    const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+
+    // 1. リスト最上部付近（scrollTop <= 5px）の場合は最上部(0px)をアンカー
+    if (container.scrollTop <= 5) {
+      return { id: "__TOP__", targetOffsetY: 0, isTop: true, isBottom: false };
+    }
+
+    // 2. リスト最下部付近の場合は最下部をアンカー
+    if (maxScroll > 20 && container.scrollTop >= maxScroll - 5) {
+      return { id: "__BOTTOM__", targetOffsetY: 0, isTop: false, isBottom: true };
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const centerY = containerRect.top + containerRect.height / 2;
+
+    // 3. 現在選択されている画像が画面内にあれば最優先でアンカーとする
+    let anchorEl: HTMLElement | null = null;
+    if (selectedImageRef.current) {
+      const selEl = document.getElementById(`image-card-${selectedImageRef.current.id}`);
+      if (selEl) {
+        const r = selEl.getBoundingClientRect();
+        if (r.bottom > containerRect.top + 20 && r.top < containerRect.bottom - 20) {
+          anchorEl = selEl;
+        }
+      }
+    }
+
+    // 4. なければ画面中央に最も近い画像カード要素を取得
+    const cardElements = container.querySelectorAll<HTMLElement>("[id^='image-card-']");
+    if (!anchorEl && cardElements.length > 0) {
+      let closestDist = Infinity;
+      for (let i = 0; i < cardElements.length; i++) {
+        const el = cardElements[i];
+        const r = el.getBoundingClientRect();
+        if (r.bottom > containerRect.top && r.top < containerRect.bottom) {
+          const itemCenterY = r.top + r.height / 2;
+          const dist = Math.abs(centerY - itemCenterY);
+          if (dist < closestDist) {
+            closestDist = dist;
+            anchorEl = el;
+          }
+        }
+      }
+
+      // 画面内に完全に入っていない場合のフォールバック（最も近い要素）
+      if (!anchorEl) {
+        for (let i = 0; i < cardElements.length; i++) {
+          const el = cardElements[i];
+          const r = el.getBoundingClientRect();
+          const itemCenterY = r.top + r.height / 2;
+          const dist = Math.abs(centerY - itemCenterY);
+          if (dist < closestDist) {
+            closestDist = dist;
+            anchorEl = el;
+          }
+        }
+      }
+    }
+
+    if (!anchorEl) return null;
+
+    const id = anchorEl.id.replace("image-card-", "");
+    const rect = anchorEl.getBoundingClientRect();
+    const targetOffsetY = (rect.top + rect.height / 2) - containerRect.top;
+
+    return { id, targetOffsetY, isTop: false, isBottom: false };
+  }, [viewMode]);
+
+  const adjustAnchorScroll = React.useCallback(() => {
+    if (!scaleAnchorRef.current) return;
+    const container = scrollContainerRef.current;
+    if (!container || viewMode === "free") {
+      scaleAnchorRef.current = null;
+      return;
+    }
+
+    const anchor = scaleAnchorRef.current;
+    if (anchor.isTop) {
+      container.scrollTop = 0;
+    } else if (anchor.isBottom) {
+      container.scrollTop = container.scrollHeight - container.clientHeight;
+    } else {
+      const el = document.getElementById(`image-card-${anchor.id}`);
+      if (el) {
+        const containerRect = container.getBoundingClientRect();
+        const newRect = el.getBoundingClientRect();
+        const newOffsetY = (newRect.top + newRect.height / 2) - containerRect.top;
+        const delta = newOffsetY - anchor.targetOffsetY;
+        if (Math.abs(delta) > 0.5) {
+          container.scrollTop += delta;
+        }
+      }
+    }
+
+    if (!isSliderInteractingRef.current) {
+      scaleAnchorRef.current = null;
+    }
+  }, [viewMode]);
+
+  // 画像サイズ(itemScale)・隙間(gridGap)の変更時に、見ている画像の位置を保持
+  useLayoutEffect(() => {
+    if (!scaleAnchorRef.current) return;
+    adjustAnchorScroll();
+    const rafId = requestAnimationFrame(() => {
+      adjustAnchorScroll();
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [itemScale, gridGap, adjustAnchorScroll]);
+
+  const setItemScale = (val: number) => {
+    if (val === itemScale) return;
+    if (!scaleAnchorRef.current) {
+      scaleAnchorRef.current = captureScrollAnchor();
+    }
+    setScales((prev) => ({ ...prev, [scaleKey]: val }));
+  };
+
+  const setGridGap = (val: number) => {
+    if (val === gridGap) return;
+    if (!scaleAnchorRef.current) {
+      scaleAnchorRef.current = captureScrollAnchor();
+    }
+    setGaps((prev) => ({ ...prev, [scaleKey]: val }));
+  };
   const pendingFullscreenNav = useRef<{ direction: "next" | "prev"; datasetId: string } | null>(null);
 
   // Auto Scroll States & Loop
@@ -6204,9 +6338,42 @@ Images imported: ${importedImages}`);
                 min="60"
                 max="750"
                 value={itemScale}
+                onPointerDown={() => {
+                  isSliderInteractingRef.current = true;
+                  scaleAnchorRef.current = captureScrollAnchor();
+                }}
                 onChange={(e) => setItemScale(Number(e.target.value))}
-                onPointerUp={(e) => (e.currentTarget as HTMLElement).blur()}
-                onMouseUp={(e) => (e.currentTarget as HTMLElement).blur()}
+                onPointerUp={(e) => {
+                  isSliderInteractingRef.current = false;
+                  requestAnimationFrame(() => {
+                    adjustAnchorScroll();
+                    scaleAnchorRef.current = null;
+                  });
+                  (e.currentTarget as HTMLElement).blur();
+                }}
+                onMouseUp={(e) => {
+                  isSliderInteractingRef.current = false;
+                  requestAnimationFrame(() => {
+                    adjustAnchorScroll();
+                    scaleAnchorRef.current = null;
+                  });
+                  (e.currentTarget as HTMLElement).blur();
+                }}
+                onTouchEnd={() => {
+                  isSliderInteractingRef.current = false;
+                  requestAnimationFrame(() => {
+                    adjustAnchorScroll();
+                    scaleAnchorRef.current = null;
+                  });
+                }}
+                onPointerCancel={() => {
+                  isSliderInteractingRef.current = false;
+                  scaleAnchorRef.current = null;
+                }}
+                onBlur={() => {
+                  isSliderInteractingRef.current = false;
+                  scaleAnchorRef.current = null;
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     (e.currentTarget as HTMLElement).blur();
@@ -6225,9 +6392,42 @@ Images imported: ${importedImages}`);
                 min="0"
                 max="120"
                 value={gridGap}
+                onPointerDown={() => {
+                  isSliderInteractingRef.current = true;
+                  scaleAnchorRef.current = captureScrollAnchor();
+                }}
                 onChange={(e) => setGridGap(Number(e.target.value))}
-                onPointerUp={(e) => (e.currentTarget as HTMLElement).blur()}
-                onMouseUp={(e) => (e.currentTarget as HTMLElement).blur()}
+                onPointerUp={(e) => {
+                  isSliderInteractingRef.current = false;
+                  requestAnimationFrame(() => {
+                    adjustAnchorScroll();
+                    scaleAnchorRef.current = null;
+                  });
+                  (e.currentTarget as HTMLElement).blur();
+                }}
+                onMouseUp={(e) => {
+                  isSliderInteractingRef.current = false;
+                  requestAnimationFrame(() => {
+                    adjustAnchorScroll();
+                    scaleAnchorRef.current = null;
+                  });
+                  (e.currentTarget as HTMLElement).blur();
+                }}
+                onTouchEnd={() => {
+                  isSliderInteractingRef.current = false;
+                  requestAnimationFrame(() => {
+                    adjustAnchorScroll();
+                    scaleAnchorRef.current = null;
+                  });
+                }}
+                onPointerCancel={() => {
+                  isSliderInteractingRef.current = false;
+                  scaleAnchorRef.current = null;
+                }}
+                onBlur={() => {
+                  isSliderInteractingRef.current = false;
+                  scaleAnchorRef.current = null;
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     (e.currentTarget as HTMLElement).blur();
@@ -7152,14 +7352,14 @@ Images imported: ${importedImages}`);
                             }
                           }}
                           className={cn(
-                            "px-1.5 py-0.5 transition-all flex items-center gap-1 border rounded-xs cursor-pointer",
+                            "px-1.5 py-0.5 transition-colors duration-150 flex items-center gap-1 border rounded-xs cursor-pointer font-bold shrink-0 select-none",
                             !isTrackInfoCollapsed && bottomPanelTab === "command"
-                              ? "bg-accent text-accent-text font-bold border-accent shadow-xs"
+                              ? "bg-accent text-accent-text border-accent shadow-xs"
                               : "border-transparent text-text-secondary hover:text-text-primary hover:bg-white/5"
                           )}
                           title={t("Command Shortcut List", "ショートカット一覧")}
                         >
-                          <Terminal size={11} />
+                          <Terminal size={11} className="shrink-0" />
                           <span>{t("03 CMD", "03 コマンド")}</span>
                         </button>
 
@@ -7178,14 +7378,14 @@ Images imported: ${importedImages}`);
                             }
                           }}
                           className={cn(
-                            "px-1.5 py-0.5 transition-all flex items-center gap-1 border rounded-xs cursor-pointer",
+                            "px-1.5 py-0.5 transition-colors duration-150 flex items-center gap-1 border rounded-xs cursor-pointer font-bold shrink-0 select-none",
                             !isTrackInfoCollapsed && bottomPanelTab === "general"
-                              ? "bg-accent text-accent-text font-bold border-accent shadow-xs"
+                              ? "bg-accent text-accent-text border-accent shadow-xs"
                               : "border-transparent text-text-secondary hover:text-text-primary hover:bg-white/5"
                           )}
                           title={t("General & Wheel Settings", "ホイール・一般設定")}
                         >
-                          <Mouse size={11} />
+                          <Mouse size={11} className="shrink-0" />
                           <span>{t("GENERAL", "一般設定")}</span>
                         </button>
 
@@ -7204,14 +7404,14 @@ Images imported: ${importedImages}`);
                             }
                           }}
                           className={cn(
-                            "px-1.5 py-0.5 transition-all flex items-center gap-1 border rounded-xs cursor-pointer",
+                            "px-1.5 py-0.5 transition-colors duration-150 flex items-center gap-1 border rounded-xs cursor-pointer font-bold shrink-0 select-none",
                             !isTrackInfoCollapsed && bottomPanelTab === "appearance"
-                              ? "bg-accent text-accent-text font-bold border-accent shadow-xs"
+                              ? "bg-accent text-accent-text border-accent shadow-xs"
                               : "border-transparent text-text-secondary hover:text-text-primary hover:bg-white/5"
                           )}
                           title={t("Appearance & Color Settings", "外観・カラー設定")}
                         >
-                          <Palette size={11} />
+                          <Palette size={11} className="shrink-0" />
                           <span>{t("COLOR", "外観・カラー")}</span>
                         </button>
 
@@ -7230,18 +7430,18 @@ Images imported: ${importedImages}`);
                             }
                           }}
                           className={cn(
-                            "px-1.5 py-0.5 transition-all flex items-center gap-1 border rounded-xs cursor-pointer",
+                            "px-1.5 py-0.5 transition-colors duration-150 flex items-center gap-1 border rounded-xs cursor-pointer font-bold shrink-0 select-none",
                             !isTrackInfoCollapsed && bottomPanelTab === "stock"
-                              ? "bg-accent text-accent-text font-bold border-accent shadow-xs"
+                              ? "bg-accent text-accent-text border-accent shadow-xs"
                               : "border-transparent text-text-secondary hover:text-text-primary hover:bg-white/5"
                           )}
                           title={t("Quick Stock (Save & restore scroll states)", "クイックストック（閲覧・スクロール位置保存）")}
                         >
-                          <Zap size={11} className={!isTrackInfoCollapsed && bottomPanelTab === "stock" ? "fill-current" : "text-text-muted"} />
+                          <Zap size={11} className={cn("shrink-0", !isTrackInfoCollapsed && bottomPanelTab === "stock" ? "fill-current" : "text-text-muted")} />
                           <span>{t("STOCK", "ストック")}</span>
                           {quickStocks.length > 0 && (
                             <span className={cn(
-                              "text-[8px] px-1 py-0 rounded-full font-mono font-bold leading-none",
+                              "text-[8px] px-1 py-0 rounded-full font-mono font-bold leading-none shrink-0 tabular-nums",
                               !isTrackInfoCollapsed && bottomPanelTab === "stock" ? "bg-black/20 text-accent-text" : "bg-panel-border/60 text-text-muted"
                             )}>
                               {quickStocks.length}
