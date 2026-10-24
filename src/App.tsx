@@ -856,43 +856,32 @@ export default function App() {
     const container = scrollContainerRef.current;
     if (!container || viewMode === "free") return null;
 
-    const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
-
-    // 1. リスト最上部付近（scrollTop <= 5px）の場合は最上部(0px)をアンカー
-    if (container.scrollTop <= 5) {
-      return { id: "__TOP__", targetOffsetY: 0, isTop: true, isBottom: false };
-    }
-
-    // 2. リスト最下部付近の場合は最下部をアンカー
-    if (maxScroll > 20 && container.scrollTop >= maxScroll - 5) {
-      return { id: "__BOTTOM__", targetOffsetY: 0, isTop: false, isBottom: true };
-    }
-
     const containerRect = container.getBoundingClientRect();
-    const centerY = containerRect.top + containerRect.height / 2;
+    const viewportCenterY = containerRect.height / 2;
 
-    // 3. 現在選択されている画像が画面内にあれば最優先でアンカーとする
+    // 1. 現在選択されている画像が画面内にあれば最優先でアンカーとする
     let anchorEl: HTMLElement | null = null;
     if (selectedImageRef.current) {
       const selEl = document.getElementById(`image-card-${selectedImageRef.current.id}`);
       if (selEl) {
         const r = selEl.getBoundingClientRect();
-        if (r.bottom > containerRect.top + 20 && r.top < containerRect.bottom - 20) {
+        if (r.bottom > containerRect.top && r.top < containerRect.bottom) {
           anchorEl = selEl;
         }
       }
     }
 
-    // 4. なければ画面中央に最も近い画像カード要素を取得
+    // 2. なければ画面中央に最も近い画像カード要素を取得
     const cardElements = container.querySelectorAll<HTMLElement>("[id^='image-card-']");
     if (!anchorEl && cardElements.length > 0) {
       let closestDist = Infinity;
+      const absoluteCenterY = containerRect.top + viewportCenterY;
       for (let i = 0; i < cardElements.length; i++) {
         const el = cardElements[i];
         const r = el.getBoundingClientRect();
         if (r.bottom > containerRect.top && r.top < containerRect.bottom) {
           const itemCenterY = r.top + r.height / 2;
-          const dist = Math.abs(centerY - itemCenterY);
+          const dist = Math.abs(absoluteCenterY - itemCenterY);
           if (dist < closestDist) {
             closestDist = dist;
             anchorEl = el;
@@ -900,13 +889,13 @@ export default function App() {
         }
       }
 
-      // 画面内に完全に入っていない場合のフォールバック（最も近い要素）
+      // 画面内に完全に入るものが無かった場合のフォールバック（最も近い要素）
       if (!anchorEl) {
         for (let i = 0; i < cardElements.length; i++) {
           const el = cardElements[i];
           const r = el.getBoundingClientRect();
           const itemCenterY = r.top + r.height / 2;
-          const dist = Math.abs(centerY - itemCenterY);
+          const dist = Math.abs(absoluteCenterY - itemCenterY);
           if (dist < closestDist) {
             closestDist = dist;
             anchorEl = el;
@@ -915,11 +904,20 @@ export default function App() {
       }
     }
 
-    if (!anchorEl) return null;
+    // 画像カードが全く存在しない場合のみスクロール位置で判定
+    if (!anchorEl) {
+      if (container.scrollTop <= 5) {
+        return { id: "__TOP__", targetOffsetY: 0, isTop: true, isBottom: false };
+      }
+      return null;
+    }
 
     const id = anchorEl.id.replace("image-card-", "");
     const rect = anchorEl.getBoundingClientRect();
-    const targetOffsetY = (rect.top + rect.height / 2) - containerRect.top;
+    const currentOffsetY = (rect.top + rect.height / 2) - containerRect.top;
+    // 画面中央付近（中央±25%以内）にあれば画面中央に固定、それ以外は現在の視線オフセットを正確に維持
+    const isNearCenter = Math.abs(currentOffsetY - viewportCenterY) < containerRect.height * 0.25;
+    const targetOffsetY = isNearCenter ? viewportCenterY : currentOffsetY;
 
     return { id, targetOffsetY, isTop: false, isBottom: false };
   }, [viewMode]);
@@ -942,10 +940,15 @@ export default function App() {
       if (el) {
         const containerRect = container.getBoundingClientRect();
         const newRect = el.getBoundingClientRect();
-        const newOffsetY = (newRect.top + newRect.height / 2) - containerRect.top;
-        const delta = newOffsetY - anchor.targetOffsetY;
-        if (Math.abs(delta) > 0.5) {
-          container.scrollTop += delta;
+        // コンテナのスクロール位置を加味した要素中心の絶対ContentY座標
+        const elCenterContentY = container.scrollTop + (newRect.top - containerRect.top) + (newRect.height / 2);
+        // 目標とするscrollTop = 要素中心の絶対ContentY座標 - ビューポート内オフセット
+        const desiredScrollTop = elCenterContentY - anchor.targetOffsetY;
+        const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+        const clampedScrollTop = Math.max(0, Math.min(maxScroll, desiredScrollTop));
+
+        if (Math.abs(container.scrollTop - clampedScrollTop) >= 0.5) {
+          container.scrollTop = clampedScrollTop;
         }
       }
     }
@@ -955,7 +958,7 @@ export default function App() {
     }
   }, [viewMode]);
 
-  // 画像サイズ(itemScale)・隙間(gridGap)の変更時に、見ている画像の位置を保持
+  // 画像サイズ(itemScale)・隙間(gridGap)の変更時に、今見ている画像の位置を維持
   useLayoutEffect(() => {
     if (!scaleAnchorRef.current) return;
     adjustAnchorScroll();
@@ -6019,7 +6022,7 @@ Images imported: ${importedImages}`);
 
             return (
               <div
-                className="shrink-0 border border-panel-border overflow-hidden flex items-center justify-center bg-panel-bg transition-all"
+                className="shrink-0 border border-panel-border overflow-hidden flex items-center justify-center bg-panel-bg transition-colors"
                 style={{
                   width: `${boxSize}px`,
                   height: `${boxSize}px`,
