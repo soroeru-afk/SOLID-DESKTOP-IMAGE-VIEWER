@@ -2932,7 +2932,7 @@ function createPRNG(seed: number) {
           if (comparison === 0) {
             comparison = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
           }
-          return comparison; // カスタム順は常に0..Nの絶対配置（反転させない）
+          return comparison; // カスタムは常に0..Nの絶対配置（反転させない）
         }
       }
       return sortOrders[sortField] === "asc" ? comparison : -comparison;
@@ -5649,9 +5649,9 @@ Images imported: ${importedImages}`);
       if (forceNewDataset || !targetDatasetId || targetDatasetId === "all") {
         const dsName = folderNames.length > 0 ? folderNames[0] : "NEW DATASET";
         const ds = await createDataset(dsName.toUpperCase());
-        if (activeCategoryId) {
-          await updateDatasetCategory(ds.id, activeCategoryId);
-        }
+        // カオルさまのご指定: D&Dによる新規作成時は常にルート直下に作成
+        setActiveCategoryId(null);
+        setIsCategoryImagesView(false);
         targetDatasetId = ds.id;
         setActiveDatasetId(ds.id);
         await loadDatasets();
@@ -5663,9 +5663,9 @@ Images imported: ${importedImages}`);
     } else if (e.dataTransfer && e.dataTransfer.files) {
       if (forceNewDataset || !activeDatasetId || activeDatasetId === "all") {
          const ds = await createDataset("NEW DATASET");
-         if (activeCategoryId) {
-           await updateDatasetCategory(ds.id, activeCategoryId);
-         }
+         // カオルさまのご指定: D&Dによる新規作成時は常にルート直下に作成
+         setActiveCategoryId(null);
+         setIsCategoryImagesView(false);
          setActiveDatasetId(ds.id);
          await loadDatasets();
          await processFiles(e.dataTransfer.files, ds.id, true);
@@ -10398,12 +10398,7 @@ Images imported: ${importedImages}`);
                           {t("CREATE BY FOLDER", "フォルダー名でリスト作成")}
                         </span>
                         <span className="font-mono text-xs opacity-80 max-w-sm truncate px-2">
-                          {activeCategoryId
-                            ? t(
-                                `Create new list under folder "${categories.find((c) => c.id === activeCategoryId)?.name || ""}"`,
-                                `フォルダー「${categories.find((c) => c.id === activeCategoryId)?.name || ""}」内に新規リストを作成`
-                              )
-                            : t("Create a new dataset automatically from folder name", "フォルダー名から新しいリスト（データセット）を自動作成")}
+                          {t("Create a new dataset directly at root level from folder name", "フォルダー名からルート直下に新しいリスト（データセット）を作成")}
                         </span>
                       </div>
                     </div>
