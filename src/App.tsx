@@ -455,18 +455,33 @@ export default function App() {
     setTheme((prev) => themes[(themes.indexOf(prev as any) + 1) % themes.length]);
   };
 
-  const [sortField, setSortField] = useState<"name" | "size" | "type" | "date" | "custom" | "random">(
-    "name",
-  );
+  const [sortField, setSortField] = useState<"name" | "size" | "type" | "date" | "custom" | "random">(() => {
+    const saved = localStorage.getItem("app_sort_field");
+    return (saved as any) || "name";
+  });
   const [orientationFilter, setOrientationFilter] = useState<"all" | "portrait" | "landscape">("all");
   const [randomSeed, setRandomSeed] = useState(0);
-  const [sortOrders, setSortOrders] = useState<Record<string, "asc" | "desc">>({
-    name: "asc",
-    size: "desc",
-    type: "asc",
-    date: "desc",
-    custom: "asc",
+  const [sortOrders, setSortOrders] = useState<Record<string, "asc" | "desc">>(() => {
+    try {
+      const saved = localStorage.getItem("app_sort_orders");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {
+      name: "asc",
+      size: "desc",
+      type: "asc",
+      date: "desc",
+      custom: "asc",
+    };
   });
+
+  useEffect(() => {
+    localStorage.setItem("app_sort_field", sortField);
+  }, [sortField]);
+
+  useEffect(() => {
+    localStorage.setItem("app_sort_orders", JSON.stringify(sortOrders));
+  }, [sortOrders]);
   const [scales, setScales] = useState<Record<string, number>>({
     "grid-sq": 140,
     "grid-ma": 140,
@@ -2910,10 +2925,15 @@ function createPRNG(seed: number) {
         case "date":
           comparison = (a.addedAt || a.lastModified) - (b.addedAt || b.lastModified);
           break;
-        case "custom":
-          comparison = (a.orderIndex ?? 0) - (b.orderIndex ?? 0);
-          if (comparison === 0) comparison = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+        case "custom": {
+          const orderA = a.orderIndex !== undefined ? a.orderIndex : Infinity;
+          const orderB = b.orderIndex !== undefined ? b.orderIndex : Infinity;
+          comparison = orderA - orderB;
+          if (comparison === 0) {
+            comparison = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+          }
           return comparison; // カスタム順は常に0..Nの絶対配置（反転させない）
+        }
       }
       return sortOrders[sortField] === "asc" ? comparison : -comparison;
     });
@@ -4295,14 +4315,14 @@ Images imported: ${importedImages}`);
       orderIndex: idx,
     }));
 
-    setImages((prev) => {
-      const copy = [...prev];
-      for (const update of updates) {
-        const pImg = copy.find((c) => c.id === update.id);
-        if (pImg) pImg.orderIndex = update.orderIndex;
-      }
-      return copy;
-    });
+    const orderMap = new Map(updates.map((u) => [u.id, u.orderIndex]));
+    setImages((prev) =>
+      prev.map((img) =>
+        orderMap.has(img.id)
+          ? { ...img, orderIndex: orderMap.get(img.id)! }
+          : img
+      )
+    );
 
     await updateImagesOrder(updates);
   };
@@ -4794,15 +4814,15 @@ Images imported: ${importedImages}`);
         orderIndex: idx,
       }));
 
-      // ステートの images にも反映
-      setImages((prev) => {
-        const copy = [...prev];
-        for (const u of updates) {
-          const item = copy.find((c) => c.id === u.id);
-          if (item) item.orderIndex = u.orderIndex;
-        }
-        return copy;
-      });
+      // ステートの images にも確実にイミュータブルに反映
+      const orderMap = new Map(updates.map((u) => [u.id, u.orderIndex]));
+      setImages((prev) =>
+        prev.map((img) =>
+          orderMap.has(img.id)
+            ? { ...img, orderIndex: orderMap.get(img.id)! }
+            : img
+        )
+      );
 
       // IndexedDB へ保存
       await updateImagesOrder(updates);
@@ -4837,7 +4857,9 @@ Images imported: ${importedImages}`);
 
     // 常に orderIndex 昇順（画面上＝0、画面下＝N）で基準配列を構築
     const currentImages = [...sortedImages].sort((a, b) => {
-      const cmp = (a.orderIndex ?? 0) - (b.orderIndex ?? 0);
+      const orderA = a.orderIndex !== undefined ? a.orderIndex : Infinity;
+      const orderB = b.orderIndex !== undefined ? b.orderIndex : Infinity;
+      const cmp = orderA - orderB;
       return cmp !== 0 ? cmp : (a.addedAt || a.lastModified) - (b.addedAt || b.lastModified);
     });
 
@@ -4886,23 +4908,17 @@ Images imported: ${importedImages}`);
 
     const updates = newImages.map((img, i) => ({ id: img.id, orderIndex: i }));
 
-    // UIを即時反映するためステートを先行同期
-    setImages(prev => {
-      const copy = [...prev];
-      for (const update of updates) {
-        const item = copy.find(c => c.id === update.id);
-        if (item) item.orderIndex = update.orderIndex;
-      }
-      return copy;
-    });
+    // UIを即時反映するためステートを先行同期（イミュータブル）
+    const orderMap = new Map(updates.map(u => [u.id, u.orderIndex]));
+    setImages(prev =>
+      prev.map(item =>
+        orderMap.has(item.id)
+          ? { ...item, orderIndex: orderMap.get(item.id)! }
+          : item
+      )
+    );
 
     await updateImagesOrder(updates);
-
-    if (activeDatasetId) {
-      await loadImages(activeDatasetId);
-    } else if (activeCategoryId) {
-      await loadImagesForCategory(activeCategoryId);
-    }
     setIsLoading(false);
   };
 
@@ -5789,6 +5805,7 @@ Images imported: ${importedImages}`);
       <motion.div
         id={`image-card-${img.id}`}
         key={img.id}
+        data-id={img.id}
         layout={false}
         drag={viewMode === "free" && !isFullscreen && !isCardRotating}
         dragConstraints={viewMode === "free" && !isFullscreen && !isCardRotating ? scatterContainerRef : false}
@@ -5980,6 +5997,7 @@ Images imported: ${importedImages}`);
       }}
       className={cn(
         "cursor-pointer overflow-hidden min-w-0 min-h-0 relative transition-colors rounded-none group",
+        isSelectionMode && sortField === "custom" && (viewMode === "grid-sq" || viewMode === "list") && "image-sort-handle cursor-grab active:cursor-grabbing",
         viewMode === "free" ? "bg-transparent border-none" : "bg-panel-bg border",
         isSelected || isMultiSelected
           ? "border-2 border-accent ring-2 ring-accent/60 ring-offset-1 ring-offset-panel-bg shadow-[0_0_18px_var(--color-accent-glow)] z-10 scale-[1.01]"
@@ -9388,8 +9406,27 @@ Images imported: ${importedImages}`);
                     <RefreshCw size={12} className="mr-1" /> RELOAD
                   </button>
                   <button
-                    onClick={() => setIsSelectionMode(true)}
-                    className="text-[10px] uppercase font-mono tracking-wider text-accent transition-colors hover:text-accent border border-accent/20 hover:border-accent/50 px-2 py-0.5 rounded-sm flex items-center justify-center bg-accent/5"
+                    onClick={() => {
+                      setIsSelectionMode(true);
+                      if (sortField !== "custom") {
+                        const currentOrderUpdates = sortedImages.map((img, idx) => ({
+                          id: img.id,
+                          orderIndex: idx,
+                        }));
+                        const orderMap = new Map(currentOrderUpdates.map((u) => [u.id, u.orderIndex]));
+                        setImages((prev) =>
+                          prev.map((img) =>
+                            orderMap.has(img.id) ? { ...img, orderIndex: orderMap.get(img.id)! } : img
+                          )
+                        );
+                        setSortField("custom");
+                        setSortOrders((prev) => ({ ...prev, custom: "asc" }));
+                        setIsCustomOrderingPending(true);
+                      } else {
+                        setSortOrders((prev) => ({ ...prev, custom: "asc" }));
+                      }
+                    }}
+                    className="text-[10px] uppercase font-mono tracking-wider text-accent transition-colors hover:text-accent border border-accent/20 hover:border-accent/50 px-2 py-0.5 rounded-sm flex items-center justify-center bg-accent/5 cursor-pointer"
                   >
                     EDIT
                   </button>
