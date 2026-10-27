@@ -1807,9 +1807,14 @@ export default function App() {
 
 
 
-  const [sidebarPosition, setSidebarPosition] = useState<"left" | "right">(
-    "left",
-  );
+  const [sidebarPosition, setSidebarPosition] = useState<"left" | "right">(() => {
+    const saved = localStorage.getItem("app_sidebar_position");
+    return saved === "right" || saved === "left" ? saved : "left";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("app_sidebar_position", sidebarPosition);
+  }, [sidebarPosition]);
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [isHeaderVisible, setIsHeaderVisible] = useState(true);
   const [language, setLanguage] = useState<"EN" | "JP">("EN");
