@@ -424,7 +424,8 @@ export default function App() {
   const [canvasBg, setCanvasBg] = useState<
     "theme" | "auto" | "black" | "white" | "checker"
   >("theme");
-  const isLightTheme = theme === "LIGHT" || theme === "PAPER";
+  const isLightTheme = theme === "LIGHT";
+  const isPaperTheme = theme === "PAPER";
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const themeMenuRef = useRef<HTMLDivElement>(null);
   const [isCustomMenuOpen, setIsCustomMenuOpen] = useState(false);
@@ -784,7 +785,7 @@ export default function App() {
     let color = "#0B0C0D"; // default for BLACK
     if (theme === "TRUE_BLACK") color = "#000000";
     else if (theme === "LIGHT") color = "#e2e8f0";
-    else if (theme === "PAPER") color = "#f5f5f0";
+    else if (theme === "PAPER") color = "#F2EFE6";
     else if (theme === "RED") color = "#0d0404";
     else if (theme === "NAVY") color = "#06090e";
     else if (theme === "BROWN") color = "#1a1614";
@@ -2446,7 +2447,7 @@ export default function App() {
   const DEFAULT_THEME_FOLDER_COLORS: Record<AppTheme, string> = {
     NAVY: "#fbbf24",
     LIGHT: "#d97706",
-    PAPER: "#d94f26",
+    PAPER: "#d9532f",
     BLACK: "#fbbf24",
     TRUE_BLACK: "#fbbf24",
     RED: "#f87171",
@@ -2462,7 +2463,7 @@ export default function App() {
         return {
           NAVY: "#fbbf24",
           LIGHT: "#d97706",
-          PAPER: "#d94f26",
+          PAPER: "#d9532f",
           BLACK: "#fbbf24",
           TRUE_BLACK: "#fbbf24",
           RED: "#f87171",
@@ -2477,7 +2478,7 @@ export default function App() {
     return {
       NAVY: "#fbbf24",
       LIGHT: "#d97706",
-      PAPER: "#d94f26",
+      PAPER: "#d9532f",
       BLACK: "#fbbf24",
       TRUE_BLACK: "#fbbf24",
       RED: "#f87171",
@@ -5733,7 +5734,7 @@ Images imported: ${importedImages}`);
       // 通常の長方形写真・イラスト画像は、画像ごとの明暗解析で混在せず選択テーマ背景色で100%完全統一！
       const curTheme = theme.toUpperCase();
       if (curTheme === "LIGHT" || curTheme === "PAPER") {
-        return "bg-white"; // LIGHT・PAPER時は完全な白 (White)
+        return "bg-white"; // LIGHT・PAPER時は白 (White)
       }
       if (curTheme === "NAVY") {
         return "bg-[#080c14]"; // NAVY時は落ち着いたダークネイビー
@@ -6599,7 +6600,7 @@ Images imported: ${importedImages}`);
                         : theme === "TRUE_BLACK"
                         ? "#000000"
                         : theme === "PAPER"
-                        ? "#d94f26"
+                        ? "#d9532f"
                         : theme === "PINK"
                         ? "#e06b8b"
                         : theme === "LIGHT"
@@ -6655,7 +6656,7 @@ Images imported: ${importedImages}`);
                     { id: "NAVY", label: "NAVY", dot: "#2563eb" },
                     { id: "BLACK", label: "BLACK", dot: "#334155" },
                     { id: "TRUE_BLACK", label: "TRUE BLACK", dot: "#000000" },
-                    { id: "PAPER", label: "PAPER", dot: "#d94f26" },
+                    { id: "PAPER", label: "PAPER", dot: "#d9532f" },
                     { id: "PINK", label: "PINK", dot: "#e06b8b" },
                     { id: "LIGHT", label: "LIGHT", dot: "#0284c7" },
                     { id: "BROWN", label: "BROWN", dot: "#b45309" },
@@ -8312,7 +8313,7 @@ Images imported: ${importedImages}`);
                                   { id: "NAVY", label: "NAVY (ネイビー)", bg: "#06090e", panel: "#0b111a", accent: "#3b82f6" },
                                   { id: "BLACK", label: "BLACK (ブラック)", bg: "#0B0C0D", panel: "#14161A", accent: "#e2e5e9" },
                                   { id: "TRUE_BLACK", label: "TRUE BLACK (有機EL)", bg: "#000000", panel: "#0a0a0a", accent: "#ffffff" },
-                                  { id: "PAPER", label: "PAPER (セピア)", bg: "#f5f5f0", panel: "#ffffff", accent: "#d94f26" },
+                                  { id: "PAPER", label: "PAPER (ペーパー)", bg: "#F2EFE6", panel: "#ffffff", accent: "#d9532f" },
                                   { id: "PINK", label: "PINK (ピンク)", bg: "#1a1215", panel: "#241a1d", accent: "#e06b8b" },
                                   { id: "LIGHT", label: "LIGHT (ライト)", bg: "#e2e8f0", panel: "#f8fafc", accent: "#0f172a" },
                                   { id: "BROWN", label: "BROWN (ブラウン)", bg: "#1a1614", panel: "#241e1b", accent: "#d6a076" },
@@ -9019,7 +9020,9 @@ Images imported: ${importedImages}`);
                     onClick={handleSaveCustomOrder}
                     className={cn(
                       "h-6 px-2.5 font-mono text-[10px] font-bold rounded-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer select-none",
-                      isLightTheme
+                      isPaperTheme
+                        ? "bg-[#2d241e] hover:bg-[#43372c] text-[#faf7f2] border border-[#2d241e]"
+                        : isLightTheme
                         ? "bg-black hover:bg-neutral-800 text-white border border-black"
                         : "bg-white hover:bg-neutral-200 text-black border border-white"
                     )}
@@ -10020,34 +10023,36 @@ Images imported: ${importedImages}`);
                     <div
                       className={cn(
                         "absolute right-full mr-3 bottom-0 whitespace-nowrap backdrop-blur-md px-3 py-1.5 shadow-2xl flex flex-col items-end pointer-events-none animate-in fade-in zoom-in-95 duration-100",
-                        isLightTheme
+                        isPaperTheme
+                          ? "bg-white/95 text-[#2d241e] border border-[#ded7c8] shadow-xl"
+                          : isLightTheme
                           ? "bg-white/95 text-gray-900 border border-gray-300 shadow-xl"
                           : "bg-black/90 text-white border border-gray-600/80"
                       )}
                     >
                       <div className="flex items-center gap-1.5 font-mono text-[12px] font-bold tracking-tight tabular-nums">
                         {(jogDragState.active ? jogDragState.dir : autoScrollDir) === "up" ? (
-                          <span className={cn("flex items-center gap-0.5", isLightTheme ? "text-amber-600" : "text-amber-400")}>
+                          <span className={cn("flex items-center gap-0.5", isPaperTheme ? "text-[#d9532f]" : isLightTheme ? "text-amber-600" : "text-amber-400")}>
                             <ChevronUp size={13} className="stroke-[3]" />
                             UP
                           </span>
                         ) : (jogDragState.active ? jogDragState.dir : autoScrollDir) === "down" ? (
-                          <span className={cn("flex items-center gap-0.5", isLightTheme ? "text-sky-600" : "text-sky-400")}>
+                          <span className={cn("flex items-center gap-0.5", isPaperTheme ? "text-sky-700" : isLightTheme ? "text-sky-600" : "text-sky-400")}>
                             <ChevronDown size={13} className="stroke-[3]" />
                             DOWN
                           </span>
                         ) : (
-                          <span className={isLightTheme ? "text-gray-500" : "text-gray-300"}>STOPPED</span>
+                          <span className={isPaperTheme ? "text-[#8c8071]" : isLightTheme ? "text-gray-500" : "text-gray-300"}>STOPPED</span>
                         )}
-                        <span className={isLightTheme ? "text-gray-900" : "text-white"}>
+                        <span className={isPaperTheme ? "text-[#2d241e]" : isLightTheme ? "text-gray-900" : "text-white"}>
                           {jogDragState.active ? jogDragState.currentSpeed : autoScrollPxPerSec}{" "}
-                          <span className={cn("text-[10px]", isLightTheme ? "text-gray-500" : "text-gray-400")}>px/s</span>
+                          <span className={cn("text-[10px]", isPaperTheme ? "text-[#5e5447]" : isLightTheme ? "text-gray-500" : "text-gray-400")}>px/s</span>
                         </span>
-                        <span className={cn("text-[11px] font-mono", isLightTheme ? "text-amber-700" : "text-amber-300")}>
+                        <span className={cn("text-[11px] font-mono", isPaperTheme ? "text-[#d9532f]" : isLightTheme ? "text-amber-700" : "text-amber-300")}>
                           ({((jogDragState.active ? jogDragState.currentSpeed : autoScrollPxPerSec) / 250).toFixed(1)}x)
                         </span>
                       </div>
-                      <div className={cn("text-[9px] font-mono tracking-wider mt-0.5", isLightTheme ? "text-gray-500" : "text-gray-400")}>
+                      <div className={cn("text-[9px] font-mono tracking-wider mt-0.5", isPaperTheme ? "text-[#5e5447]" : isLightTheme ? "text-gray-500" : "text-gray-400")}>
                         WHEEL: SPEED • DRAG: SPEED • CLICK: STOP
                       </div>
                     </div>
@@ -10058,7 +10063,9 @@ Images imported: ${importedImages}`);
                     onWheel={handleJogWheel}
                     className={cn(
                       "flex flex-col items-center backdrop-blur-md shadow-md w-11 rounded-none overflow-hidden transition-colors",
-                      isLightTheme
+                      isPaperTheme
+                        ? "bg-white/95 border border-[#ded7c8] text-[#2d241e]"
+                        : isLightTheme
                         ? "bg-white/95 border border-gray-300 text-gray-700"
                         : "bg-[#18181b]/95 border border-gray-700/80 text-gray-300"
                     )}
@@ -10072,7 +10079,9 @@ Images imported: ${importedImages}`);
                       }}
                       className={cn(
                         "w-full h-7 flex items-center justify-center transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
-                        isLightTheme
+                        isPaperTheme
+                          ? "text-[#5e5447] hover:text-[#2d241e] hover:bg-[#F2EFE6]"
+                          : isLightTheme
                           ? "text-gray-600 hover:text-black hover:bg-gray-100"
                           : "text-gray-300 hover:text-white hover:bg-gray-800"
                       )}
@@ -10087,10 +10096,10 @@ Images imported: ${importedImages}`);
                       onClick={() => setAutoScrollDir((d) => (d === "up" ? null : "up"))}
                       className={cn(
                         "w-full h-7 flex items-center justify-center transition-colors cursor-pointer outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
-                        isLightTheme ? "border-t border-gray-200" : "border-t border-gray-700/60",
+                        isPaperTheme ? "border-t border-[#ded7c8]" : isLightTheme ? "border-t border-gray-200" : "border-t border-gray-700/60",
                         autoScrollDir === "up"
-                          ? (isLightTheme ? "bg-amber-500/20 text-amber-700 font-bold" : "bg-amber-500/20 text-amber-400 font-bold")
-                          : (isLightTheme ? "text-gray-600 hover:text-black hover:bg-gray-100" : "text-gray-300 hover:text-white hover:bg-gray-800")
+                          ? (isPaperTheme ? "bg-[#d9532f]/20 text-[#d9532f] font-bold" : isLightTheme ? "bg-amber-500/20 text-amber-700 font-bold" : "bg-amber-500/20 text-amber-400 font-bold")
+                          : (isPaperTheme ? "text-[#5e5447] hover:text-[#2d241e] hover:bg-[#F2EFE6]" : isLightTheme ? "text-gray-600 hover:text-black hover:bg-gray-100" : "text-gray-300 hover:text-white hover:bg-gray-800")
                       )}
                       title="AUTO SCROLL UP (上へ自動スクロール開始/停止)"
                     >
@@ -10106,12 +10115,12 @@ Images imported: ${importedImages}`);
                       onWheel={handleJogWheel}
                       className={cn(
                         "w-full h-36 relative flex flex-col items-center justify-between py-2 cursor-ns-resize select-none transition-colors touch-none",
-                        isLightTheme ? "border-y border-gray-200" : "border-y border-gray-700/70",
+                        isPaperTheme ? "border-y border-[#ded7c8]" : isLightTheme ? "border-y border-gray-200" : "border-y border-gray-700/70",
                         jogDragState.active || wheelHudVisible
-                          ? (isLightTheme ? "bg-gray-100" : "bg-gray-800/90")
+                          ? (isPaperTheme ? "bg-[#F2EFE6]" : isLightTheme ? "bg-gray-100" : "bg-gray-800/90")
                           : autoScrollDir !== null
                           ? "bg-amber-500/15"
-                          : (isLightTheme ? "bg-white hover:bg-gray-50" : "hover:bg-gray-800/50")
+                          : (isPaperTheme ? "bg-white hover:bg-[#F2EFE6]" : isLightTheme ? "bg-white hover:bg-gray-50" : "hover:bg-gray-800/50")
                       )}
                       title="ホイール回転 / 上下ドラッグ: 向き＆速度を無段階調整 / クリック: 停止"
                     >
@@ -10133,8 +10142,8 @@ Images imported: ${importedImages}`);
                         className={cn(
                           "flex flex-col items-center transition-colors pointer-events-none",
                           autoScrollDir === "up" || jogDragState.dir === "up"
-                            ? (isLightTheme ? "text-amber-600 font-bold" : "text-amber-500 font-bold")
-                            : (isLightTheme ? "text-gray-400" : "text-gray-500")
+                            ? (isPaperTheme ? "text-[#d9532f] font-bold" : isLightTheme ? "text-amber-600 font-bold" : "text-amber-500 font-bold")
+                            : (isPaperTheme ? "text-[#8c8071]" : isLightTheme ? "text-gray-400" : "text-gray-500")
                         )}
                       >
                         <ChevronUp
@@ -10149,13 +10158,13 @@ Images imported: ${importedImages}`);
                       {/* Center Knurled Grip & State Badge */}
                       <div className="flex flex-col items-center justify-center gap-0.5 pointer-events-none z-10">
                         <div className="flex items-center gap-0.5">
-                          <div className={cn("w-1 h-3.5", isLightTheme ? "bg-gray-400" : "bg-gray-500")} />
-                          <div className={cn("w-1 h-3.5", isLightTheme ? "bg-gray-400" : "bg-gray-500")} />
-                          <div className={cn("w-1 h-3.5", isLightTheme ? "bg-gray-400" : "bg-gray-500")} />
+                          <div className={cn("w-1 h-3.5", isPaperTheme ? "bg-[#8c8071]" : isLightTheme ? "bg-gray-400" : "bg-gray-500")} />
+                          <div className={cn("w-1 h-3.5", isPaperTheme ? "bg-[#8c8071]" : isLightTheme ? "bg-gray-400" : "bg-gray-500")} />
+                          <div className={cn("w-1 h-3.5", isPaperTheme ? "bg-[#8c8071]" : isLightTheme ? "bg-gray-400" : "bg-gray-500")} />
                         </div>
                         <span className={cn(
                           "font-mono text-[8px] font-bold tracking-tighter uppercase mt-0.5",
-                          isLightTheme ? "text-gray-600" : "text-gray-400"
+                          isPaperTheme ? "text-[#5e5447]" : isLightTheme ? "text-gray-600" : "text-gray-400"
                         )}>
                           {jogDragState.active
                             ? "DRAG"
@@ -10170,8 +10179,8 @@ Images imported: ${importedImages}`);
                         className={cn(
                           "flex flex-col items-center transition-colors pointer-events-none",
                           autoScrollDir === "down" || jogDragState.dir === "down"
-                            ? (isLightTheme ? "text-sky-600 font-bold" : "text-sky-500 font-bold")
-                            : (isLightTheme ? "text-gray-400" : "text-gray-500")
+                            ? (isPaperTheme ? "text-sky-700 font-bold" : isLightTheme ? "text-sky-600 font-bold" : "text-sky-500 font-bold")
+                            : (isPaperTheme ? "text-[#8c8071]" : isLightTheme ? "text-gray-400" : "text-gray-500")
                         )}
                       >
                         <ChevronDown
@@ -10190,10 +10199,10 @@ Images imported: ${importedImages}`);
                       onClick={() => setAutoScrollDir((d) => (d === "down" ? null : "down"))}
                       className={cn(
                         "w-full h-7 flex items-center justify-center transition-colors cursor-pointer outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
-                        isLightTheme ? "border-b border-gray-200" : "border-b border-gray-700/60",
+                        isPaperTheme ? "border-b border-[#ded7c8]" : isLightTheme ? "border-b border-gray-200" : "border-b border-gray-700/60",
                         autoScrollDir === "down"
-                          ? (isLightTheme ? "bg-sky-500/20 text-sky-700 font-bold" : "bg-sky-500/20 text-sky-400 font-bold")
-                          : (isLightTheme ? "text-gray-600 hover:text-black hover:bg-gray-100" : "text-gray-300 hover:text-white hover:bg-gray-800")
+                          ? (isPaperTheme ? "bg-sky-500/20 text-sky-800 font-bold" : isLightTheme ? "bg-sky-500/20 text-sky-700 font-bold" : "bg-sky-500/20 text-sky-400 font-bold")
+                          : (isPaperTheme ? "text-[#5e5447] hover:text-[#2d241e] hover:bg-[#F2EFE6]" : isLightTheme ? "text-gray-600 hover:text-black hover:bg-gray-100" : "text-gray-300 hover:text-white hover:bg-gray-800")
                       )}
                       title="AUTO SCROLL DOWN (下へ自動スクロール開始/停止)"
                     >
@@ -10214,7 +10223,9 @@ Images imported: ${importedImages}`);
                       }}
                       className={cn(
                         "w-full h-7 flex items-center justify-center transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
-                        isLightTheme
+                        isPaperTheme
+                          ? "text-[#5e5447] hover:text-[#2d241e] hover:bg-[#F2EFE6]"
+                          : isLightTheme
                           ? "text-gray-600 hover:text-black hover:bg-gray-100"
                           : "text-gray-300 hover:text-white hover:bg-gray-800"
                       )}
@@ -10229,7 +10240,9 @@ Images imported: ${importedImages}`);
                     onWheel={handleJogWheel}
                     className={cn(
                       "flex items-center backdrop-blur-md shadow-md h-7 px-1 rounded-none transition-colors",
-                      isLightTheme
+                      isPaperTheme
+                        ? "bg-white/95 border border-[#ded7c8] text-[#2d241e] shadow-sm"
+                        : isLightTheme
                         ? "bg-white/95 border border-gray-300 text-gray-800 shadow-sm"
                         : "bg-[#18181b]/95 border border-gray-700/80 text-gray-200"
                     )}
@@ -10242,6 +10255,8 @@ Images imported: ${importedImages}`);
                         "w-5 h-5 flex items-center justify-center text-[12px] font-bold transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
                         autoScrollSpeed <= 1 && autoScrollPxPerSec <= 100
                           ? "opacity-30 cursor-not-allowed text-gray-400"
+                          : isPaperTheme
+                          ? "hover:bg-[#F2EFE6] text-[#2d241e] cursor-pointer"
                           : isLightTheme
                           ? "hover:bg-gray-100 text-gray-700 cursor-pointer"
                           : "hover:bg-gray-700 text-gray-200 cursor-pointer"
@@ -10254,7 +10269,7 @@ Images imported: ${importedImages}`);
                     <span
                       className={cn(
                         "font-mono font-bold text-[10px] tabular-nums px-1 pointer-events-none min-w-[34px] text-center select-none",
-                        isLightTheme ? "text-gray-800" : "text-gray-200"
+                        isPaperTheme ? "text-[#2d241e]" : isLightTheme ? "text-gray-800" : "text-gray-200"
                       )}
                       title={`${autoScrollPxPerSec} px/s`}
                     >
@@ -10269,6 +10284,8 @@ Images imported: ${importedImages}`);
                         "w-5 h-5 flex items-center justify-center text-[12px] font-bold transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
                         autoScrollSpeed >= 4 && autoScrollPxPerSec >= 1000
                           ? "opacity-30 cursor-not-allowed text-gray-400"
+                          : isPaperTheme
+                          ? "hover:bg-[#F2EFE6] text-[#2d241e] cursor-pointer"
                           : isLightTheme
                           ? "hover:bg-gray-100 text-gray-700 cursor-pointer"
                           : "hover:bg-gray-700 text-gray-200 cursor-pointer"
