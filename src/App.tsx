@@ -384,6 +384,11 @@ export default function App() {
   const [images, setImages] = useState<LoadedImage[]>([]);
   const [showHiddenImages, setShowHiddenImages] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchScope, setSearchScope] = useState<"all" | "sub" | "direct">("all");
+  const [searchResultGrouping, setSearchResultGrouping] = useState<"folder" | "flat">("folder");
+  const [searchViewType, setSearchViewType] = useState<"card" | "list">("card");
+  const [isSearching, setIsSearching] = useState<boolean>(false);
+  const [searchResults, setSearchResults] = useState<LoadedImage[]>([]);
 
   useEffect(() => {
     const total = datasets
@@ -419,7 +424,7 @@ export default function App() {
   >(() => {
     const saved = localStorage.getItem("app_theme");
 
-    return (saved as "NAVY" | "BLACK" | "TRUE_BLACK" | "PAPER" | "PINK" | "LIGHT" | "BROWN" | "MOCHA" | "OLIVE" | "RED") || "BLACK";
+    return (saved as any) || "BLACK";
   });
   const [canvasBg, setCanvasBg] = useState<
     "theme" | "auto" | "black" | "white" | "checker"
@@ -452,7 +457,7 @@ export default function App() {
   const cycleTheme = () => {
     const themes: Array<
       "NAVY" | "BLACK" | "TRUE_BLACK" | "PAPER" | "PINK" | "LIGHT" | "BROWN" | "MOCHA" | "OLIVE" | "RED"
-    > = ["NAVY", "BLACK", "TRUE_BLACK", "PAPER", "PINK", "LIGHT", "BROWN", "MOCHA", "OLIVE", "RED"];
+    > = ["LIGHT", "PAPER", "NAVY", "BLACK", "TRUE_BLACK", "PINK", "BROWN", "MOCHA", "OLIVE", "RED"];
     setTheme((prev) => themes[(themes.indexOf(prev as any) + 1) % themes.length]);
   };
 
@@ -831,8 +836,6 @@ export default function App() {
   const itemScale = scales[scaleKey] ?? scales[viewMode] ?? (viewMode === "free" ? 350 : 140);
   const gridGap = gaps[scaleKey] ?? gaps[viewMode] ?? 24;
 
-
-
   const [selectedImage, setSelectedImage] = useState<LoadedImage | null>(null);
   const selectedImageRef = useRef<LoadedImage | null>(null);
   const isScrollTrackingUpdateRef = useRef(false);
@@ -856,7 +859,7 @@ export default function App() {
   const imgY = useMotionValue(0);
   const [imgDims, setImgDims] = useState({ w: 0, h: 0 });
 
-    const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   interface ScrollAnchorState {
     id: string;
@@ -868,7 +871,7 @@ export default function App() {
   const scaleAnchorRef = useRef<ScrollAnchorState | null>(null);
   const isSliderInteractingRef = useRef<boolean>(false);
 
-  // 画像サイズ(SIZE)・隙間(GAP)変更時に、現在見ている画像の位置を保持するアンカー捕捉関数
+  // 画像サイズ(SIZE)・隙間(GAP)変更時に、現在見ている画像の位置を維持するアンカー検出関数
   const captureScrollAnchor = React.useCallback((): ScrollAnchorState | null => {
     const container = scrollContainerRef.current;
     if (!container || viewMode === "free") return null;
@@ -2938,7 +2941,7 @@ function createPRNG(seed: number) {
           if (comparison === 0) {
             comparison = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
           }
-          return comparison; // カスタムは常に0..Nの絶対配置（反転させない）
+          return comparison; // カスタム順は常に0..Nの絶対配置（反転させない）
         }
       }
       return sortOrders[sortField] === "asc" ? comparison : -comparison;
@@ -3199,6 +3202,109 @@ function createPRNG(seed: number) {
     }
   };
 
+  // 強化画像検索処理 (Log Viewerスタイル)
+  const executeSearch = async (queryText: string, scope: "all" | "sub" | "direct" = searchScope) => {
+    const trimmed = queryText.trim();
+    if (!trimmed) {
+      clearSearch();
+      return;
+    }
+    setIsSearching(true);
+    try {
+      const keywords = trimmed.toLowerCase().split(/[\s　]+/).filter(Boolean);
+
+      // 検索対象データセットID
+      let targetDatasetIds: Set<string> | null = null;
+      if (scope === "sub" && activeCategoryId) {
+        const dsIds = getAllDatasetIdsInCategory(activeCategoryId);
+        targetDatasetIds = new Set(dsIds);
+      } else if (scope === "direct") {
+        if (activeDatasetId) {
+          targetDatasetIds = new Set([activeDatasetId]);
+        } else if (activeCategoryId) {
+          targetDatasetIds = new Set(datasets.filter((d) => d.categoryId === activeCategoryId).map((d) => d.id));
+        } else {
+          targetDatasetIds = new Set(datasets.filter((d) => !d.categoryId).map((d) => d.id));
+        }
+      }
+
+      const allDbImages = await getAllImages();
+      const dsMap = new Map<string, DatasetRecord>(datasets.map((d) => [d.id, d]));
+      const catMap = new Map<string, CategoryRecord>(categories.map((c) => [c.id, c]));
+
+      const matched = allDbImages.filter((img) => {
+        if (targetDatasetIds && !targetDatasetIds.has(img.datasetId)) {
+          return false;
+        }
+        const ds = dsMap.get(img.datasetId);
+        const cat = ds?.categoryId ? catMap.get(ds.categoryId) : null;
+        const searchableText = `${img.name} ${ds?.name || ""} ${cat?.name || ""}`.toLowerCase();
+        return keywords.every((kw) => searchableText.includes(kw));
+      });
+
+      // 古い検索URLの解放
+      searchResults.forEach((img) => URL.revokeObjectURL(img.url));
+
+      const loadedList: LoadedImage[] = matched.map((img) => {
+        const isAlphaFormat =
+          img.type?.includes("png") ||
+          img.type?.includes("gif") ||
+          img.type?.includes("webp") ||
+          img.type?.includes("svg") ||
+          img.name?.toLowerCase().endsWith(".png") ||
+          img.name?.toLowerCase().endsWith(".gif") ||
+          img.name?.toLowerCase().endsWith(".webp") ||
+          img.name?.toLowerCase().endsWith(".svg");
+        const autoBg = img.autoBg ?? (isAlphaFormat ? "checkerboard" : "white");
+        return {
+          ...img,
+          url: URL.createObjectURL(img.data),
+          randomX: 0,
+          randomY: 0,
+          randomRotation: 0,
+          autoBg,
+          width: img.width || 300,
+          height: img.height || 300,
+        };
+      });
+
+      setSearchResults(loadedList);
+      setSearchQuery(trimmed);
+    } catch (err) {
+      console.error("Search failed", err);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const clearSearch = () => {
+    setSearchInput("");
+    setSearchQuery("");
+    searchResults.forEach((img) => URL.revokeObjectURL(img.url));
+    setSearchResults([]);
+  };
+
+  const highlightMatch = (text: string, query: string) => {
+    if (!query.trim()) return text;
+    const keywords = query.trim().split(/[\s　]+/).filter(Boolean);
+    if (keywords.length === 0) return text;
+    const regex = new RegExp(`(${keywords.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "gi");
+    const parts = text.split(regex);
+    return (
+      <>
+        {parts.map((part, i) =>
+          regex.test(part) ? (
+            <mark key={i} className="bg-amber-400/35 text-amber-300 dark:text-amber-200 px-0.5 rounded-2xs font-bold">
+              {part}
+            </mark>
+          ) : (
+            part
+          )
+        )}
+      </>
+    );
+  };
+
   // クイックストック（閲覧状態・スクロール位置スナップショット）復元処理
   const applyScrollRestore = React.useCallback(() => {
     if (!pendingScrollRestoreRef.current) return;
@@ -3329,7 +3435,7 @@ function createPRNG(seed: number) {
   // スクロール時に画面中央の画像へ選択枠（selectedImage）をリアルタイム追従させるイベントハンドラー
   const handleContainerScroll = React.useCallback(() => {
     if (isFullscreen || viewMode === "free" || sortedImages.length === 0) return;
-    // スライダー操作中・スケール変更直後は、選択画像が別画像に上書きされるのを完全に防ぐ！
+    // スライダードラッグ中やスケール変更直後は、選択画像が中央の別画像に上書きされるのを完全に防ぐ！
     if (isSliderInteractingRef.current || performance.now() - lastScaleOrGapChangeTimeRef.current < 500) {
       return;
     }
@@ -5656,10 +5762,10 @@ Images imported: ${importedImages}`);
         const dsName = folderNames.length > 0 ? folderNames[0] : "NEW DATASET";
         const ds = await createDataset(dsName.toUpperCase());
         // カオルさまのご指定: D&Dによる新規作成時は常にルート直下に作成
-        setActiveCategoryId(null);
-        setIsCategoryImagesView(false);
         targetDatasetId = ds.id;
         setActiveDatasetId(ds.id);
+        setActiveCategoryId(null);
+        setIsCategoryImagesView(false);
         await loadDatasets();
       }
       
@@ -5670,9 +5776,9 @@ Images imported: ${importedImages}`);
       if (forceNewDataset || !activeDatasetId || activeDatasetId === "all") {
          const ds = await createDataset("NEW DATASET");
          // カオルさまのご指定: D&Dによる新規作成時は常にルート直下に作成
+         setActiveDatasetId(ds.id);
          setActiveCategoryId(null);
          setIsCategoryImagesView(false);
-         setActiveDatasetId(ds.id);
          await loadDatasets();
          await processFiles(e.dataTransfer.files, ds.id, true);
       } else {
@@ -6653,12 +6759,12 @@ Images imported: ${importedImages}`);
                 {/* テーマリスト */}
                 <div className="py-1">
                   {[
+                    { id: "LIGHT", label: "LIGHT", dot: "#0284c7" },
+                    { id: "PAPER", label: "PAPER", dot: "#d9532f" },
                     { id: "NAVY", label: "NAVY", dot: "#2563eb" },
                     { id: "BLACK", label: "BLACK", dot: "#334155" },
                     { id: "TRUE_BLACK", label: "TRUE BLACK", dot: "#000000" },
-                    { id: "PAPER", label: "PAPER", dot: "#d9532f" },
                     { id: "PINK", label: "PINK", dot: "#e06b8b" },
-                    { id: "LIGHT", label: "LIGHT", dot: "#0284c7" },
                     { id: "BROWN", label: "BROWN", dot: "#b45309" },
                     { id: "MOCHA", label: "MOCHA", dot: "#8c6853" },
                     { id: "OLIVE", label: "OLIVE", dot: "#658348" },
@@ -7280,6 +7386,8 @@ Images imported: ${importedImages}`);
                     setColorCategoryInput(cat.color || themeFolderColors[theme] || "#fbbf24");
                     setCategoryIconInput(cat.icon || "folder");
                   }}
+                  onBulkDeleteItems={handleBulkDeleteItems}
+                  onBulkMoveItems={handleBulkMoveItems}
                   t={t}
                 />
               ) : (
@@ -8309,13 +8417,13 @@ Images imported: ${importedImages}`);
                                 <span>{t("THEME COLOR", "テーマカラー")}</span>
                               </div>
                               <div className="grid grid-cols-2 gap-1.5 font-mono text-[10px]">
-                                {[
+                                 {[
+                                  { id: "LIGHT", label: "LIGHT (ライト)", bg: "#e2e8f0", panel: "#f8fafc", accent: "#0f172a" },
+                                  { id: "PAPER", label: "PAPER (ペーパー)", bg: "#F2EFE6", panel: "#ffffff", accent: "#d9532f" },
                                   { id: "NAVY", label: "NAVY (ネイビー)", bg: "#06090e", panel: "#0b111a", accent: "#3b82f6" },
                                   { id: "BLACK", label: "BLACK (ブラック)", bg: "#0B0C0D", panel: "#14161A", accent: "#e2e5e9" },
                                   { id: "TRUE_BLACK", label: "TRUE BLACK (有機EL)", bg: "#000000", panel: "#0a0a0a", accent: "#ffffff" },
-                                  { id: "PAPER", label: "PAPER (ペーパー)", bg: "#F2EFE6", panel: "#ffffff", accent: "#d9532f" },
                                   { id: "PINK", label: "PINK (ピンク)", bg: "#1a1215", panel: "#241a1d", accent: "#e06b8b" },
-                                  { id: "LIGHT", label: "LIGHT (ライト)", bg: "#e2e8f0", panel: "#f8fafc", accent: "#0f172a" },
                                   { id: "BROWN", label: "BROWN (ブラウン)", bg: "#1a1614", panel: "#241e1b", accent: "#d6a076" },
                                   { id: "MOCHA", label: "MOCHA (モカ)", bg: "#f8ede2", panel: "#fdf6ee", accent: "#59483a" },
                                   { id: "OLIVE", label: "OLIVE (オリーブ)", bg: "#12160d", panel: "#191e13", accent: "#688647" },
@@ -8752,12 +8860,11 @@ Images imported: ${importedImages}`);
                                   return (
                                     <div
                                       key={stk.id}
-                                      onClick={() => handleRestoreQuickStock(stk)}
                                       className={cn(
-                                        "group flex flex-col gap-1 p-2 rounded-none transition-all text-[10px] select-none cursor-pointer",
+                                        "group flex flex-col gap-1 p-2 rounded-none transition-all text-[10px] select-none border",
                                         isActive
                                           ? "bg-accent/15 border-2 border-accent shadow-xs ring-1 ring-accent/40"
-                                          : "bg-panel-bg/90 hover:bg-panel-bg border border-panel-border hover:border-accent"
+                                          : "bg-panel-bg/90 hover:bg-panel-bg border-panel-border hover:border-accent"
                                       )}
                                     >
                                       {/* TOP: NAME & POSITION BADGE */}
@@ -8767,7 +8874,6 @@ Images imported: ${importedImages}`);
                                             type="text"
                                             autoFocus
                                             value={editingStockName}
-                                            onClick={(e) => e.stopPropagation()}
                                             onChange={(e) => setEditingStockName(e.target.value)}
                                             onKeyDown={(e) => {
                                               if (e.key === "Enter") {
@@ -8786,10 +8892,7 @@ Images imported: ${importedImages}`);
                                         ) : (
                                           <button
                                             type="button"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleRestoreQuickStock(stk);
-                                            }}
+                                            onClick={() => handleRestoreQuickStock(stk)}
                                             className={cn(
                                               "flex-1 text-left font-mono font-bold truncate cursor-pointer transition-colors flex items-center gap-1.5",
                                               isActive ? "text-accent" : "text-text-primary hover:text-accent"
@@ -8829,10 +8932,7 @@ Images imported: ${importedImages}`);
                                           {/* MOVE UP */}
                                           <button
                                             type="button"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleMoveQuickStock(stk.id, "up", e);
-                                            }}
+                                            onClick={(e) => handleMoveQuickStock(stk.id, "up", e)}
                                             disabled={idx === 0}
                                             className="p-1 hover:text-text-primary disabled:opacity-20 transition-colors"
                                             title={t("Move up in list", "上へ並び替え")}
@@ -8842,10 +8942,7 @@ Images imported: ${importedImages}`);
                                           {/* MOVE DOWN */}
                                           <button
                                             type="button"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleMoveQuickStock(stk.id, "down", e);
-                                            }}
+                                            onClick={(e) => handleMoveQuickStock(stk.id, "down", e)}
                                             disabled={idx === quickStocks.length - 1}
                                             className="p-1 hover:text-text-primary disabled:opacity-20 transition-colors"
                                             title={t("Move down in list", "下へ並び替え")}
@@ -8855,10 +8952,7 @@ Images imported: ${importedImages}`);
                                           {/* OVERWRITE / UPDATE */}
                                           <button
                                             type="button"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleUpdateQuickStock(stk.id, e);
-                                            }}
+                                            onClick={(e) => handleUpdateQuickStock(stk.id, e)}
                                             className={cn(
                                               "p-1 transition-all cursor-pointer rounded-none",
                                               isActive
@@ -8885,10 +8979,7 @@ Images imported: ${importedImages}`);
                                           {/* DELETE */}
                                           <button
                                             type="button"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleDeleteQuickStock(stk.id, e);
-                                            }}
+                                            onClick={(e) => handleDeleteQuickStock(stk.id, e)}
                                             className="p-1 hover:text-red-400 transition-colors"
                                             title={t("Delete stock", "削除")}
                                           >
@@ -8897,10 +8988,7 @@ Images imported: ${importedImages}`);
                                           {/* JUMP BUTTON */}
                                           <button
                                             type="button"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleRestoreQuickStock(stk);
-                                            }}
+                                            onClick={() => handleRestoreQuickStock(stk)}
                                             className={cn(
                                               "px-1.5 py-0.5 rounded-none font-bold text-[9px] transition-colors ml-0.5 cursor-pointer",
                                               isActive
@@ -8956,61 +9044,8 @@ Images imported: ${importedImages}`);
           </div>
 
           <Panel
-            title={
-              <>
-                <span>{t("04 DATA BANKS", "04 データバンク")}</span>
-                <div className="flex items-center gap-2 border border-panel-border bg-panel-bg px-2 py-1 rounded">
-                  <Search size={12} className="text-text-muted" />
-                  <input
-                    type="text"
-                    placeholder={activeDatasetId ? t("SEARCH IN LIST...", "リスト内を検索...") : t("SEARCH...", "検索...")}
-                    value={searchInput}
-                    onChange={(e) => {
-                      setSearchInput(e.target.value);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        if (!searchInput.trim()) {
-                          setSearchInput("");
-                          setSearchQuery("");
-                          setActiveDatasetId(null);
-                        } else {
-                          setSearchQuery(searchInput);
-                        }
-                      }
-                    }}
-                    className="bg-transparent border-none outline-none text-text-primary w-40 text-[10px] placeholder:text-text-muted focus:ring-0"
-                  />
-                  {searchInput && (
-                    <button 
-                      onClick={() => { 
-                        setSearchInput(""); 
-                        setSearchQuery(""); 
-                        setActiveDatasetId(null);
-                      }} 
-                      className="text-text-muted hover:text-text-primary ml-1 shrink-0"
-                      title={t("Clear search (Return to Home)", "検索解除 (ホームに戻る)")}
-                    >
-                      <X size={12} />
-                    </button>
-                  )}
-                  <SolidButton
-                    onClick={() => {
-                      if (!searchInput.trim()) {
-                        setSearchInput("");
-                        setSearchQuery("");
-                        setActiveDatasetId(null);
-                      } else {
-                        setSearchQuery(searchInput);
-                      }
-                    }}
-                    className="px-2 py-1 h-auto text-[10px] shrink-0 border-none bg-transparent hover:bg-white/10"
-                  >
-                    {t("SEARCH", "検索")}
-                  </SolidButton>
-                </div>
-              </>
-            }
+            className="main-content-panel flex-1 relative overflow-hidden"
+            title={<span>{t("04 DATA BANKS", "04 データバンク")}</span>}
             headerRight={
               isSelectionMode ? (
                 <div className="flex items-center gap-3">
@@ -9445,7 +9480,6 @@ Images imported: ${importedImages}`);
                 </div>
               )
             }
-            className="main-content-panel flex-1 relative overflow-hidden"
             contentClassName="p-0 overflow-hidden flex flex-col flex-1 relative"
           >
             {/* Top Fixed Opaque Breadcrumb Bar for ALL Views (Folder Explorer, Category Images, and Dataset) */}
@@ -9654,6 +9688,125 @@ Images imported: ${importedImages}`);
               );
             })()}
 
+            {/* 04 DATA BANKS 強化検索バー (Log Viewerスタイル) */}
+            <div className="w-full bg-panel-bg/95 border-b border-panel-border p-2.5 px-4 font-mono text-xs flex flex-col gap-2 shrink-0 z-20 shadow-xs">
+              {/* 上段: 検索キーワード入力欄 + 検索ボタン + 検索解除ボタン */}
+              <div className="flex items-center gap-2">
+                <div className="flex-1 flex items-center gap-2 border border-panel-border bg-root-bg px-3 py-1.5 rounded-xs focus-within:border-accent">
+                  <Search size={14} className="text-text-muted shrink-0" />
+                  <input
+                    type="text"
+                    placeholder={t("Search images by filename, dataset, or folder...", "画像名・データセット名・フォルダー名で検索...")}
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        executeSearch(searchInput, searchScope);
+                      }
+                    }}
+                    className="bg-transparent border-none outline-none text-text-primary text-xs w-full placeholder:text-text-muted/60"
+                  />
+                  {searchInput && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchInput("");
+                        if (searchQuery) clearSearch();
+                      }}
+                      className="text-text-muted hover:text-text-primary p-0.5 transition-colors cursor-pointer"
+                      title={t("Clear input", "入力をクリア")}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                <SolidButton
+                  onClick={() => executeSearch(searchInput, searchScope)}
+                  disabled={isSearching}
+                  className="px-3.5 py-1.5 text-xs shrink-0 flex items-center gap-1.5 font-bold cursor-pointer"
+                >
+                  <Search size={13} />
+                  <span>{t("SEARCH", "検索")}</span>
+                </SolidButton>
+
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={clearSearch}
+                    className="px-3 py-1.5 text-xs shrink-0 font-bold border border-red-500/50 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white rounded-xs transition-colors flex items-center gap-1 cursor-pointer"
+                    title={t("Clear search and return", "検索解除して元の画面に戻る")}
+                  >
+                    <X size={13} />
+                    <span>{t("CLEAR", "検索解除")}</span>
+                  </button>
+                )}
+              </div>
+
+              {/* 下段: 検索範囲選択 (ALL DATA / 配下全体 / 直下のみ) */}
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-text-muted font-bold mr-1">{t("Search Scope:", "検索範囲:")}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchScope("all");
+                      if (searchQuery) executeSearch(searchInput, "all");
+                    }}
+                    className={cn(
+                      "px-2.5 py-1 rounded-xs border font-bold transition-colors cursor-pointer",
+                      searchScope === "all"
+                        ? "border-accent bg-accent/20 text-accent shadow-xs"
+                        : "border-panel-border bg-root-bg text-text-secondary hover:text-text-primary hover:border-text-muted"
+                    )}
+                  >
+                    {t("ALL DATA (All Folders)", "ALL DATA (全階層)")}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchScope("sub");
+                      if (searchQuery) executeSearch(searchInput, "sub");
+                    }}
+                    className={cn(
+                      "px-2.5 py-1 rounded-xs border font-bold transition-colors cursor-pointer",
+                      searchScope === "sub"
+                        ? "border-accent bg-accent/20 text-accent shadow-xs"
+                        : "border-panel-border bg-root-bg text-text-secondary hover:text-text-primary hover:border-text-muted"
+                    )}
+                  >
+                    {t("Current Folder & Subfolders", "配下全体 (サブ含む)")}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchScope("direct");
+                      if (searchQuery) executeSearch(searchInput, "direct");
+                    }}
+                    className={cn(
+                      "px-2.5 py-1 rounded-xs border font-bold transition-colors cursor-pointer",
+                      searchScope === "direct"
+                        ? "border-accent bg-accent/20 text-accent shadow-xs"
+                        : "border-panel-border bg-root-bg text-text-secondary hover:text-text-primary hover:border-text-muted"
+                    )}
+                  >
+                    {t("Direct Only", "直下のみ")}
+                  </button>
+                </div>
+
+                {/* 現在の位置情報 */}
+                <div className="text-text-muted text-[10px] truncate max-w-[280px]">
+                  {activeDatasetId
+                    ? `[セット: ${datasets.find((d) => d.id === activeDatasetId)?.name || ""}]`
+                    : activeCategoryId
+                    ? `[フォルダー: ${categories.find((c) => c.id === activeCategoryId)?.name || ""}]`
+                    : `[ルート: ALL DATA]`}
+                </div>
+              </div>
+            </div>
+
             <div
               ref={scatterContainerRef}
               className={cn("w-full flex-1 relative overflow-hidden")}
@@ -9779,6 +9932,319 @@ Images imported: ${importedImages}`);
                   )}
                 >
                   {(() => {
+                    // 0. Active Search Results View (Log Viewer Style)
+                    if (searchQuery.trim()) {
+                      const groups = new Map<
+                        string,
+                        {
+                          folderPath: string;
+                          datasetName: string;
+                          datasetId: string;
+                          items: LoadedImage[];
+                        }
+                      >();
+
+                      searchResults.forEach((img) => {
+                        const ds = datasets.find((d) => d.id === img.datasetId);
+                        const dsName = ds?.name || "UNCLASSIFIED";
+                        const cat = ds?.categoryId ? categories.find((c) => c.id === ds.categoryId) : null;
+
+                        let folderPath = "ALL DATA (ルート)";
+                        if (cat) {
+                          const chain: string[] = [cat.name];
+                          let cur = cat.parentId ? categories.find((c) => c.id === cat.parentId) : undefined;
+                          while (cur) {
+                            chain.unshift(cur.name);
+                            cur = cur.parentId ? categories.find((c) => c.id === cur.parentId) : undefined;
+                          }
+                          folderPath = chain.join(" > ");
+                        }
+
+                        const groupKey = img.datasetId;
+                        if (!groups.has(groupKey)) {
+                          groups.set(groupKey, {
+                            folderPath,
+                            datasetName: dsName,
+                            datasetId: img.datasetId,
+                            items: [],
+                          });
+                        }
+                        groups.get(groupKey)!.items.push(img);
+                      });
+
+                      const renderCard = (img: LoadedImage) => {
+                        const isSel = selectedImageIds.has(img.id);
+                        const formattedSize = (img.size / 1024).toFixed(1) + " KB";
+                        const dateStr = img.lastModified
+                          ? new Date(img.lastModified).toISOString().slice(0, 10)
+                          : "";
+
+                        return (
+                          <div
+                            key={img.id}
+                            onClick={() => {
+                              setSelectedImage(img);
+                              setIsFullscreen(true);
+                            }}
+                            className={cn(
+                              "group flex flex-col border border-panel-border bg-root-bg hover:border-accent transition-all rounded-xs overflow-hidden cursor-pointer shadow-xs",
+                              isSel && "ring-2 ring-accent"
+                            )}
+                          >
+                            <div className="w-full h-32 bg-panel-bg flex items-center justify-center overflow-hidden relative border-b border-panel-border/50">
+                              <img
+                                src={img.url}
+                                alt={img.name}
+                                className="max-w-full max-h-full object-contain group-hover:scale-105 transition-transform duration-200"
+                                loading="lazy"
+                              />
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <span className="text-[10px] font-bold text-white bg-black/70 px-2 py-1 rounded-xs flex items-center gap-1 shadow-sm">
+                                  <Maximize size={11} />
+                                  <span>{t("EXPAND", "拡大")}</span>
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="p-2 flex flex-col gap-1 text-[11px] font-mono">
+                              <div className="font-semibold text-text-primary line-clamp-2 leading-snug break-all text-[11px]" title={img.name}>
+                                {highlightMatch(img.name, searchQuery)}
+                              </div>
+                              <div className="flex items-center justify-between text-[10px] text-text-muted mt-0.5 border-t border-panel-border/30 pt-1 tabular-nums">
+                                <span>{formattedSize}</span>
+                                <span>{dateStr}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      };
+
+                      const renderListItem = (img: LoadedImage) => {
+                        const isSel = selectedImageIds.has(img.id);
+                        const formattedSize = (img.size / 1024).toFixed(1) + " KB";
+                        const dateStr = img.lastModified
+                          ? new Date(img.lastModified).toISOString().slice(0, 10)
+                          : "";
+                        const ds = datasets.find((d) => d.id === img.datasetId);
+                        const dsName = ds?.name || "Root";
+
+                        return (
+                          <div
+                            key={img.id}
+                            onClick={() => {
+                              setSelectedImage(img);
+                              setIsFullscreen(true);
+                            }}
+                            className={cn(
+                              "group flex items-center gap-3 p-2 px-3 border border-panel-border bg-root-bg hover:border-accent hover:bg-panel-bg/60 transition-all rounded-xs cursor-pointer shadow-xs",
+                              isSel && "ring-2 ring-accent"
+                            )}
+                          >
+                            <div className="w-14 h-14 shrink-0 bg-panel-bg border border-panel-border/60 rounded-xs flex items-center justify-center overflow-hidden relative">
+                              <img
+                                src={img.url}
+                                alt={img.name}
+                                className="max-w-full max-h-full object-contain group-hover:scale-105 transition-transform duration-200"
+                                loading="lazy"
+                              />
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <Maximize size={12} className="text-white drop-shadow-sm" />
+                              </div>
+                            </div>
+
+                            <div className="flex-1 min-w-0 flex flex-col gap-1">
+                              <div className="text-[12px] font-semibold text-text-primary break-all leading-snug">
+                                {highlightMatch(img.name, searchQuery)}
+                              </div>
+                              <div className="flex items-center gap-2 text-[10px] text-text-muted">
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-xs bg-panel-bg border border-panel-border/70 text-text-secondary">
+                                  <Folder size={10} className="text-folder-icon" />
+                                  <span>{dsName}</span>
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="shrink-0 flex items-center gap-3 text-[11px] text-text-muted tabular-nums ml-2">
+                              <span className="hidden sm:inline-block w-16 text-right">{formattedSize}</span>
+                              <span className="hidden md:inline-block w-20 text-right">{dateStr}</span>
+                              <div className="flex items-center gap-1.5 pl-2 border-l border-panel-border/50">
+                                <span className="text-[10px] font-bold text-accent px-2 py-1 bg-accent/10 border border-accent/30 rounded-xs group-hover:bg-accent group-hover:text-white transition-colors flex items-center gap-1">
+                                  <Maximize size={10} />
+                                  <span>{t("EXPAND", "拡大")}</span>
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      };
+
+                      return (
+                        <div className="flex flex-col w-full h-auto p-4 gap-4 font-mono select-none">
+                          {/* 検索結果ヘッダーバー (添付画像の 🔍 検索結果 (169件) 風バー) */}
+                          <div className="w-full bg-panel-bg border border-panel-border p-2.5 px-3 rounded-xs flex flex-wrap items-center justify-between gap-3 text-xs shadow-xs">
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-1.5 font-bold text-text-primary">
+                                <Search size={14} className="text-accent shrink-0" />
+                                <span>{t("SEARCH RESULTS", "検索結果")}</span>
+                                <span className="text-accent font-bold tabular-nums">({searchResults.length} {t("items", "件")})</span>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={clearSearch}
+                                className="flex items-center gap-1 px-2 py-1 text-[11px] font-bold border border-red-500/40 text-red-400 hover:bg-red-500 hover:text-white rounded-xs transition-colors cursor-pointer"
+                              >
+                                <X size={12} />
+                                <span>{t("CLEAR SEARCH", "検索解除")}</span>
+                              </button>
+                            </div>
+
+                            {/* グルーピング切替: 全件一覧 / フォルダー別に整理 ＆ 表示形式: カード / リスト */}
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setSearchResultGrouping("flat")}
+                                  className={cn(
+                                    "flex items-center gap-1.5 px-3 py-1 text-[11px] font-bold border rounded-xs transition-colors cursor-pointer",
+                                    searchResultGrouping === "flat"
+                                      ? "bg-accent/20 border-accent text-accent shadow-xs"
+                                      : "bg-root-bg border-panel-border text-text-secondary hover:text-text-primary"
+                                  )}
+                                >
+                                  <LayoutGrid size={13} />
+                                  <span>{t("ALL ITEMS LIST", "全件一覧")}</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setSearchResultGrouping("folder")}
+                                  className={cn(
+                                    "flex items-center gap-1.5 px-3 py-1 text-[11px] font-bold border rounded-xs transition-colors cursor-pointer",
+                                    searchResultGrouping === "folder"
+                                      ? "bg-accent/20 border-accent text-accent shadow-xs"
+                                      : "bg-root-bg border-panel-border text-text-secondary hover:text-text-primary"
+                                  )}
+                                >
+                                  <Folder size={13} />
+                                  <span>{t("ORGANIZE BY FOLDER", "フォルダー別に整理")}</span>
+                                </button>
+                              </div>
+
+                              <div className="h-4 w-[1px] bg-panel-border/70" />
+
+                              {/* 表示形式切替 (カード / リスト) */}
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setSearchViewType("card")}
+                                  className={cn(
+                                    "flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold border rounded-xs transition-colors cursor-pointer",
+                                    searchViewType === "card"
+                                      ? "bg-accent/20 border-accent text-accent shadow-xs"
+                                      : "bg-root-bg border-panel-border text-text-secondary hover:text-text-primary"
+                                  )}
+                                  title={t("Square Card View", "カード型表示")}
+                                >
+                                  <LayoutGrid size={12} />
+                                  <span>{t("CARD", "カード")}</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setSearchViewType("list")}
+                                  className={cn(
+                                    "flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold border rounded-xs transition-colors cursor-pointer",
+                                    searchViewType === "list"
+                                      ? "bg-accent/20 border-accent text-accent shadow-xs"
+                                      : "bg-root-bg border-panel-border text-text-secondary hover:text-text-primary"
+                                  )}
+                                  title={t("Detailed List View for Long Filenames", "リスト型表示（長い文字対応）")}
+                                >
+                                  <List size={13} />
+                                  <span>{t("LIST", "リスト")}</span>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* 検索中ステート */}
+                          {isSearching ? (
+                            <div className="flex items-center justify-center p-16 text-text-muted text-xs">
+                              <RefreshCw size={16} className="animate-spin mr-2 text-accent" />
+                              <span>{t("SEARCHING DATABASE...", "検索中...")}</span>
+                            </div>
+                          ) : searchResults.length === 0 ? (
+                            /* 一致なしステート */
+                            <div className="flex flex-col items-center justify-center p-16 text-text-muted text-xs gap-2 border border-panel-border/50 bg-panel-bg/30 rounded-xs">
+                              <Search size={32} className="opacity-30 text-accent mb-2" />
+                              <span className="font-bold">{t("NO MATCHING IMAGES FOUND", "一致する画像が見つかりませんでした")}</span>
+                              <span className="text-[11px] text-text-muted/70">
+                                {t(
+                                  "Try different keywords or change the search scope to 'ALL DATA (All Folders)'.",
+                                  "別のキーワードを入力するか、検索範囲を「ALL DATA (全階層)」にしてお試しください。"
+                                )}
+                              </span>
+                            </div>
+                          ) : searchResultGrouping === "folder" ? (
+                            /* フォルダー別に整理表示 (添付画像 📁 見出しバー風) */
+                            <div className="flex flex-col gap-6 w-full">
+                              {Array.from(groups.values()).map((grp) => (
+                                <div key={grp.datasetId} className="flex flex-col gap-2 border border-panel-border bg-panel-bg/40 p-3 rounded-xs shadow-xs">
+                                  {/* フォルダー・データセット見出しバー */}
+                                  <div className="flex items-center justify-between border-b border-panel-border/50 pb-2">
+                                    <div className="flex items-center gap-2 text-xs font-bold text-text-primary min-w-0 flex-1">
+                                      <Folder size={14} className="text-folder-icon shrink-0" />
+                                      <span className="text-text-muted text-[11px] truncate">{grp.folderPath}</span>
+                                      <span className="text-text-muted text-[11px]">/</span>
+                                      <span className="text-accent truncate">{grp.datasetName}</span>
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded-xs border border-accent/40 bg-accent/15 text-accent shrink-0 tabular-nums font-bold">
+                                        {grp.items.length} {t("matches", "件一致")}
+                                      </span>
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        clearSearch();
+                                        setActiveDatasetId(grp.datasetId);
+                                      }}
+                                      className="text-[11px] font-bold text-accent hover:underline flex items-center gap-1 shrink-0 cursor-pointer ml-2"
+                                      title={t("Open this dataset", "このデータセットを開く")}
+                                    >
+                                      <span>{t("OPEN DATASET →", "開く →")}</span>
+                                    </button>
+                                  </div>
+
+                                  {/* 画像カード一覧 または リスト一覧 */}
+                                  {searchViewType === "card" ? (
+                                    <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3 pt-2">
+                                      {grp.items.map((img) => renderCard(img))}
+                                    </div>
+                                  ) : (
+                                    <div className="flex flex-col gap-1.5 pt-2 w-full">
+                                      {grp.items.map((img) => renderListItem(img))}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            /* 全件一覧表示 */
+                            searchViewType === "card" ? (
+                              <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3 w-full">
+                                {searchResults.map((img) => renderCard(img))}
+                              </div>
+                            ) : (
+                              <div className="flex flex-col gap-1.5 w-full">
+                                {searchResults.map((img) => renderListItem(img))}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      );
+                    }
+
                     // 1. Home / Folder Explorer View
                     if (activeDatasetId === null && !isCategoryImagesView) {
                       return (
@@ -12119,15 +12585,11 @@ Images imported: ${importedImages}`);
                     return (
                       <div
                         key={stk.id}
-                        onClick={() => {
-                          handleRestoreQuickStock(stk);
-                          setIsQuickStockDrawerOpen(false);
-                        }}
                         className={cn(
-                          "group flex flex-col gap-1.5 p-2.5 rounded-none transition-all text-[11px] select-none cursor-pointer",
+                          "group flex flex-col gap-1.5 p-2.5 rounded-none transition-all text-[11px] select-none border",
                           isActive
                             ? "bg-accent/15 border-2 border-accent shadow-xs ring-1 ring-accent/40"
-                            : "bg-root-bg/50 hover:bg-root-bg/80 border border-panel-border hover:border-accent"
+                            : "bg-root-bg/50 hover:bg-root-bg/80 border-panel-border hover:border-accent"
                         )}
                       >
                         {/* TOP ROW: NAME & POSITION BADGE */}
@@ -12137,7 +12599,6 @@ Images imported: ${importedImages}`);
                               type="text"
                               autoFocus
                               value={editingStockName}
-                              onClick={(e) => e.stopPropagation()}
                               onChange={(e) => setEditingStockName(e.target.value)}
                               onKeyDown={(e) => {
                                 if (e.key === "Enter") {
@@ -12156,8 +12617,7 @@ Images imported: ${importedImages}`);
                           ) : (
                             <button
                               type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
+                              onClick={() => {
                                 handleRestoreQuickStock(stk);
                                 setIsQuickStockDrawerOpen(false);
                               }}
@@ -12168,7 +12628,7 @@ Images imported: ${importedImages}`);
                               title={t("Click to jump to this position", "クリックしてこの位置へジャンプ")}
                             >
                               {isActive && (
-                                <span className="text-accent font-black text-[11px] leading-none shrink-0 select-none">■</span>
+                                <span className="text-accent font-black text-[10px] leading-none shrink-0 select-none">■</span>
                               )}
                               <span className="truncate">{stk.name}</span>
                             </button>
@@ -12205,10 +12665,7 @@ Images imported: ${importedImages}`);
                             {/* MOVE UP */}
                             <button
                               type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleMoveQuickStock(stk.id, "up", e);
-                              }}
+                              onClick={(e) => handleMoveQuickStock(stk.id, "up", e)}
                               disabled={idx === 0}
                               className="p-1 hover:text-text-primary disabled:opacity-20 transition-colors cursor-pointer"
                               title={t("Move up in list", "上へ並び替え")}
@@ -12218,10 +12675,7 @@ Images imported: ${importedImages}`);
                             {/* MOVE DOWN */}
                             <button
                               type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleMoveQuickStock(stk.id, "down", e);
-                              }}
+                              onClick={(e) => handleMoveQuickStock(stk.id, "down", e)}
                               disabled={idx === quickStocks.length - 1}
                               className="p-1 hover:text-text-primary disabled:opacity-20 transition-colors cursor-pointer"
                               title={t("Move down in list", "下へ並び替え")}
@@ -12231,10 +12685,7 @@ Images imported: ${importedImages}`);
                             {/* OVERWRITE */}
                             <button
                               type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleUpdateQuickStock(stk.id, e);
-                              }}
+                              onClick={(e) => handleUpdateQuickStock(stk.id, e)}
                               className={cn(
                                 "p-1 transition-all cursor-pointer rounded-none",
                                 isActive
@@ -12261,10 +12712,7 @@ Images imported: ${importedImages}`);
                             {/* DELETE */}
                             <button
                               type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteQuickStock(stk.id, e);
-                              }}
+                              onClick={(e) => handleDeleteQuickStock(stk.id, e)}
                               className="p-1 hover:text-red-400 transition-colors cursor-pointer"
                               title={t("Delete stock", "削除")}
                             >
@@ -12273,8 +12721,7 @@ Images imported: ${importedImages}`);
                             {/* JUMP BUTTON */}
                             <button
                               type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
+                              onClick={() => {
                                 handleRestoreQuickStock(stk);
                                 setIsQuickStockDrawerOpen(false);
                               }}
