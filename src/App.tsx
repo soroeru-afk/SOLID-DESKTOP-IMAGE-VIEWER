@@ -10079,9 +10079,10 @@ Images imported: ${importedImages}`);
                       };
 
                       return (
-                        <div className="flex flex-col w-full h-auto p-4 gap-4 font-mono select-none">
-                          {/* 検索結果ヘッダーバー (添付画像の 🔍 検索結果 (169件) 風バー) */}
-                          <div className="w-full bg-panel-bg border border-panel-border p-2.5 px-3 rounded-xs flex flex-wrap items-center justify-between gap-3 text-xs shadow-xs">
+                        <div className="flex flex-col w-full h-auto gap-4 font-mono select-none relative">
+                          {/* 検索結果固定ヘッダーバー (スクロール時も上部に固定) */}
+                          <div className="sticky -top-4 z-30 -mx-4 -mt-4 px-4 pt-4 pb-2 bg-root-bg/95 backdrop-blur-md border-b border-panel-border/80 shadow-md">
+                            <div className="w-full bg-panel-bg border border-panel-border p-2.5 px-3 rounded-xs flex flex-wrap items-center justify-between gap-3 text-xs shadow-xs">
                             <div className="flex items-center gap-3">
                               <div className="flex items-center gap-1.5 font-bold text-text-primary">
                                 <Search size={14} className="text-accent shrink-0" />
@@ -10167,6 +10168,7 @@ Images imported: ${importedImages}`);
                               </div>
                             </div>
                           </div>
+                        </div>
 
                           {/* 検索中ステート */}
                           {isSearching ? (

@@ -352,9 +352,8 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
             if (isSelectMode) {
               toggleCategorySelection(cat.id, e);
             } else {
-              // Clicking folder row selects the category AND toggles folder expand/collapse
+              // Clicking folder row selects the category (does not toggle collapse/expand)
               onSelectCategory(cat.id);
-              onToggleExpand(cat.id, e);
             }
           }}
           onDragOver={(e) => handleDragOver(e, cat.id)}
