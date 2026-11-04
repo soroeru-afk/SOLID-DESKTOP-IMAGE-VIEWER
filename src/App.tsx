@@ -4365,6 +4365,14 @@ Images imported: ${importedImages}`);
     });
   };
 
+  const handleExpandAllCategories = () => {
+    setExpandedCategoryIds(new Set(categories.map((c) => c.id)));
+  };
+
+  const handleCollapseAllCategories = () => {
+    setExpandedCategoryIds(new Set());
+  };
+
   const handleRenameFileClick = (
     e: React.MouseEvent,
     id: string,
@@ -7363,6 +7371,8 @@ Images imported: ${importedImages}`);
                     setSearchInput("");
                   }}
                   onToggleExpand={handleToggleCategoryExpand}
+                  onExpandAllCategories={handleExpandAllCategories}
+                  onCollapseAllCategories={handleCollapseAllCategories}
                   onTogglePinDataset={handleTogglePinDataset}
                   onToggleFavorite={(id, e) => {
                     e.stopPropagation();

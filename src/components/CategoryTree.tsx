@@ -38,6 +38,8 @@ interface CategoryTreeProps {
   onSelectDataset: (id: string) => void;
   onSelectCategory: (id: string | null) => void;
   onToggleExpand: (id: string, e?: React.MouseEvent) => void;
+  onExpandAllCategories?: () => void;
+  onCollapseAllCategories?: () => void;
   onTogglePinDataset: (id: string, e: React.MouseEvent) => void;
   onToggleFavorite: (id: string, e: React.MouseEvent) => void;
   onExportDataset: (id: string) => void;
@@ -71,6 +73,8 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
   onSelectDataset,
   onSelectCategory,
   onToggleExpand,
+  onExpandAllCategories,
+  onCollapseAllCategories,
   onTogglePinDataset,
   onToggleFavorite,
   onExportDataset,
@@ -840,6 +844,32 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
               </button>
             </>
           )}
+
+          {/* All Folders Toggle Button (OPEN / CLOSE) - placed right after SELECT */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (expandedCategoryIds.size > 0) {
+                onCollapseAllCategories?.();
+              } else {
+                onExpandAllCategories?.();
+              }
+            }}
+            className={cn(
+              "w-[46px] min-w-[46px] max-w-[46px] py-0.5 rounded-xs transition-colors text-[9px] font-mono font-bold border cursor-pointer tracking-wider text-center flex items-center justify-center shrink-0 tabular-nums select-none",
+              expandedCategoryIds.size > 0
+                ? "border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 hover:border-accent"
+                : "border-panel-border bg-root-bg text-text-muted hover:border-accent hover:text-accent"
+            )}
+            title={
+              expandedCategoryIds.size > 0
+                ? t("Collapse all folders (CLOSE)", "すべてのフォルダーを閉じる (CLOSE)")
+                : t("Expand all folders (OPEN)", "すべてのフォルダーを開く (OPEN)")
+            }
+          >
+            {expandedCategoryIds.size > 0 ? "CLOSE" : "OPEN"}
+          </button>
 
           {/* New Root Folder */}
           <button
