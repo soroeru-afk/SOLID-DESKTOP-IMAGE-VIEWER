@@ -338,16 +338,13 @@ export async function updateImagesOrder(updates: {id: string, orderIndex: number
   const tx = db.transaction(STORE_NAME_IMAGES, 'readwrite');
   const store = tx.objectStore(STORE_NAME_IMAGES);
   
-  // 並行パイプラインで取得・差分のみ保存
-  await Promise.all(
-    updates.map(async ({ id, orderIndex }) => {
-      const img = await store.get(id);
-      if (img && img.orderIndex !== orderIndex) {
-        img.orderIndex = orderIndex;
-        await store.put(img);
-      }
-    })
-  );
+  for (const { id, orderIndex } of updates) {
+    const img = await store.get(id);
+    if (img && img.orderIndex !== orderIndex) {
+      img.orderIndex = orderIndex;
+      await store.put(img);
+    }
+  }
   await tx.done;
 }
 
