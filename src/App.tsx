@@ -4430,12 +4430,15 @@ Images imported: ${importedImages}`);
       newSorted.splice(newIndex, 0, moved);
     }
 
-    const updates = newSorted.map((img, idx) => ({
-      id: img.id,
-      orderIndex: idx,
-    }));
+    const updates: { id: string; orderIndex: number }[] = [];
+    const orderMap = new Map<string, number>();
+    newSorted.forEach((img, idx) => {
+      orderMap.set(img.id, idx);
+      if (img.orderIndex !== idx) {
+        updates.push({ id: img.id, orderIndex: idx });
+      }
+    });
 
-    const orderMap = new Map(updates.map((u) => [u.id, u.orderIndex]));
     setImages((prev) =>
       prev.map((img) =>
         orderMap.has(img.id)
@@ -4444,7 +4447,9 @@ Images imported: ${importedImages}`);
       )
     );
 
-    await updateImagesOrder(updates);
+    if (updates.length > 0) {
+      await updateImagesOrder(updates);
+    }
   };
 
   const handleMoveDatasetBottom = async (e: React.MouseEvent, id: string) => {
@@ -4926,16 +4931,20 @@ Images imported: ${importedImages}`);
   // カスタム並び順の確定・永続保存ハンドラー
   const handleSaveCustomOrder = async () => {
     if (sortedImages.length === 0) return;
-    setIsLoading(true);
-    try {
-      // 現在の sortedImages の並び順（0..N）で恒久 orderIndex を確定
-      const updates = sortedImages.map((img, idx) => ({
-        id: img.id,
-        orderIndex: idx,
-      }));
 
-      // ステートの images にも確実にイミュータブルに反映
-      const orderMap = new Map(updates.map((u) => [u.id, u.orderIndex]));
+    try {
+      // 1. 差分（実際に orderIndex が変更される画像）のみを抽出
+      const diffUpdates: { id: string; orderIndex: number }[] = [];
+      const orderMap = new Map<string, number>();
+
+      sortedImages.forEach((img, idx) => {
+        orderMap.set(img.id, idx);
+        if (img.orderIndex !== idx) {
+          diffUpdates.push({ id: img.id, orderIndex: idx });
+        }
+      });
+
+      // 2. ステートの images に確実に反映（イミュータブル）
       setImages((prev) =>
         prev.map((img) =>
           orderMap.has(img.id)
@@ -4944,9 +4953,7 @@ Images imported: ${importedImages}`);
         )
       );
 
-      // IndexedDB へ保存
-      await updateImagesOrder(updates);
-
+      // 3. UIモードを即座に通常モードへ復帰（待ち時間ゼロ・瞬時反映）
       setIsSelectionMode(false);
       setIsCustomOrderingPending(false);
       setSelectedImageIds(new Set());
@@ -4958,17 +4965,19 @@ Images imported: ${importedImages}`);
           ? "現在の並び順をカスタム順（CUSTOM）として保存しました！"
           : "Custom order saved successfully!"
       );
+
+      // 4. 差分がある場合のみ IndexedDB へ超高速並行保存
+      if (diffUpdates.length > 0) {
+        await updateImagesOrder(diffUpdates);
+      }
     } catch (err) {
       console.error("Failed to save custom order", err);
       showNotification(language === "JP" ? "カスタム順の保存に失敗しました" : "Failed to save custom order");
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  const handleCustomMove = async (direction: "top" | "bottom" | "up" | "down") => {
+  const handleCustomMove = (direction: "top" | "bottom" | "up" | "down") => {
     if (selectedImageIds.size === 0) return;
-    setIsLoading(true);
 
     if (sortField !== "custom" || sortOrders.custom !== "asc") {
       setSortField("custom");
@@ -4990,7 +4999,6 @@ Images imported: ${importedImages}`);
       .sort((a, b) => a - b);
 
     if (selectedIndexes.length === 0) {
-      setIsLoading(false);
       return;
     }
 
@@ -5026,10 +5034,8 @@ Images imported: ${importedImages}`);
       }
     }
 
-    const updates = newImages.map((img, i) => ({ id: img.id, orderIndex: i }));
-
-    // UIを即時反映するためステートを先行同期（イミュータブル）
-    const orderMap = new Map(updates.map(u => [u.id, u.orderIndex]));
+    // 微調整中はメモリ上のステートを瞬時に更新（Apply Custom を押した時にIndexedDBへ確定保存）
+    const orderMap = new Map(newImages.map((img, i) => [img.id, i]));
     setImages(prev =>
       prev.map(item =>
         orderMap.has(item.id)
@@ -5037,9 +5043,6 @@ Images imported: ${importedImages}`);
           : item
       )
     );
-
-    await updateImagesOrder(updates);
-    setIsLoading(false);
   };
 
   const handleSelectAll = () => {

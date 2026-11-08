@@ -333,15 +333,21 @@ export async function renameImage(id: string, newName: string) {
 }
 
 export async function updateImagesOrder(updates: {id: string, orderIndex: number}[]) {
+  if (!updates || updates.length === 0) return;
   const db = await initDB();
   const tx = db.transaction(STORE_NAME_IMAGES, 'readwrite');
-  for (const { id, orderIndex } of updates) {
-    const img = await tx.store.get(id);
-    if (img) {
-      img.orderIndex = orderIndex;
-      await tx.store.put(img);
-    }
-  }
+  const store = tx.objectStore(STORE_NAME_IMAGES);
+  
+  // 並行パイプラインで取得・差分のみ保存
+  await Promise.all(
+    updates.map(async ({ id, orderIndex }) => {
+      const img = await store.get(id);
+      if (img && img.orderIndex !== orderIndex) {
+        img.orderIndex = orderIndex;
+        await store.put(img);
+      }
+    })
+  );
   await tx.done;
 }
 
