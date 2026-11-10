@@ -7342,7 +7342,7 @@ Images imported: ${importedImages}`);
               </div>
             </div>
             
-            <div className="pt-3 border-t border-panel-border overflow-y-scroll flex flex-col gap-1 min-h-[80px] flex-1 scrollbar-dark pr-1">
+            <div className="border-t border-panel-border flex flex-col min-h-[80px] flex-1 overflow-hidden">
               {datasetViewMode === "list" ? (
                 <CategoryTree
                   categories={categories}
@@ -7396,7 +7396,7 @@ Images imported: ${importedImages}`);
                   t={t}
                 />
               ) : (
-                <div className="flex flex-col gap-3 h-full">
+                <div className="pt-3 overflow-y-auto flex flex-col gap-3 h-full scrollbar-dark pr-1">
                   <select
                     className="w-full bg-root-bg border border-panel-border text-text-primary px-3 py-2 outline-none text-xs font-mono"
                     value={activeDatasetId || ""}

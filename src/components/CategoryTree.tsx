@@ -708,28 +708,29 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
   const rootDatasets = datasets.filter((d) => !d.categoryId);
 
   return (
-    <div className="flex flex-col gap-0.5 w-full">
-      {/* Root / ALL DATA Header Item (Single consolidated row with inline bulk actions) */}
-      <div
-        onClick={() => {
-          if (!isSelectMode) {
-            onSelectCategory(null);
-          }
-        }}
-        onDragOver={(e) => handleDragOver(e, "root")}
-        onDragLeave={(e) => handleDragLeave(e, "root")}
-        onDrop={(e) => handleDrop(e, null)}
-        className={cn(
-          "flex items-center justify-between px-2.5 py-1 text-xs font-mono cursor-pointer border transition-all group h-[32px] min-h-[32px] overflow-hidden shrink-0",
-          activeDatasetId === null && activeCategoryId === null && !isSelectMode
-            ? "bg-accent/15 border-accent/60 text-accent font-semibold"
-            : dragOverTargetId === "root"
-            ? "bg-accent/30 border-accent text-accent ring-2 ring-accent scale-[1.01] shadow-md"
-            : isSelectMode || totalSelected > 0
-            ? "border-accent/40 bg-panel-bg text-text-primary"
-            : "border-transparent text-text-secondary hover:bg-panel-border/60 hover:text-text-primary"
-        )}
-      >
+    <div className="flex flex-col w-full h-full min-h-0 pt-2">
+      {/* Root / ALL DATA Header Item (Fixed at top, never scrolls away) */}
+      <div className="shrink-0 pb-1.5">
+        <div
+          onClick={() => {
+            if (!isSelectMode) {
+              onSelectCategory(null);
+            }
+          }}
+          onDragOver={(e) => handleDragOver(e, "root")}
+          onDragLeave={(e) => handleDragLeave(e, "root")}
+          onDrop={(e) => handleDrop(e, null)}
+          className={cn(
+            "flex items-center justify-between px-2.5 py-1 text-xs font-mono cursor-pointer border transition-all group h-[32px] min-h-[32px] overflow-hidden shrink-0",
+            activeDatasetId === null && activeCategoryId === null && !isSelectMode
+              ? "bg-accent/15 border-accent/60 text-accent font-semibold"
+              : dragOverTargetId === "root"
+              ? "bg-accent/30 border-accent text-accent ring-2 ring-accent scale-[1.01] shadow-md"
+              : isSelectMode || totalSelected > 0
+              ? "border-accent/40 bg-panel-bg text-text-primary"
+              : "border-panel-border/60 bg-panel-bg text-text-secondary hover:bg-panel-border hover:text-text-primary"
+          )}
+        >
         <span className="truncate flex-1 min-w-0 pr-1 flex items-center gap-1.5">
           <Folders
             size={14}
@@ -885,12 +886,16 @@ export const CategoryTree: React.FC<CategoryTreeProps> = ({
           </button>
         </div>
       </div>
+    </div>
 
-      {/* Categories Tree */}
-      {rootCategories.map((cat) => renderCategoryNode(cat, 0))}
+      {/* Scrollable Folder and Dataset Tree Area (scrolls independently while ALL IMAGE DATA stays fixed) */}
+      <div className="overflow-y-scroll flex-1 flex flex-col gap-0.5 min-h-0 scrollbar-dark pr-1">
+        {/* Categories Tree */}
+        {rootCategories.map((cat) => renderCategoryNode(cat, 0))}
 
-      {/* Root / Unclassified Datasets */}
-      {rootDatasets.map((ds) => renderDatasetItem(ds, 0))}
+        {/* Root / Unclassified Datasets */}
+        {rootDatasets.map((ds) => renderDatasetItem(ds, 0))}
+      </div>
 
       {/* BULK MOVE MODAL FOR SIDEBAR */}
       <AnimatePresence>
