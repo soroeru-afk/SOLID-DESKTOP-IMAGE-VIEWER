@@ -29,7 +29,7 @@
 - **クリーン表示**: ヘッダー右上ボタン／[SHOW UI]ボタン／ショートカット（テンキー `*` / `U`）でヘッダー＆サイドバーを一括非表示／交互復元（Ref制御）。
 
 ### 2. 一覧画面・操作
-- **レイアウト**: SQUARE / MASONRY / SCATTER。向きフィルター（ORIENT: ALL / PORTRAIT / LANDSCAPE、SIZE/GAP個別保持）。D&Dドロップ受付（メイン一覧全体でADD TO ACTIVE / CREATE BY FOLDERの2分割ガイド表示・直感ドロップ）。
+- **レイアウト**: SQUARE / MASONRY / SCATTER。向きフィルター（ORIENT: ALL / PORTRAIT / LANDSCAPE、SIZE/GAP個別保持）。D&Dドロップ受付（メイン一覧全体でADD TO ACTIVE / CREATE BY FOLDERの2分割ガイド表示・直感ドロップ）。通常遷移時は必ず最上部（scrollTop=0・先頭画像）から表示（ストック・ナビ履歴復元時のみ保存位置を復元）。
 - **SCATTER回転**: 画像右下の回転ハンドルドラッグで中心軸360°無段階回転。ダブルクリックで0°（正位置）復元。
 - **シークレット（Secret）**: 一時非表示および復元（REVEAL）。
 - **複数選択（Editモード）**: 移動、コピー、お気に入りコピー、シークレット化、一括削除確認（z-[110]）。COVERバッジ設定時はチェックボックス位置を自動調整し誤操作防止。

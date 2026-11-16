@@ -532,6 +532,16 @@ export default function App() {
   ]);
   const [navIndex, setNavIndex] = useState<number>(0);
   const isNavigatingRef = useRef<boolean>(false);
+  const pendingScrollRestoreRef = useRef<{
+    scrollTop: number;
+    scrollRatio: number;
+    anchorImageId?: string;
+    maxAttempts: number;
+    count: number;
+  } | null>(null);
+  const suppressScrollTrackingUntilRef = useRef<number>(0);
+  const pendingResetToTopRef = useRef<boolean>(false);
+  const skipAutoResetToTopRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (isNavigatingRef.current) {
@@ -622,6 +632,12 @@ export default function App() {
     }
 
     const targetScrollTop = targetState.scrollTop || 0;
+    pendingScrollRestoreRef.current = {
+      scrollTop: targetScrollTop,
+      scrollRatio: 0,
+      maxAttempts: 12,
+      count: 0,
+    };
     const doRestore = () => {
       if (scrollContainerRef.current) {
         scrollContainerRef.current.scrollTop = targetScrollTop;
@@ -797,7 +813,7 @@ export default function App() {
     else if (theme === "PINK") color = "#1a1215";
     else if (theme === "MOCHA") color = "#59483a";
     else if (theme === "OLIVE") color = "#12160d";
-    
+
     if (metaThemeColor) {
       metaThemeColor.setAttribute("content", color);
     } else {
@@ -989,7 +1005,15 @@ export default function App() {
 
   // 画像サイズ(itemScale)・隙間(gridGap)の変更時に、今見ている画像の位置を維持
   // SquareのCSS Grid再計算やMasonryの列数再構築に対応するため、複数フレームに渡って確実に追従
+  // ※ データセット/カテゴリー切替直後の localStorage からの scale/gap 読込では発火させない
   useLayoutEffect(() => {
+    const isActivelyAdjustingScaleOrGap =
+      scaleAnchorRef.current !== null ||
+      performance.now() - lastScaleOrGapChangeTimeRef.current < 500;
+    if (!isActivelyAdjustingScaleOrGap || pendingResetToTopRef.current) {
+      return;
+    }
+
     adjustAnchorScroll();
     const rafId1 = requestAnimationFrame(() => {
       adjustAnchorScroll();
@@ -2439,13 +2463,7 @@ export default function App() {
     localStorage.setItem("app_jog_controller_theme", jogControllerTheme);
   }, [jogControllerTheme]);
 
-  const pendingScrollRestoreRef = useRef<{
-    scrollTop: number;
-    scrollRatio: number;
-    anchorImageId?: string;
-    maxAttempts: number;
-    count: number;
-  } | null>(null);
+  // pendingScrollRestoreRef declared near navigation history state
   type AppTheme = "NAVY" | "BLACK" | "TRUE_BLACK" | "PAPER" | "PINK" | "LIGHT" | "BROWN" | "MOCHA" | "OLIVE" | "RED";
   const DEFAULT_THEME_FOLDER_COLORS: Record<AppTheme, string> = {
     NAVY: "#fbbf24",
@@ -3432,9 +3450,24 @@ function createPRNG(seed: number) {
     return closestImg || bestYItem.img || sortedImages[0] || null;
   }, [sortedImages]);
 
+  const resetViewScrollToTop = React.useCallback(() => {
+    suppressScrollTrackingUntilRef.current = performance.now() + 450;
+    scaleAnchorRef.current = null;
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+  }, []);
+
   // スクロール時に画面中央の画像へ選択枠（selectedImage）をリアルタイム追従させるイベントハンドラー
   const handleContainerScroll = React.useCallback(() => {
     if (isFullscreen || viewMode === "free" || sortedImages.length === 0) return;
+    // ストック復元中・通常切替による最上部リセット直後はスクロール追従による上書きを防ぐ
+    if (
+      pendingScrollRestoreRef.current ||
+      performance.now() < suppressScrollTrackingUntilRef.current
+    ) {
+      return;
+    }
     // スライダードラッグ中やスケール変更直後は、選択画像が中央の別画像に上書きされるのを完全に防ぐ！
     if (isSliderInteractingRef.current || performance.now() - lastScaleOrGapChangeTimeRef.current < 500) {
       return;
@@ -3443,14 +3476,24 @@ function createPRNG(seed: number) {
     if (scrollTimerRef.current) cancelAnimationFrame(scrollTimerRef.current);
 
     scrollTimerRef.current = requestAnimationFrame(() => {
-      if (isSliderInteractingRef.current || performance.now() - lastScaleOrGapChangeTimeRef.current < 500) {
+      if (
+        pendingScrollRestoreRef.current ||
+        performance.now() < suppressScrollTrackingUntilRef.current ||
+        isSliderInteractingRef.current ||
+        performance.now() - lastScaleOrGapChangeTimeRef.current < 500
+      ) {
         isScrollingRef.current = false;
         return;
       }
-      const centerImg = getCenterImage();
-      if (centerImg && centerImg.id !== selectedImageRef.current?.id) {
+      const container = scrollContainerRef.current;
+      // スクロール位置が最上部付近まで戻された場合は先頭画像を選択する
+      const targetImg =
+        container && container.scrollTop <= 2
+          ? sortedImages[0] || null
+          : getCenterImage();
+      if (targetImg && targetImg.id !== selectedImageRef.current?.id) {
         isScrollTrackingUpdateRef.current = true;
-        setSelectedImage(centerImg);
+        setSelectedImage(targetImg);
         if (!hoveredImageIdRef.current) {
           lastNavSourceRef.current = "keyboard";
         }
@@ -3459,22 +3502,56 @@ function createPRNG(seed: number) {
         isScrollingRef.current = false;
       }, 50);
     });
-  }, [isFullscreen, viewMode, sortedImages.length, getCenterImage]);
+  }, [isFullscreen, viewMode, sortedImages, getCenterImage]);
 
-  // リスト（データセット/フォルダ）切り替え時に画面中央の画像を自動選択
+  // 通常遷移（フォルダ・データセット・検索切替）時は必ず一覧の先頭（scrollTop = 0）を表示する
   useEffect(() => {
+    if (pendingScrollRestoreRef.current || skipAutoResetToTopRef.current) {
+      return;
+    }
+    setAutoScrollDir(null);
+    pendingResetToTopRef.current = true;
+    resetViewScrollToTop();
+    if (!pendingFullscreenNav.current) {
+      setSelectedImage(null);
+    }
+    const rafId = requestAnimationFrame(() => {
+      resetViewScrollToTop();
+    });
+    const tId = setTimeout(() => {
+      resetViewScrollToTop();
+    }, 50);
+    return () => {
+      cancelAnimationFrame(rafId);
+      clearTimeout(tId);
+    };
+  }, [activeDatasetId, activeCategoryId, isCategoryImagesView, searchQuery, resetViewScrollToTop]);
+
+  // リスト（データセット/フォルダ）切り替え時の初期画像選択
+  // 通常オープン時は必ず一番上の先頭画像を選択し、スクロール位置も0に固定する
+  useEffect(() => {
+    if (isFullscreen && pendingFullscreenNav.current) return;
+
     if (sortedImages.length > 0) {
       const exists = selectedImage && sortedImages.some((img) => img.id === selectedImage.id);
       if (!exists) {
+        if (!pendingScrollRestoreRef.current && !skipAutoResetToTopRef.current) {
+          resetViewScrollToTop();
+          isScrollTrackingUpdateRef.current = true;
+          setSelectedImage(sortedImages[0]);
+          return;
+        }
         const t1 = setTimeout(() => {
           const centerImg = getCenterImage();
           if (centerImg) {
+            isScrollTrackingUpdateRef.current = true;
             setSelectedImage(centerImg);
           }
         }, 60);
         const t2 = setTimeout(() => {
           const centerImg = getCenterImage();
           if (centerImg) {
+            isScrollTrackingUpdateRef.current = true;
             setSelectedImage(centerImg);
           }
         }, 200);
@@ -3486,9 +3563,9 @@ function createPRNG(seed: number) {
     } else {
       setSelectedImage(null);
     }
-  }, [sortedImages, activeDatasetId, activeCategoryId, isCategoryImagesView, getCenterImage]);
+  }, [sortedImages, activeDatasetId, activeCategoryId, isCategoryImagesView, isFullscreen, getCenterImage, resetViewScrollToTop]);
 
-  // 画像セット時や描画完了時にスクロール位置を確実に中段・下段へ適用
+  // 画像セット時や描画完了時にスクロール位置を適用（ストック復元時は指定位置、通常切替時は必ず最上部）
   useEffect(() => {
     if (pendingScrollRestoreRef.current) {
       applyScrollRestore();
@@ -3505,7 +3582,24 @@ function createPRNG(seed: number) {
         clearTimeout(t5);
       };
     }
-  }, [images, sortedImages, applyScrollRestore]);
+
+    if (pendingResetToTopRef.current && !skipAutoResetToTopRef.current) {
+      resetViewScrollToTop();
+      const rafId = requestAnimationFrame(() => {
+        resetViewScrollToTop();
+      });
+      const t1 = setTimeout(() => {
+        resetViewScrollToTop();
+        if (!isLoading) {
+          pendingResetToTopRef.current = false;
+        }
+      }, 45);
+      return () => {
+        cancelAnimationFrame(rafId);
+        clearTimeout(t1);
+      };
+    }
+  }, [images, sortedImages, isLoading, applyScrollRestore, resetViewScrollToTop]);
 
   // 現在の表示状態・スクロール位置をストック保存
   const handleCreateQuickStock = () => {
@@ -4843,6 +4937,7 @@ Images imported: ${importedImages}`);
       }
 
       // 2. Close fullscreen and category view
+      skipAutoResetToTopRef.current = true;
       setIsFullscreen(false);
       setIsCategoryImagesView(false);
 
@@ -4877,6 +4972,9 @@ Images imported: ${importedImages}`);
       );
     } finally {
       setIsLoading(false);
+      setTimeout(() => {
+        skipAutoResetToTopRef.current = false;
+      }, 300);
     }
   };
 
@@ -4929,7 +5027,7 @@ Images imported: ${importedImages}`);
 
     setIsLoading(true);
     try {
-      // 1. 現在の画面上の並び順（0..N）で全件 updates を作成
+      // 1. 現在の画面の並び順（0..N）で全件の updates を作成
       const updates = sortedImages.map((img, idx) => ({
         id: img.id,
         orderIndex: idx,
@@ -4945,7 +5043,7 @@ Images imported: ${importedImages}`);
         )
       );
 
-      // 3. IndexedDB へ確実に保存（updateImagesOrder 側で実際のDB値と比較し、変更のあるレコードのみ put するため安全・高速かつ確実）
+      // 3. IndexedDB へ確実に保存（updateImagesOrder 内部で DB と比較し、変更のあったレコードのみ put するため高速かつ確実）
       await updateImagesOrder(updates);
 
       // 4. 保存完了後に通常モードへ復帰
@@ -7354,11 +7452,21 @@ Images imported: ${importedImages}`);
                   favoriteDatasetId={favoriteDatasetId}
                   sidebarFontSize={sidebarFontSize}
                   onSelectDataset={(id) => {
+                    pendingScrollRestoreRef.current = null;
+                    pendingResetToTopRef.current = true;
+                    resetViewScrollToTop();
+                    if (activeDatasetId === id && sortedImages.length > 0) {
+                      isScrollTrackingUpdateRef.current = true;
+                      setSelectedImage(sortedImages[0]);
+                    }
                     setActiveDatasetId(id);
                     setSearchQuery("");
                     setSearchInput("");
                   }}
                   onSelectCategory={(id) => {
+                    pendingScrollRestoreRef.current = null;
+                    pendingResetToTopRef.current = true;
+                    resetViewScrollToTop();
                     setActiveCategoryId(id);
                     setActiveDatasetId(null);
                     setIsCategoryImagesView(false);
@@ -7402,6 +7510,9 @@ Images imported: ${importedImages}`);
                     value={activeDatasetId || ""}
                     onChange={(e) => {
                       const val = e.target.value;
+                      pendingScrollRestoreRef.current = null;
+                      pendingResetToTopRef.current = true;
+                      resetViewScrollToTop();
                       setActiveDatasetId(val === "" ? null : val);
                       setSearchQuery("");
                       setSearchInput("");
@@ -9504,6 +9615,9 @@ Images imported: ${importedImages}`);
                     <button
                       type="button"
                       onClick={() => {
+                        pendingScrollRestoreRef.current = null;
+                        pendingResetToTopRef.current = true;
+                        resetViewScrollToTop();
                         setActiveDatasetId(null);
                         setActiveCategoryId(null);
                         setIsCategoryImagesView(false);
@@ -9542,6 +9656,9 @@ Images imported: ${importedImages}`);
                           <button
                             type="button"
                             onClick={() => {
+                              pendingScrollRestoreRef.current = null;
+                              pendingResetToTopRef.current = true;
+                              resetViewScrollToTop();
                               setActiveDatasetId(null);
                               setActiveCategoryId(cat.id);
                               setIsCategoryImagesView(false);
@@ -9677,6 +9794,9 @@ Images imported: ${importedImages}`);
                         <button
                           type="button"
                           onClick={() => {
+                            pendingScrollRestoreRef.current = null;
+                            pendingResetToTopRef.current = true;
+                            resetViewScrollToTop();
                             setActiveDatasetId(null);
                             setIsCategoryImagesView(false);
                           }}
@@ -9883,12 +10003,18 @@ Images imported: ${importedImages}`);
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0, transition: { duration: 0.15 } }}
-                  onPointerDown={handleListPointerDown}
+                  onPointerDown={(e) => {
+                    pendingResetToTopRef.current = false;
+                    suppressScrollTrackingUntilRef.current = 0;
+                    handleListPointerDown(e);
+                  }}
                   onPointerMove={handleListPointerMove}
                   onPointerUp={handleListPointerUp}
                   onPointerCancel={handleListPointerCancel}
                   onScroll={handleContainerScroll}
                   onWheel={(e) => {
+                    pendingResetToTopRef.current = false;
+                    suppressScrollTrackingUntilRef.current = 0;
                     if (viewMode === "free") {
                       e.preventDefault();
                       let delta = e.deltaY;
@@ -10088,92 +10214,92 @@ Images imported: ${importedImages}`);
                           {/* 検索結果固定ヘッダーバー (スクロール時も上部に固定) */}
                           <div className="sticky -top-4 z-30 -mx-4 -mt-4 px-4 pt-4 pb-2 bg-root-bg/95 backdrop-blur-md border-b border-panel-border/80 shadow-md">
                             <div className="w-full bg-panel-bg border border-panel-border p-2.5 px-3 rounded-xs flex flex-wrap items-center justify-between gap-3 text-xs shadow-xs">
-                            <div className="flex items-center gap-3">
-                              <div className="flex items-center gap-1.5 font-bold text-text-primary">
-                                <Search size={14} className="text-accent shrink-0" />
-                                <span>{t("SEARCH RESULTS", "検索結果")}</span>
-                                <span className="text-accent font-bold tabular-nums">({searchResults.length} {t("items", "件")})</span>
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={clearSearch}
-                                className="flex items-center gap-1 px-2 py-1 text-[11px] font-bold border border-red-500/40 text-red-400 hover:bg-red-500 hover:text-white rounded-xs transition-colors cursor-pointer"
-                              >
-                                <X size={12} />
-                                <span>{t("CLEAR SEARCH", "検索解除")}</span>
-                              </button>
-                            </div>
-
-                            {/* グルーピング切替: 全件一覧 / フォルダー別に整理 ＆ 表示形式: カード / リスト */}
-                            <div className="flex items-center gap-3">
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => setSearchResultGrouping("flat")}
-                                  className={cn(
-                                    "flex items-center gap-1.5 px-3 py-1 text-[11px] font-bold border rounded-xs transition-colors cursor-pointer",
-                                    searchResultGrouping === "flat"
-                                      ? "bg-accent/20 border-accent text-accent shadow-xs"
-                                      : "bg-root-bg border-panel-border text-text-secondary hover:text-text-primary"
-                                  )}
-                                >
-                                  <LayoutGrid size={13} />
-                                  <span>{t("ALL ITEMS LIST", "全件一覧")}</span>
-                                </button>
+                              <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-1.5 font-bold text-text-primary">
+                                  <Search size={14} className="text-accent shrink-0" />
+                                  <span>{t("SEARCH RESULTS", "検索結果")}</span>
+                                  <span className="text-accent font-bold tabular-nums">({searchResults.length} {t("items", "件")})</span>
+                                </div>
 
                                 <button
                                   type="button"
-                                  onClick={() => setSearchResultGrouping("folder")}
-                                  className={cn(
-                                    "flex items-center gap-1.5 px-3 py-1 text-[11px] font-bold border rounded-xs transition-colors cursor-pointer",
-                                    searchResultGrouping === "folder"
-                                      ? "bg-accent/20 border-accent text-accent shadow-xs"
-                                      : "bg-root-bg border-panel-border text-text-secondary hover:text-text-primary"
-                                  )}
+                                  onClick={clearSearch}
+                                  className="flex items-center gap-1 px-2 py-1 text-[11px] font-bold border border-red-500/40 text-red-400 hover:bg-red-500 hover:text-white rounded-xs transition-colors cursor-pointer"
                                 >
-                                  <Folder size={13} />
-                                  <span>{t("ORGANIZE BY FOLDER", "フォルダー別に整理")}</span>
+                                  <X size={12} />
+                                  <span>{t("CLEAR SEARCH", "検索解除")}</span>
                                 </button>
                               </div>
 
-                              <div className="h-4 w-[1px] bg-panel-border/70" />
+                              {/* グルーピング切替: 全件一覧 / フォルダー別に整理 ＆ 表示形式: カード / リスト */}
+                              <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSearchResultGrouping("flat")}
+                                    className={cn(
+                                      "flex items-center gap-1.5 px-3 py-1 text-[11px] font-bold border rounded-xs transition-colors cursor-pointer",
+                                      searchResultGrouping === "flat"
+                                        ? "bg-accent/20 border-accent text-accent shadow-xs"
+                                        : "bg-root-bg border-panel-border text-text-secondary hover:text-text-primary"
+                                    )}
+                                  >
+                                    <LayoutGrid size={13} />
+                                    <span>{t("ALL ITEMS LIST", "全件一覧")}</span>
+                                  </button>
 
-                              {/* 表示形式切替 (カード / リスト) */}
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => setSearchViewType("card")}
-                                  className={cn(
-                                    "flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold border rounded-xs transition-colors cursor-pointer",
-                                    searchViewType === "card"
-                                      ? "bg-accent/20 border-accent text-accent shadow-xs"
-                                      : "bg-root-bg border-panel-border text-text-secondary hover:text-text-primary"
-                                  )}
-                                  title={t("Square Card View", "カード型表示")}
-                                >
-                                  <LayoutGrid size={12} />
-                                  <span>{t("CARD", "カード")}</span>
-                                </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSearchResultGrouping("folder")}
+                                    className={cn(
+                                      "flex items-center gap-1.5 px-3 py-1 text-[11px] font-bold border rounded-xs transition-colors cursor-pointer",
+                                      searchResultGrouping === "folder"
+                                        ? "bg-accent/20 border-accent text-accent shadow-xs"
+                                        : "bg-root-bg border-panel-border text-text-secondary hover:text-text-primary"
+                                    )}
+                                  >
+                                    <Folder size={13} />
+                                    <span>{t("ORGANIZE BY FOLDER", "フォルダー別に整理")}</span>
+                                  </button>
+                                </div>
 
-                                <button
-                                  type="button"
-                                  onClick={() => setSearchViewType("list")}
-                                  className={cn(
-                                    "flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold border rounded-xs transition-colors cursor-pointer",
-                                    searchViewType === "list"
-                                      ? "bg-accent/20 border-accent text-accent shadow-xs"
-                                      : "bg-root-bg border-panel-border text-text-secondary hover:text-text-primary"
-                                  )}
-                                  title={t("Detailed List View for Long Filenames", "リスト型表示（長い文字対応）")}
-                                >
-                                  <List size={13} />
-                                  <span>{t("LIST", "リスト")}</span>
-                                </button>
+                                <div className="h-4 w-[1px] bg-panel-border/70" />
+
+                                {/* 表示形式切替 (カード / リスト) */}
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSearchViewType("card")}
+                                    className={cn(
+                                      "flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold border rounded-xs transition-colors cursor-pointer",
+                                      searchViewType === "card"
+                                        ? "bg-accent/20 border-accent text-accent shadow-xs"
+                                        : "bg-root-bg border-panel-border text-text-secondary hover:text-text-primary"
+                                    )}
+                                    title={t("Square Card View", "カード型表示")}
+                                  >
+                                    <LayoutGrid size={12} />
+                                    <span>{t("CARD", "カード")}</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => setSearchViewType("list")}
+                                    className={cn(
+                                      "flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold border rounded-xs transition-colors cursor-pointer",
+                                      searchViewType === "list"
+                                        ? "bg-accent/20 border-accent text-accent shadow-xs"
+                                        : "bg-root-bg border-panel-border text-text-secondary hover:text-text-primary"
+                                    )}
+                                    title={t("Detailed List View for Long Filenames", "リスト型表示（長い文字対応）")}
+                                  >
+                                    <List size={13} />
+                                    <span>{t("LIST", "リスト")}</span>
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
 
                           {/* 検索中ステート */}
                           {isSearching ? (
@@ -10213,6 +10339,9 @@ Images imported: ${importedImages}`);
                                     <button
                                       type="button"
                                       onClick={() => {
+                                        pendingScrollRestoreRef.current = null;
+                                        pendingResetToTopRef.current = true;
+                                        resetViewScrollToTop();
                                         clearSearch();
                                         setActiveDatasetId(grp.datasetId);
                                       }}
@@ -10267,6 +10396,9 @@ Images imported: ${importedImages}`);
                           favoriteDatasetId={favoriteDatasetId}
                           setHomeViewMode={setHomeViewMode}
                           onSelectCategory={(catId) => {
+                            pendingScrollRestoreRef.current = null;
+                            pendingResetToTopRef.current = true;
+                            resetViewScrollToTop();
                             setActiveCategoryId(catId);
                             setActiveDatasetId(null);
                             setIsCategoryImagesView(false);
@@ -10274,12 +10406,18 @@ Images imported: ${importedImages}`);
                             setSearchInput("");
                           }}
                           onSelectDataset={(dsId) => {
+                            pendingScrollRestoreRef.current = null;
+                            pendingResetToTopRef.current = true;
+                            resetViewScrollToTop();
                             setActiveDatasetId(dsId);
                             setIsCategoryImagesView(false);
                             setSearchQuery("");
                             setSearchInput("");
                           }}
                           onViewCategoryImages={(catId) => {
+                            pendingScrollRestoreRef.current = null;
+                            pendingResetToTopRef.current = true;
+                            resetViewScrollToTop();
                             loadImagesForCategory(catId);
                           }}
                           onAddCategory={handleOpenNewCategoryModal}
