@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Folder,
@@ -113,9 +114,16 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
   onBulkRenameItems,
   t,
 }) => {
+  const explorerScrollRef = useRef<HTMLDivElement | null>(null);
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
   const [popupMousePos, setPopupMousePos] = useState({ x: 0, y: 0 });
   const [dragOverTargetKey, setDragOverTargetKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (explorerScrollRef.current) {
+      explorerScrollRef.current.scrollTop = 0;
+    }
+  }, [activeCategoryId]);
   const [activeDragItem, setActiveDragItem] = useState<{
     type: "category" | "dataset";
     id: string;
@@ -890,46 +898,48 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
       </div>
 
       {/* Foreground Content */}
-      <div className="relative z-10 w-full h-full overflow-y-auto p-4 sm:p-6 lg:p-8 scrollbar-dark flex flex-col items-center justify-start">
-        <div className="w-full max-w-[1700px] flex flex-col items-center">
-          {/* View Style Switcher Buttons & Overview Bar */}
-          <div className="flex flex-wrap items-center justify-between w-full gap-3 mb-6 select-none">
-            <div className="explorer-title-pill text-text-muted text-xs tracking-widest uppercase font-mono bg-panel-bg/90 backdrop-blur-md px-4 py-1.5 border border-panel-border shadow-sm flex items-center gap-2">
-              <Folder size={13} className="text-accent" />
-              <span>
-                {currentCategory ? currentCategory.name : t("ROOT EXPLORER", "ルート階層")}
-              </span>
-              <span className="text-text-primary font-bold">
-                ({currentSubcategories.length} FOLDERS / {currentDatasets.length} DATASETS / {totalCurrentFolderImages} IMAGES)
-              </span>
-            </div>
+      <div className="relative z-10 w-full h-full flex flex-col overflow-hidden">
+        {/* Fixed Top Header & Bulk Action Toolbar */}
+        <div className="shrink-0 w-full px-4 sm:px-6 lg:px-8 pt-4 sm:pt-5 pb-2.5 bg-panel-bg flex flex-col items-center">
+          <div className="w-full max-w-[1700px] flex flex-col items-center gap-4">
+            {/* View Style Switcher Buttons & Overview Bar */}
+            <div className="flex flex-wrap items-center justify-between w-full gap-3 select-none">
+              <div className="explorer-title-pill text-text-muted text-xs tracking-widest uppercase font-mono bg-panel-bg/90 backdrop-blur-md px-4 py-1.5 border border-panel-border shadow-sm flex items-center gap-2">
+                <Folder size={13} className="text-accent" />
+                <span>
+                  {currentCategory ? currentCategory.name : t("ROOT EXPLORER", "ルート階層")}
+                </span>
+                <span className="text-text-primary font-bold">
+                  ({currentSubcategories.length} FOLDERS / {currentDatasets.length} DATASETS / {totalCurrentFolderImages} IMAGES)
+                </span>
+              </div>
 
-            <div className="flex items-center gap-2">
-              <span className="explorer-grip-hint text-[10px] font-mono text-text-muted hidden sm:inline-block">
-                {t("💡 GRIP (⋮⋮) TO DRAG FOLDERS & DATASETS", "💡 グリップ (⋮⋮) でフォルダーやセットを自由に移動")}
-              </span>
-              <div className="explorer-mode-group flex items-center border border-panel-border bg-panel-bg/90 backdrop-blur-md p-1 text-[10px] font-mono shadow-sm">
-                {(["text", "popup", "card", "cover", "list"] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => setHomeViewMode(mode)}
-                    className={cn(
-                      "px-3 py-1 transition-colors uppercase font-mono cursor-pointer",
-                      homeViewMode === mode
-                        ? "bg-accent text-accent-text font-bold"
-                        : "text-text-secondary hover:text-text-primary"
-                    )}
-                  >
-                    {mode.toUpperCase()}
-                  </button>
-                ))}
+              <div className="flex items-center gap-2">
+                <span className="explorer-grip-hint text-[10px] font-mono text-text-muted hidden sm:inline-block">
+                  {t("💡 GRIP (⋮⋮) TO DRAG FOLDERS & DATASETS", "💡 グリップ (⋮⋮) でフォルダーやセットを自由に移動")}
+                </span>
+                <div className="explorer-mode-group flex items-center border border-panel-border bg-panel-bg/90 backdrop-blur-md p-1 text-[10px] font-mono shadow-sm">
+                  {(["text", "popup", "card", "cover", "list"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setHomeViewMode(mode)}
+                      className={cn(
+                        "px-3 py-1 transition-colors uppercase font-mono cursor-pointer",
+                        homeViewMode === mode
+                          ? "bg-accent text-accent-text font-bold"
+                          : "text-text-secondary hover:text-text-primary"
+                      )}
+                    >
+                      {mode.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* K-Navigator Style Bulk Selection & Action Toolbar */}
-          <div className="explorer-toolbar w-full bg-panel-bg/95 border border-panel-border p-2 px-3 mb-6 flex flex-wrap items-center justify-between gap-3 text-xs font-mono shadow-sm backdrop-blur-md rounded-xs">
+            {/* K-Navigator Style Bulk Selection & Action Toolbar */}
+            <div className="explorer-toolbar w-full bg-panel-bg/95 border border-panel-border p-2 px-3 flex flex-wrap items-center justify-between gap-3 text-xs font-mono shadow-sm backdrop-blur-md rounded-xs">
             <div className="flex items-center gap-3">
               {/* SELECT ALL Checkbox Button */}
               <button
@@ -1077,7 +1087,15 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
               </button>
             </div>
           </div>
+          </div>
+        </div>
 
+        {/* Independent Scrollable Explorer Grid Area */}
+        <div
+          ref={explorerScrollRef}
+          className="flex-1 min-h-0 w-full overflow-y-auto px-4 sm:px-6 lg:px-8 pt-3.5 pb-8 scrollbar-dark flex flex-col items-center justify-start"
+        >
+          <div className="w-full max-w-[1700px] flex flex-col items-center">
           {/* Empty State */}
           {currentSubcategories.length === 0 && currentDatasets.length === 0 && (
             <div className="text-text-muted font-mono text-xs mt-12 bg-panel-bg/60 px-6 py-6 border border-panel-border flex flex-col items-center gap-3">
@@ -1922,7 +1940,14 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
               </div>
             </div>
           )}
+          </div>
+        </div>
+      </div>
 
+      {/* Portaled Overlays & Modals */}
+      {typeof document !== "undefined" &&
+        createPortal(
+          <>
           {/* POPUP PREVIEW FLOATER */}
           {homeViewMode === "popup" && hoveredItemId && (() => {
             const hoveredDs = datasets.find((d) => d.id === hoveredItemId);
@@ -1959,7 +1984,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
             return (
               <div
                 style={{ left: `${left}px`, top: `${top}px` }}
-                className="fixed z-[100] pointer-events-none w-[190px] bg-panel-bg border border-accent/60 shadow-2xl p-2 font-mono flex flex-col gap-1.5 animate-in fade-in zoom-in-95 duration-100"
+                className="fixed z-[120] pointer-events-none w-[190px] bg-panel-bg border border-accent/60 shadow-2xl p-2 font-mono flex flex-col gap-1.5 animate-in fade-in zoom-in-95 duration-100"
               >
                 <div className="w-full aspect-[4/3] bg-black/40 overflow-hidden flex items-center justify-center border border-panel-border">
                   <img
@@ -1994,7 +2019,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-6 backdrop-blur-sm"
+                className="fixed inset-0 z-[130] bg-root-bg/80 flex items-center justify-center p-6 backdrop-blur-sm"
               >
                 <div className="bg-panel-bg border border-accent p-6 font-mono w-[480px] max-h-[85vh] flex flex-col shadow-2xl rounded-xs">
                   <h2 className="text-accent mb-2 uppercase flex items-center gap-2 text-sm font-bold tracking-wider">
@@ -2077,7 +2102,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-6 backdrop-blur-sm"
+                className="fixed inset-0 z-[130] bg-root-bg/80 flex items-center justify-center p-6 backdrop-blur-sm"
               >
                 <div className="bg-panel-bg border border-red-500/60 p-6 font-mono w-[480px] max-h-[85vh] flex flex-col shadow-2xl rounded-xs">
                   <h2 className="text-red-400 mb-2 uppercase flex items-center gap-2 text-sm font-bold tracking-wider">
@@ -2160,7 +2185,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-4 backdrop-blur-sm"
+                className="fixed inset-0 z-[130] bg-root-bg/80 flex items-center justify-center p-4 backdrop-blur-sm"
               >
                 <div className="bg-panel-bg border border-accent/60 p-5 font-mono w-[780px] max-w-[96vw] h-[840px] max-h-[96vh] flex flex-col shadow-2xl rounded-xs">
                   {/* Header */}
@@ -2632,7 +2657,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-6 backdrop-blur-sm"
+                className="fixed inset-0 z-[130] bg-root-bg/80 flex items-center justify-center p-6 backdrop-blur-sm"
               >
                 <div className="bg-panel-bg border border-amber-500/50 p-6 font-mono w-[760px] max-w-[94vw] h-[85vh] max-h-[800px] flex flex-col shadow-[0_0_40px_rgba(245,158,11,0.2)]">
                   {/* Header */}
@@ -2845,7 +2870,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[110] bg-root-bg/80 flex items-center justify-center p-6 backdrop-blur-sm"
+                className="fixed inset-0 z-[130] bg-root-bg/80 flex items-center justify-center p-6 backdrop-blur-sm"
               >
                 <div className="bg-panel-bg border border-amber-500/50 p-6 font-mono w-[760px] max-w-[94vw] h-[85vh] max-h-[800px] flex flex-col shadow-[0_0_40px_rgba(245,158,11,0.2)]">
                   {/* Header */}
@@ -3045,8 +3070,9 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
-      </div>
+          </>,
+          document.body
+        )}
     </div>
   );
 };
