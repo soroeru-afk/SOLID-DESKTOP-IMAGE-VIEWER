@@ -152,6 +152,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
   const [showBulkRenameModal, setShowBulkRenameModal] = useState(false);
   const [bulkRenameTab, setBulkRenameTab] = useState<"quick" | "replace" | "prefix">("quick");
   const [targetScope, setTargetScope] = useState<"all_items" | "all_datasets" | "all_categories" | "selected">("all_items");
+  const [renameSortMode, setRenameSortMode] = useState<"tree" | "name-asc" | "name-desc">("tree");
   const [checkedRenameIds, setCheckedRenameIds] = useState<Set<string>>(new Set());
   const [filterSearch, setFilterSearch] = useState("");
   const [quickNames, setQuickNames] = useState<Record<string, string>>({});
@@ -615,6 +616,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
     setNumberOrder("asc");
     setBulkRenameTab("quick");
     setTargetScope("all_items");
+    setRenameSortMode("tree");
 
     // Check ALL items by default when opening
     const allIds = [...categories.map((c) => c.id), ...datasets.map((d) => d.id)];
@@ -649,47 +651,248 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
     });
   };
 
-  const getBulkRenameItemsList = () => {
-    let targetCatIds: string[] = [];
-    let targetDsIds: string[] = [];
+  const toggleGroupRenameCheck = (groupIds: string[]) => {
+    const allGroupChecked = groupIds.length > 0 && groupIds.every((id) => checkedRenameIds.has(id));
+    setCheckedRenameIds((prev) => {
+      const next = new Set(prev);
+      if (allGroupChecked) {
+        groupIds.forEach((id) => next.delete(id));
+      } else {
+        groupIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
 
-    if (targetScope === "all_datasets") {
-      targetCatIds = [];
-      targetDsIds = datasets.map((d) => d.id);
-    } else if (targetScope === "all_categories") {
-      targetCatIds = categories.map((c) => c.id);
-      targetDsIds = [];
+  const getBulkRenameItemsList = () => {
+    const catMap = new Map<string, CategoryRecord>(categories.map((c) => [c.id, c]));
+    const naturalCompare = (a: string, b: string) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+
+    const sortCats = (list: CategoryRecord[]) => {
+      const copy = [...list];
+      if (renameSortMode === "name-asc") return copy.sort((a, b) => naturalCompare(a.name, b.name));
+      if (renameSortMode === "name-desc") return copy.sort((a, b) => naturalCompare(b.name, a.name));
+      return copy;
+    };
+
+    const sortDs = (list: DatasetRecord[]) => {
+      const copy = [...list];
+      if (renameSortMode === "name-asc") return copy.sort((a, b) => naturalCompare(a.name, b.name));
+      if (renameSortMode === "name-desc") return copy.sort((a, b) => naturalCompare(b.name, a.name));
+      return copy;
+    };
+
+    const getCatPathString = (catId: string | null | undefined): string => {
+      if (!catId) return t("ALL IMAGE DATA (Root)", "ALL IMAGE DATA (ルート)");
+      const chain: string[] = [];
+      const seen = new Set<string>();
+      let cur: CategoryRecord | undefined = catMap.get(catId);
+      while (cur && !seen.has(cur.id)) {
+        seen.add(cur.id);
+        chain.unshift(cur.name);
+        cur = cur.parentId ? catMap.get(cur.parentId) : undefined;
+      }
+      return chain.length > 0 ? chain.join(" > ") : t("ALL IMAGE DATA (Root)", "ALL IMAGE DATA (ルート)");
+    };
+
+    type BulkRenameRawItem = {
+      id: string;
+      type: "category" | "dataset";
+      originalName: string;
+      depth: number;
+      parentPath: string;
+      groupKey: string;
+      groupLabel: string;
+    };
+
+    const orderedList: BulkRenameRawItem[] = [];
+    const visitedCatIds = new Set<string>();
+    const visitedDsIds = new Set<string>();
+
+    if (targetScope === "all_categories") {
+      const walkCategories = (parentId: string | null, depth: number, rootCat: CategoryRecord | null) => {
+        const children = sortCats(
+          categories.filter((c) => (c.parentId || null) === parentId && !visitedCatIds.has(c.id))
+        );
+        for (const cat of children) {
+          visitedCatIds.add(cat.id);
+          const branchRoot = rootCat || cat;
+          orderedList.push({
+            id: cat.id,
+            type: "category",
+            originalName: cat.name,
+            depth,
+            parentPath: getCatPathString(cat.parentId),
+            groupKey: branchRoot.id,
+            groupLabel: branchRoot.name,
+          });
+          walkCategories(cat.id, depth + 1, branchRoot);
+        }
+      };
+
+      walkCategories(null, 0, null);
+      // Orphan safety fallback
+      sortCats(categories.filter((c) => !visitedCatIds.has(c.id))).forEach((cat) => {
+        orderedList.push({
+          id: cat.id,
+          type: "category",
+          originalName: cat.name,
+          depth: 0,
+          parentPath: getCatPathString(cat.parentId),
+          groupKey: cat.id,
+          groupLabel: cat.name,
+        });
+      });
+    } else if (targetScope === "all_datasets") {
+      const walkCategoriesForDatasets = (parentId: string | null) => {
+        const children = sortCats(
+          categories.filter((c) => (c.parentId || null) === parentId && !visitedCatIds.has(c.id))
+        );
+        for (const cat of children) {
+          visitedCatIds.add(cat.id);
+          const catPath = getCatPathString(cat.id);
+          const directDatasets = sortDs(
+            datasets.filter((d) => d.categoryId === cat.id && !visitedDsIds.has(d.id))
+          );
+          for (const ds of directDatasets) {
+            visitedDsIds.add(ds.id);
+            orderedList.push({
+              id: ds.id,
+              type: "dataset",
+              originalName: ds.name,
+              depth: 0,
+              parentPath: catPath,
+              groupKey: cat.id,
+              groupLabel: catPath,
+            });
+          }
+          walkCategoriesForDatasets(cat.id);
+        }
+      };
+
+      walkCategoriesForDatasets(null);
+      // Root / Unclassified datasets
+      const rootLabel = t("ALL IMAGE DATA (Root / Unclassified)", "ALL IMAGE DATA (ルート / 未分類)");
+      sortDs(datasets.filter((d) => !visitedDsIds.has(d.id))).forEach((ds) => {
+        visitedDsIds.add(ds.id);
+        orderedList.push({
+          id: ds.id,
+          type: "dataset",
+          originalName: ds.name,
+          depth: 0,
+          parentPath: rootLabel,
+          groupKey: "__root__",
+          groupLabel: rootLabel,
+        });
+      });
     } else if (targetScope === "all_items") {
-      targetCatIds = categories.map((c) => c.id);
-      targetDsIds = datasets.map((d) => d.id);
+      const walkAllItems = (parentId: string | null, depth: number, rootCat: CategoryRecord | null) => {
+        const children = sortCats(
+          categories.filter((c) => (c.parentId || null) === parentId && !visitedCatIds.has(c.id))
+        );
+        for (const cat of children) {
+          visitedCatIds.add(cat.id);
+          const branchRoot = rootCat || cat;
+          orderedList.push({
+            id: cat.id,
+            type: "category",
+            originalName: cat.name,
+            depth,
+            parentPath: getCatPathString(cat.parentId),
+            groupKey: branchRoot.id,
+            groupLabel: branchRoot.name,
+          });
+
+          const catPath = getCatPathString(cat.id);
+          const directDatasets = sortDs(
+            datasets.filter((d) => d.categoryId === cat.id && !visitedDsIds.has(d.id))
+          );
+          for (const ds of directDatasets) {
+            visitedDsIds.add(ds.id);
+            orderedList.push({
+              id: ds.id,
+              type: "dataset",
+              originalName: ds.name,
+              depth: depth + 1,
+              parentPath: catPath,
+              groupKey: branchRoot.id,
+              groupLabel: branchRoot.name,
+            });
+          }
+
+          walkAllItems(cat.id, depth + 1, branchRoot);
+        }
+      };
+
+      walkAllItems(null, 0, null);
+
+      // Orphan categories safety fallback
+      sortCats(categories.filter((c) => !visitedCatIds.has(c.id))).forEach((cat) => {
+        visitedCatIds.add(cat.id);
+        orderedList.push({
+          id: cat.id,
+          type: "category",
+          originalName: cat.name,
+          depth: 0,
+          parentPath: getCatPathString(cat.parentId),
+          groupKey: cat.id,
+          groupLabel: cat.name,
+        });
+      });
+
+      // Root / Unclassified datasets
+      const rootLabel = t("ALL IMAGE DATA (Root / Unclassified)", "ALL IMAGE DATA (ルート / 未分類)");
+      sortDs(datasets.filter((d) => !visitedDsIds.has(d.id))).forEach((ds) => {
+        visitedDsIds.add(ds.id);
+        orderedList.push({
+          id: ds.id,
+          type: "dataset",
+          originalName: ds.name,
+          depth: 0,
+          parentPath: rootLabel,
+          groupKey: "__root__",
+          groupLabel: rootLabel,
+        });
+      });
     } else {
-      // CURRENT VIEW: Always load ALL subcategories and datasets in the current view
-      targetCatIds = currentSubcategories.map((c) => c.id);
-      targetDsIds = currentDatasets.map((d) => d.id);
+      // CURRENT VIEW: Subcategories then Datasets in current folder
+      const curPath = getCatPathString(activeCategoryId);
+      const curGroupKey = activeCategoryId || "__root__";
+      sortCats(currentSubcategories).forEach((cat) => {
+        orderedList.push({
+          id: cat.id,
+          type: "category",
+          originalName: cat.name,
+          depth: 0,
+          parentPath: curPath,
+          groupKey: curGroupKey,
+          groupLabel: curPath,
+        });
+      });
+      sortDs(currentDatasets).forEach((ds) => {
+        orderedList.push({
+          id: ds.id,
+          type: "dataset",
+          originalName: ds.name,
+          depth: 0,
+          parentPath: curPath,
+          groupKey: curGroupKey,
+          groupLabel: curPath,
+        });
+      });
     }
 
-    const rawList: { id: string; type: "category" | "dataset"; originalName: string }[] = [];
-
-    targetCatIds.forEach((id: string) => {
-      const cat = categories.find((c) => c.id === id);
-      if (!cat) return;
-      if (filterSearch && !cat.name.toLowerCase().includes(filterSearch.toLowerCase())) return;
-      rawList.push({ id, type: "category", originalName: cat.name });
-    });
-
-
-    targetDsIds.forEach((id: string) => {
-      const ds = datasets.find((d) => d.id === id);
-      if (!ds) return;
-      if (filterSearch && !ds.name.toLowerCase().includes(filterSearch.toLowerCase())) return;
-      rawList.push({ id, type: "dataset", originalName: ds.name });
-    });
+    const filterLower = filterSearch.trim().toLowerCase();
+    const rawList = filterLower
+      ? orderedList.filter((item) => item.originalName.toLowerCase().includes(filterLower))
+      : orderedList;
 
     const checkedItems = rawList.filter((item) => checkedRenameIds.has(item.id));
     const totalChecked = checkedItems.length;
 
     let checkedCounter = 0;
-    const list: { id: string; type: "category" | "dataset"; originalName: string; newName: string }[] = [];
+    const list: (BulkRenameRawItem & { newName: string })[] = [];
 
     rawList.forEach((item) => {
       let newName = item.originalName;
@@ -733,7 +936,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
         checkedCounter++;
       }
 
-      list.push({ id: item.id, type: item.type, originalName: item.originalName, newName });
+      list.push({ ...item, newName });
     });
 
     return list;
@@ -2488,7 +2691,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
 
                     return (
                       <>
-                        <div className="text-[11px] font-bold uppercase text-text-muted mb-1.5 flex items-center justify-between px-1 shrink-0">
+                        <div className="text-[11px] font-bold uppercase text-text-muted mb-1.5 flex flex-wrap items-center justify-between gap-2 px-1 shrink-0">
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
@@ -2507,16 +2710,59 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                             <span>{t("PREVIEW & SELECTION", "対象選択＆結果確認")}</span>
                           </div>
 
-                          <div className="flex items-center gap-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {/* Sort Order Selector */}
+                            <div className="flex items-center bg-root-bg border border-panel-border p-0.5 rounded-xs text-[10px] font-mono">
+                              <button
+                                type="button"
+                                onClick={() => setRenameSortMode("tree")}
+                                className={cn(
+                                  "px-1.5 py-0.5 rounded-xs transition-colors cursor-pointer whitespace-nowrap",
+                                  renameSortMode === "tree"
+                                    ? "bg-accent/20 text-accent font-bold"
+                                    : "text-text-muted hover:text-text-primary"
+                                )}
+                                title={t("Sort by folder hierarchy & display order", "フォルダー階層・表示順で並べる")}
+                              >
+                                {t("TREE", "表示順")}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setRenameSortMode("name-asc")}
+                                className={cn(
+                                  "px-1.5 py-0.5 rounded-xs transition-colors cursor-pointer whitespace-nowrap",
+                                  renameSortMode === "name-asc"
+                                    ? "bg-accent/20 text-accent font-bold"
+                                    : "text-text-muted hover:text-text-primary"
+                                )}
+                                title={t("Sort alphabetically ascending within each folder", "各フォルダー内を名前昇順 (A→Z)")}
+                              >
+                                {t("A→Z", "名前↑")}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setRenameSortMode("name-desc")}
+                                className={cn(
+                                  "px-1.5 py-0.5 rounded-xs transition-colors cursor-pointer whitespace-nowrap",
+                                  renameSortMode === "name-desc"
+                                    ? "bg-accent/20 text-accent font-bold"
+                                    : "text-text-muted hover:text-text-primary"
+                                )}
+                                title={t("Sort alphabetically descending within each folder", "各フォルダー内を名前降順 (Z→A)")}
+                              >
+                                {t("Z→A", "名前↓")}
+                              </button>
+                            </div>
+
                             {/* Search Filter Box */}
-                            <div className="flex items-center gap-1.5 bg-root-bg border border-panel-border px-2 py-0.5 rounded-xs w-44">
+                            <div className="flex items-center gap-1.5 bg-root-bg border border-panel-border px-2 py-0.5 rounded-xs w-36 sm:w-44">
                               <Search size={11} className="text-text-muted shrink-0" />
                               <input
                                 type="text"
                                 value={filterSearch}
                                 onChange={(e) => setFilterSearch(e.target.value)}
                                 placeholder={t("Filter items...", "項目名で絞り込み...")}
-                                className="bg-transparent text-text-primary text-[10px] w-full outline-none font-mono"
+                                className="bg-transparent text-text-primary text-[10px] w-full outline-none font-mono font-normal"
                               />
                               {filterSearch && (
                                 <button type="button" onClick={() => setFilterSearch("")} className="text-text-muted hover:text-text-primary cursor-pointer">
@@ -2524,7 +2770,7 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                                 </button>
                               )}
                             </div>
-                            <span className="text-[10px] text-text-muted font-bold">
+                            <span className="text-[10px] text-text-muted font-bold tabular-nums">
                               選択: <span className="text-text-primary">{selectedCount}/{visibleItems.length}</span>件
                               {changedCount > 0 && (
                                 <span className="text-accent ml-1.5">({changedCount}件変更予定)</span>
@@ -2539,86 +2785,139 @@ export const CategoryExplorer: React.FC<CategoryExplorerProps> = ({
                               {t("No matching items found.", "該当する項目がありません。")}
                             </div>
                           ) : (
-                            visibleItems.map((item) => {
+                            visibleItems.map((item, idx) => {
                               const isChecked = checkedRenameIds.has(item.id);
                               const isChanged = isChecked && item.newName !== item.originalName && item.newName.trim() !== "";
+                              const prevItem = idx > 0 ? visibleItems[idx - 1] : null;
+                              const showGroupHeader =
+                                (targetScope === "all_datasets" || targetScope === "all_items") &&
+                                (!prevItem || prevItem.groupKey !== item.groupKey);
+                              const groupItems = showGroupHeader
+                                ? visibleItems.filter((v) => v.groupKey === item.groupKey)
+                                : [];
+                              const isGroupAllChecked =
+                                groupItems.length > 0 && groupItems.every((v) => checkedRenameIds.has(v.id));
+
                               return (
-                                <div
-                                  key={item.id}
-                                  className={cn(
-                                    "flex items-center gap-2 p-1.5 border rounded-xs transition-all",
-                                    !isChecked
-                                      ? "opacity-50 bg-panel-bg/20 border-panel-border/20"
-                                      : isChanged
-                                      ? "bg-accent/10 border-accent/40 shadow-xs"
-                                      : "bg-panel-bg/60 border-panel-border/40"
-                                  )}
-                                >
-                                  {/* Checkbox */}
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleItemRenameCheck(item.id)}
-                                    className="p-0.5 shrink-0 cursor-pointer"
-                                  >
-                                    {isChecked ? (
-                                      <CheckSquare size={16} className="text-accent shrink-0" />
-                                    ) : (
-                                      <Square size={16} className="text-text-muted hover:text-text-primary shrink-0" />
-                                    )}
-                                  </button>
-
-                                  {/* Type Badge & Icon */}
-                                  <span className="text-[9px] px-1 py-0.2 rounded bg-panel-bg border border-panel-border text-text-muted font-bold shrink-0 flex items-center gap-1">
-                                    {item.type === "category" ? (
-                                      <>
-                                        <Folder size={11} className="text-folder-icon shrink-0" />
-                                        <span>フォルダ</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Layers size={11} className="text-accent shrink-0" />
-                                        <span>リスト</span>
-                                      </>
-                                    )}
-                                  </span>
-
-                                  {bulkRenameTab === "quick" ? (
-                                    <div className="flex items-center gap-2 w-full">
-                                      <span className={cn("text-xs font-mono truncate w-1/3 shrink-0", isChecked ? "text-text-muted" : "text-text-muted/60")} title={item.originalName}>
-                                        {item.originalName}
-                                      </span>
-                                      <ArrowRight size={12} className="text-text-muted shrink-0" />
-                                      <input
-                                        type="text"
-                                        disabled={!isChecked}
-                                        value={quickNames[item.id] ?? item.originalName}
-                                        onChange={(e) =>
-                                          setQuickNames((prev) => ({ ...prev, [item.id]: e.target.value }))
-                                        }
-                                        className="flex-1 bg-panel-bg border border-panel-border text-text-primary px-2 py-1 text-xs font-mono focus:outline-none focus:border-accent rounded-xs disabled:opacity-50"
-                                      />
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-center gap-2 w-full text-xs font-mono truncate">
-                                      <span className={cn("truncate w-1/3 shrink-0", isChecked ? "text-text-muted" : "text-text-muted/60")} title={item.originalName}>
-                                        {item.originalName}
-                                      </span>
-                                      <ArrowRight size={12} className="text-text-muted shrink-0" />
-                                      <span
-                                        className={cn(
-                                          "truncate flex-1 font-mono",
-                                          !isChecked
-                                            ? "text-text-muted/60 line-through"
-                                            : isChanged
-                                            ? "text-accent font-bold"
-                                            : "text-text-primary"
-                                        )}
+                                <React.Fragment key={item.id}>
+                                  {showGroupHeader && (
+                                    <div
+                                      className={cn(
+                                        "flex items-center justify-between px-2.5 py-1 bg-panel-bg border border-panel-border/80 rounded-xs text-[11px] font-mono select-none",
+                                        idx > 0 && "mt-2"
+                                      )}
+                                    >
+                                      <div className="flex items-center gap-1.5 min-w-0">
+                                        <Folder size={12} className="text-folder-icon shrink-0" />
+                                        <span className="font-bold text-text-primary truncate">{item.groupLabel}</span>
+                                        <span className="text-[10px] text-text-muted tabular-nums shrink-0">
+                                          ({groupItems.length})
+                                        </span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleGroupRenameCheck(groupItems.map((g) => g.id))}
+                                        className="flex items-center gap-1 text-[10px] text-text-secondary hover:text-accent cursor-pointer shrink-0 ml-2"
+                                        title={t("Toggle select all in this category", "このカテゴリー内を一括選択/解除")}
                                       >
-                                        {item.newName}
-                                      </span>
+                                        {isGroupAllChecked ? (
+                                          <CheckSquare size={12} className="text-accent" />
+                                        ) : (
+                                          <Square size={12} className="text-text-muted" />
+                                        )}
+                                        <span>{isGroupAllChecked ? t("Uncheck Group", "グループ解除") : t("Check Group", "グループ選択")}</span>
+                                      </button>
                                     </div>
                                   )}
-                                </div>
+
+                                  <div
+                                    style={
+                                      item.depth > 0 && (targetScope === "all_items" || targetScope === "all_categories")
+                                        ? { paddingLeft: `${Math.min(item.depth, 4) * 16 + 6}px` }
+                                        : undefined
+                                    }
+                                    className={cn(
+                                      "flex items-center gap-2 p-1.5 border rounded-xs transition-all",
+                                      !isChecked
+                                        ? "opacity-50 bg-panel-bg/20 border-panel-border/20"
+                                        : isChanged
+                                        ? "bg-accent/10 border-accent/40 shadow-xs"
+                                        : "bg-panel-bg/60 border-panel-border/40"
+                                    )}
+                                  >
+                                    {/* Tree Indent Guide */}
+                                    {item.depth > 0 && (targetScope === "all_items" || targetScope === "all_categories") && (
+                                      <span className="text-text-muted/60 text-[11px] font-mono select-none shrink-0 -ml-1">
+                                        └
+                                      </span>
+                                    )}
+
+                                    {/* Checkbox */}
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleItemRenameCheck(item.id)}
+                                      className="p-0.5 shrink-0 cursor-pointer"
+                                    >
+                                      {isChecked ? (
+                                        <CheckSquare size={16} className="text-accent shrink-0" />
+                                      ) : (
+                                        <Square size={16} className="text-text-muted hover:text-text-primary shrink-0" />
+                                      )}
+                                    </button>
+
+                                    {/* Type Badge & Icon */}
+                                    <span className="text-[9px] px-1 py-0.2 rounded bg-panel-bg border border-panel-border text-text-muted font-bold shrink-0 flex items-center gap-1">
+                                      {item.type === "category" ? (
+                                        <>
+                                          <Folder size={11} className="text-folder-icon shrink-0" />
+                                          <span>フォルダ</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Layers size={11} className="text-accent shrink-0" />
+                                          <span>リスト</span>
+                                        </>
+                                      )}
+                                    </span>
+
+                                    {bulkRenameTab === "quick" ? (
+                                      <div className="flex items-center gap-2 w-full min-w-0">
+                                        <span className={cn("text-xs font-mono truncate w-1/3 shrink-0", isChecked ? "text-text-muted" : "text-text-muted/60")} title={`${item.parentPath} / ${item.originalName}`}>
+                                          {item.originalName}
+                                        </span>
+                                        <ArrowRight size={12} className="text-text-muted shrink-0" />
+                                        <input
+                                          type="text"
+                                          disabled={!isChecked}
+                                          value={quickNames[item.id] ?? item.originalName}
+                                          onChange={(e) =>
+                                            setQuickNames((prev) => ({ ...prev, [item.id]: e.target.value }))
+                                          }
+                                          className="flex-1 min-w-0 bg-panel-bg border border-panel-border text-text-primary px-2 py-1 text-xs font-mono focus:outline-none focus:border-accent rounded-xs disabled:opacity-50"
+                                        />
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center gap-2 w-full min-w-0 text-xs font-mono truncate">
+                                        <span className={cn("truncate w-1/3 shrink-0", isChecked ? "text-text-muted" : "text-text-muted/60")} title={`${item.parentPath} / ${item.originalName}`}>
+                                          {item.originalName}
+                                        </span>
+                                        <ArrowRight size={12} className="text-text-muted shrink-0" />
+                                        <span
+                                          className={cn(
+                                            "truncate flex-1 font-mono",
+                                            !isChecked
+                                              ? "text-text-muted/60 line-through"
+                                              : isChanged
+                                              ? "text-accent font-bold"
+                                              : "text-text-primary"
+                                          )}
+                                        >
+                                          {item.newName}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </React.Fragment>
                               );
                             })
                           )}

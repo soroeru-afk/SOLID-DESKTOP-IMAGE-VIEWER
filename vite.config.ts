@@ -15,6 +15,7 @@ export default defineConfig(({mode}) => {
         registerType: 'autoUpdate',
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icon.svg'],
         manifest: {
+          id: 'solid-desktop-image-viewer-app',
           name: 'SOLID DESKTOP IMAGE VIEWER',
           short_name: 'SOLID VIEWER',
           description: 'High-end offline local image viewer with IndexedDB caching and physical inertia auto-scroll.',
