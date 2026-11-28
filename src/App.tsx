@@ -420,17 +420,20 @@ export default function App() {
   }, [appFont]);
 
   const [theme, setTheme] = useState<
-    "NAVY" | "BLACK" | "TRUE_BLACK" | "PAPER" | "PINK" | "LIGHT" | "BROWN" | "MOCHA" | "OLIVE" | "RED"
+    "NAVY" | "BLACK" | "TRUE_BLACK" | "PAPER" | "PINK" | "WHITE" | "LIGHT" | "COOL_GRAY" | "GRAY" | "BROWN" | "MOCHA" | "OLIVE" | "RED"
   >(() => {
     const saved = localStorage.getItem("app_theme");
-
+    if (saved === "WARM_GRAY") return "COOL_GRAY";
     return (saved as any) || "BLACK";
   });
   const [canvasBg, setCanvasBg] = useState<
     "theme" | "auto" | "black" | "white" | "checker"
   >("theme");
+  const isWhiteTheme = theme === "WHITE";
   const isLightTheme = theme === "LIGHT";
   const isPaperTheme = theme === "PAPER";
+  const isCoolGrayTheme = theme === "COOL_GRAY";
+  const isGrayTheme = theme === "GRAY";
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const themeMenuRef = useRef<HTMLDivElement>(null);
   const [isCustomMenuOpen, setIsCustomMenuOpen] = useState(false);
@@ -456,8 +459,8 @@ export default function App() {
 
   const cycleTheme = () => {
     const themes: Array<
-      "NAVY" | "BLACK" | "TRUE_BLACK" | "PAPER" | "PINK" | "LIGHT" | "BROWN" | "MOCHA" | "OLIVE" | "RED"
-    > = ["LIGHT", "PAPER", "NAVY", "BLACK", "TRUE_BLACK", "PINK", "BROWN", "MOCHA", "OLIVE", "RED"];
+      "NAVY" | "BLACK" | "TRUE_BLACK" | "PAPER" | "PINK" | "WHITE" | "LIGHT" | "COOL_GRAY" | "GRAY" | "BROWN" | "MOCHA" | "OLIVE" | "RED"
+    > = ["WHITE", "LIGHT", "COOL_GRAY", "GRAY", "NAVY", "BLACK", "TRUE_BLACK", "PINK", "BROWN", "MOCHA", "PAPER", "OLIVE", "RED"];
     setTheme((prev) => themes[(themes.indexOf(prev as any) + 1) % themes.length]);
   };
 
@@ -805,7 +808,10 @@ export default function App() {
     const metaThemeColor = document.querySelector('meta[name="theme-color"]');
     let color = "#0B0C0D"; // default for BLACK
     if (theme === "TRUE_BLACK") color = "#000000";
+    else if (theme === "WHITE") color = "#ffffff";
     else if (theme === "LIGHT") color = "#e2e8f0";
+    else if (theme === "COOL_GRAY") color = "#bfc9d6";
+    else if (theme === "GRAY") color = "#c7c7c7";
     else if (theme === "PAPER") color = "#F2EFE6";
     else if (theme === "RED") color = "#0d0404";
     else if (theme === "NAVY") color = "#06090e";
@@ -2464,10 +2470,13 @@ export default function App() {
   }, [jogControllerTheme]);
 
   // pendingScrollRestoreRef declared near navigation history state
-  type AppTheme = "NAVY" | "BLACK" | "TRUE_BLACK" | "PAPER" | "PINK" | "LIGHT" | "BROWN" | "MOCHA" | "OLIVE" | "RED";
+  type AppTheme = "NAVY" | "BLACK" | "TRUE_BLACK" | "PAPER" | "PINK" | "WHITE" | "LIGHT" | "COOL_GRAY" | "GRAY" | "BROWN" | "MOCHA" | "OLIVE" | "RED";
   const DEFAULT_THEME_FOLDER_COLORS: Record<AppTheme, string> = {
     NAVY: "#fbbf24",
+    WHITE: "#d97706",
     LIGHT: "#d97706",
+    COOL_GRAY: "#475569",
+    GRAY: "#595959",
     PAPER: "#d9532f",
     BLACK: "#fbbf24",
     TRUE_BLACK: "#fbbf24",
@@ -2483,7 +2492,10 @@ export default function App() {
       try {
         return {
           NAVY: "#fbbf24",
+          WHITE: "#d97706",
           LIGHT: "#d97706",
+          COOL_GRAY: "#475569",
+          GRAY: "#595959",
           PAPER: "#d9532f",
           BLACK: "#fbbf24",
           TRUE_BLACK: "#fbbf24",
@@ -2498,7 +2510,10 @@ export default function App() {
     }
     return {
       NAVY: "#fbbf24",
+      WHITE: "#d97706",
       LIGHT: "#d97706",
+      COOL_GRAY: "#475569",
+      GRAY: "#595959",
       PAPER: "#d9532f",
       BLACK: "#fbbf24",
       TRUE_BLACK: "#fbbf24",
@@ -5940,8 +5955,8 @@ Images imported: ${importedImages}`);
       }
       // 通常の長方形写真・イラスト画像は、画像ごとの明暗解析で混在せず選択テーマ背景色で100%完全統一！
       const curTheme = theme.toUpperCase();
-      if (curTheme === "LIGHT" || curTheme === "PAPER") {
-        return "bg-white"; // LIGHT・PAPER時は白 (White)
+      if (curTheme === "WHITE" || curTheme === "LIGHT" || curTheme === "PAPER" || curTheme === "COOL_GRAY" || curTheme === "GRAY") {
+        return "bg-white"; // WHITE・LIGHT・PAPER・COOL_GRAY・GRAY時は白 (White)
       }
       if (curTheme === "NAVY") {
         return "bg-[#080c14]"; // NAVY時は落ち着いたダークネイビー
@@ -5985,7 +6000,7 @@ Images imported: ${importedImages}`);
     if (canvasBg === "theme") {
       if (selectedImage?.autoBg === "checkerboard") return true;
       const curTheme = theme.toUpperCase();
-      return curTheme === "LIGHT" || curTheme === "PAPER" || curTheme === "MOCHA";
+      return curTheme === "WHITE" || curTheme === "LIGHT" || curTheme === "PAPER" || curTheme === "MOCHA" || curTheme === "COOL_GRAY" || curTheme === "GRAY";
     }
     if (canvasBg === "auto") {
       return selectedImage?.autoBg === "white" || selectedImage?.autoBg === "checkerboard";
@@ -6600,7 +6615,14 @@ Images imported: ${importedImages}`);
         isHeaderVisible ? "h-10 opacity-100" : "h-0 opacity-0 overflow-hidden pointer-events-none mb-0"
       )}>
         <div className="flex items-start gap-3">
-          <div className="w-8 h-8 bg-panel-border flex items-center justify-center rounded-none text-accent">
+          <div
+            className={cn(
+              "w-8 h-8 flex items-center justify-center rounded-none text-accent",
+              isCoolGrayTheme || isGrayTheme || isWhiteTheme
+                ? "bg-white border border-panel-border"
+                : "bg-panel-border"
+            )}
+          >
             <ScatterChart size={18} />
           </div>
           <div className="flex flex-col mr-8 pt-0.5">
@@ -6810,8 +6832,14 @@ Images imported: ${importedImages}`);
                         ? "#d9532f"
                         : theme === "PINK"
                         ? "#e06b8b"
+                        : theme === "WHITE"
+                        ? "#ffffff"
                         : theme === "LIGHT"
                         ? "#0284c7"
+                        : theme === "COOL_GRAY"
+                        ? "#64748b"
+                        : theme === "GRAY"
+                        ? "#808080"
                         : theme === "BROWN"
                         ? "#b45309"
                         : theme === "MOCHA"
@@ -6822,7 +6850,7 @@ Images imported: ${importedImages}`);
                   }}
                 />
                 <span className="truncate">
-                  {theme === "TRUE_BLACK" ? "T-BLACK" : theme}
+                  {theme === "TRUE_BLACK" ? "T-BLACK" : theme === "COOL_GRAY" ? "C-GRAY" : theme}
                 </span>
               </button>
 
@@ -6860,14 +6888,17 @@ Images imported: ${importedImages}`);
                 {/* テーマリスト */}
                 <div className="py-1">
                   {[
+                    { id: "WHITE", label: "WHITE", dot: "#ffffff" },
                     { id: "LIGHT", label: "LIGHT", dot: "#0284c7" },
-                    { id: "PAPER", label: "PAPER", dot: "#d9532f" },
+                    { id: "COOL_GRAY", label: "COOL GRAY", dot: "#64748b" },
+                    { id: "GRAY", label: "GRAY", dot: "#808080" },
                     { id: "NAVY", label: "NAVY", dot: "#2563eb" },
                     { id: "BLACK", label: "BLACK", dot: "#334155" },
                     { id: "TRUE_BLACK", label: "TRUE BLACK", dot: "#000000" },
                     { id: "PINK", label: "PINK", dot: "#e06b8b" },
                     { id: "BROWN", label: "BROWN", dot: "#b45309" },
                     { id: "MOCHA", label: "MOCHA", dot: "#8c6853" },
+                    { id: "PAPER", label: "PAPER", dot: "#d9532f" },
                     { id: "OLIVE", label: "OLIVE", dot: "#658348" },
                     { id: "RED", label: "RED", dot: "#dc2626" },
                   ].map((thm) => {
@@ -8534,14 +8565,17 @@ Images imported: ${importedImages}`);
                               </div>
                               <div className="grid grid-cols-2 gap-1.5 font-mono text-[10px]">
                                  {[
+                                  { id: "WHITE", label: "WHITE (ホワイト)", bg: "#ffffff", panel: "#ffffff", accent: "#111111" },
                                   { id: "LIGHT", label: "LIGHT (ライト)", bg: "#e2e8f0", panel: "#f8fafc", accent: "#0f172a" },
-                                  { id: "PAPER", label: "PAPER (ペーパー)", bg: "#F2EFE6", panel: "#ffffff", accent: "#d9532f" },
+                                  { id: "COOL_GRAY", label: "COOL GRAY (クールグレー)", bg: "#bfc9d6", panel: "#d4dce6", accent: "#23344a" },
+                                  { id: "GRAY", label: "GRAY (グレー)", bg: "#c7c7c7", panel: "#d9d9d9", accent: "#262626" },
                                   { id: "NAVY", label: "NAVY (ネイビー)", bg: "#06090e", panel: "#0b111a", accent: "#3b82f6" },
                                   { id: "BLACK", label: "BLACK (ブラック)", bg: "#0B0C0D", panel: "#14161A", accent: "#e2e5e9" },
                                   { id: "TRUE_BLACK", label: "TRUE BLACK (有機EL)", bg: "#000000", panel: "#0a0a0a", accent: "#ffffff" },
                                   { id: "PINK", label: "PINK (ピンク)", bg: "#1a1215", panel: "#241a1d", accent: "#e06b8b" },
                                   { id: "BROWN", label: "BROWN (ブラウン)", bg: "#1a1614", panel: "#241e1b", accent: "#d6a076" },
                                   { id: "MOCHA", label: "MOCHA (モカ)", bg: "#f8ede2", panel: "#fdf6ee", accent: "#59483a" },
+                                  { id: "PAPER", label: "PAPER (ペーパー)", bg: "#F2EFE6", panel: "#ffffff", accent: "#d9532f" },
                                   { id: "OLIVE", label: "OLIVE (オリーブ)", bg: "#12160d", panel: "#191e13", accent: "#688647" },
                                   { id: "RED", label: "RED (レッド)", bg: "#0d0404", panel: "#170707", accent: "#d33c3c" },
                                 ].map((thm) => (
@@ -8558,7 +8592,7 @@ Images imported: ${importedImages}`);
                                   >
                                     <span className="truncate pr-1">{thm.label}</span>
                                     <div className="flex items-center gap-1 shrink-0">
-                                      <div className="w-2.5 h-2.5 rounded-full border border-white/20" style={{ backgroundColor: thm.panel }} title={t("Panel Color", "パネル色")} />
+                                      <div className="w-2.5 h-2.5 rounded-full border border-white/20 ring-1 ring-black/25" style={{ backgroundColor: thm.panel }} title={t("Panel Color", "パネル色")} />
                                       <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: thm.accent }} title={t("Accent Color", "アクセント色")} />
                                       <div
                                         className="w-2.5 h-2.5 rounded-full border border-white/20 ring-1 ring-black/30"
@@ -9173,7 +9207,11 @@ Images imported: ${importedImages}`);
                       "h-6 px-2.5 font-mono text-[10px] font-bold rounded-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer select-none",
                       isPaperTheme
                         ? "bg-[#2d241e] hover:bg-[#43372c] text-[#faf7f2] border border-[#2d241e]"
-                        : isLightTheme
+                        : isCoolGrayTheme
+                        ? "bg-[#1e293b] hover:bg-[#334155] text-white border border-[#1e293b]"
+                        : isGrayTheme
+                        ? "bg-[#262626] hover:bg-[#444444] text-white border border-[#262626]"
+                        : isLightTheme || isWhiteTheme
                         ? "bg-black hover:bg-neutral-800 text-white border border-black"
                         : "bg-white hover:bg-neutral-200 text-black border border-white"
                     )}
@@ -10636,6 +10674,12 @@ Images imported: ${importedImages}`);
                         "absolute right-full mr-3 bottom-0 whitespace-nowrap backdrop-blur-md px-3 py-1.5 shadow-2xl flex flex-col items-end pointer-events-none animate-in fade-in zoom-in-95 duration-100",
                         isPaperTheme
                           ? "bg-white/95 text-[#2d241e] border border-[#ded7c8] shadow-xl"
+                          : isCoolGrayTheme
+                          ? "bg-white/95 text-[#0f172a] border border-[#9aa8ba] shadow-xl"
+                          : isGrayTheme
+                          ? "bg-white/95 text-[#1a1a1a] border border-[#adadad] shadow-xl"
+                          : isWhiteTheme
+                          ? "bg-white/98 text-[#0a0a0a] border border-[#8c8c8c] shadow-xl"
                           : isLightTheme
                           ? "bg-white/95 text-gray-900 border border-gray-300 shadow-xl"
                           : "bg-black/90 text-white border border-gray-600/80"
@@ -10643,27 +10687,27 @@ Images imported: ${importedImages}`);
                     >
                       <div className="flex items-center gap-1.5 font-mono text-[12px] font-bold tracking-tight tabular-nums">
                         {(jogDragState.active ? jogDragState.dir : autoScrollDir) === "up" ? (
-                          <span className={cn("flex items-center gap-0.5", isPaperTheme ? "text-[#d9532f]" : isLightTheme ? "text-amber-600" : "text-amber-400")}>
+                          <span className={cn("flex items-center gap-0.5", isPaperTheme ? "text-[#d9532f]" : isCoolGrayTheme ? "text-[#334155]" : isGrayTheme ? "text-[#333333]" : isWhiteTheme || isLightTheme ? "text-amber-600" : "text-amber-400")}>
                             <ChevronUp size={13} className="stroke-[3]" />
                             UP
                           </span>
                         ) : (jogDragState.active ? jogDragState.dir : autoScrollDir) === "down" ? (
-                          <span className={cn("flex items-center gap-0.5", isPaperTheme ? "text-sky-700" : isLightTheme ? "text-sky-600" : "text-sky-400")}>
+                          <span className={cn("flex items-center gap-0.5", isPaperTheme ? "text-sky-700" : isCoolGrayTheme ? "text-slate-700" : isGrayTheme ? "text-[#262626]" : isWhiteTheme || isLightTheme ? "text-sky-600" : "text-sky-400")}>
                             <ChevronDown size={13} className="stroke-[3]" />
                             DOWN
                           </span>
                         ) : (
-                          <span className={isPaperTheme ? "text-[#8c8071]" : isLightTheme ? "text-gray-500" : "text-gray-300"}>STOPPED</span>
+                          <span className={isPaperTheme ? "text-[#8c8071]" : isCoolGrayTheme ? "text-[#52637a]" : isGrayTheme ? "text-[#616161]" : isWhiteTheme || isLightTheme ? "text-gray-500" : "text-gray-300"}>STOPPED</span>
                         )}
-                        <span className={isPaperTheme ? "text-[#2d241e]" : isLightTheme ? "text-gray-900" : "text-white"}>
+                        <span className={isPaperTheme ? "text-[#2d241e]" : isCoolGrayTheme ? "text-[#0f172a]" : isGrayTheme ? "text-[#1a1a1a]" : isWhiteTheme || isLightTheme ? "text-gray-900" : "text-white"}>
                           {jogDragState.active ? jogDragState.currentSpeed : autoScrollPxPerSec}{" "}
-                          <span className={cn("text-[10px]", isPaperTheme ? "text-[#5e5447]" : isLightTheme ? "text-gray-500" : "text-gray-400")}>px/s</span>
+                          <span className={cn("text-[10px]", isPaperTheme ? "text-[#5e5447]" : isCoolGrayTheme ? "text-[#334155]" : isGrayTheme ? "text-[#444444]" : isWhiteTheme || isLightTheme ? "text-gray-500" : "text-gray-400")}>px/s</span>
                         </span>
-                        <span className={cn("text-[11px] font-mono", isPaperTheme ? "text-[#d9532f]" : isLightTheme ? "text-amber-700" : "text-amber-300")}>
+                        <span className={cn("text-[11px] font-mono", isPaperTheme ? "text-[#d9532f]" : isCoolGrayTheme ? "text-[#334155]" : isGrayTheme ? "text-[#333333]" : isWhiteTheme || isLightTheme ? "text-amber-700" : "text-amber-300")}>
                           ({((jogDragState.active ? jogDragState.currentSpeed : autoScrollPxPerSec) / 250).toFixed(1)}x)
                         </span>
                       </div>
-                      <div className={cn("text-[9px] font-mono tracking-wider mt-0.5", isPaperTheme ? "text-[#5e5447]" : isLightTheme ? "text-gray-500" : "text-gray-400")}>
+                      <div className={cn("text-[9px] font-mono tracking-wider mt-0.5", isPaperTheme ? "text-[#5e5447]" : isCoolGrayTheme ? "text-[#52637a]" : isGrayTheme ? "text-[#616161]" : isWhiteTheme || isLightTheme ? "text-gray-500" : "text-gray-400")}>
                         WHEEL: SPEED • DRAG: SPEED • CLICK: STOP
                       </div>
                     </div>
@@ -10676,6 +10720,12 @@ Images imported: ${importedImages}`);
                       "flex flex-col items-center backdrop-blur-md shadow-md w-11 rounded-none overflow-hidden transition-colors",
                       isPaperTheme
                         ? "bg-white/95 border border-[#ded7c8] text-[#2d241e]"
+                        : isCoolGrayTheme
+                        ? "bg-white/95 border border-[#9aa8ba] text-[#0f172a]"
+                        : isGrayTheme
+                        ? "bg-white/95 border border-[#adadad] text-[#1a1a1a]"
+                        : isWhiteTheme
+                        ? "bg-white/98 border border-[#8c8c8c] text-[#0a0a0a]"
                         : isLightTheme
                         ? "bg-white/95 border border-gray-300 text-gray-700"
                         : "bg-[#18181b]/95 border border-gray-700/80 text-gray-300"
@@ -10692,6 +10742,12 @@ Images imported: ${importedImages}`);
                         "w-full h-7 flex items-center justify-center transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
                         isPaperTheme
                           ? "text-[#5e5447] hover:text-[#2d241e] hover:bg-[#F2EFE6]"
+                          : isCoolGrayTheme
+                          ? "text-[#334155] hover:text-[#0f172a] hover:bg-[#e2e8f0]"
+                          : isGrayTheme
+                          ? "text-[#444444] hover:text-[#1a1a1a] hover:bg-[#e5e5e5]"
+                          : isWhiteTheme
+                          ? "text-[#2e2e2e] hover:text-black hover:bg-[#f2f2f2]"
                           : isLightTheme
                           ? "text-gray-600 hover:text-black hover:bg-gray-100"
                           : "text-gray-300 hover:text-white hover:bg-gray-800"
@@ -10707,10 +10763,10 @@ Images imported: ${importedImages}`);
                       onClick={() => setAutoScrollDir((d) => (d === "up" ? null : "up"))}
                       className={cn(
                         "w-full h-7 flex items-center justify-center transition-colors cursor-pointer outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
-                        isPaperTheme ? "border-t border-[#ded7c8]" : isLightTheme ? "border-t border-gray-200" : "border-t border-gray-700/60",
+                        isPaperTheme ? "border-t border-[#ded7c8]" : isCoolGrayTheme ? "border-t border-[#c4cedb]" : isGrayTheme ? "border-t border-[#cccccc]" : isWhiteTheme ? "border-t border-[#9e9e9e]" : isLightTheme ? "border-t border-gray-200" : "border-t border-gray-700/60",
                         autoScrollDir === "up"
-                          ? (isPaperTheme ? "bg-[#d9532f]/20 text-[#d9532f] font-bold" : isLightTheme ? "bg-amber-500/20 text-amber-700 font-bold" : "bg-amber-500/20 text-amber-400 font-bold")
-                          : (isPaperTheme ? "text-[#5e5447] hover:text-[#2d241e] hover:bg-[#F2EFE6]" : isLightTheme ? "text-gray-600 hover:text-black hover:bg-gray-100" : "text-gray-300 hover:text-white hover:bg-gray-800")
+                          ? (isPaperTheme ? "bg-[#d9532f]/20 text-[#d9532f] font-bold" : isCoolGrayTheme ? "bg-[#1e293b]/15 text-[#0f172a] font-bold" : isGrayTheme ? "bg-[#262626]/15 text-[#1a1a1a] font-bold" : isWhiteTheme ? "bg-[#111111]/12 text-[#0a0a0a] font-bold" : isLightTheme ? "bg-amber-500/20 text-amber-700 font-bold" : "bg-amber-500/20 text-amber-400 font-bold")
+                          : (isPaperTheme ? "text-[#5e5447] hover:text-[#2d241e] hover:bg-[#F2EFE6]" : isCoolGrayTheme ? "text-[#334155] hover:text-[#0f172a] hover:bg-[#e2e8f0]" : isGrayTheme ? "text-[#444444] hover:text-[#1a1a1a] hover:bg-[#e5e5e5]" : isWhiteTheme ? "text-[#2e2e2e] hover:text-black hover:bg-[#f2f2f2]" : isLightTheme ? "text-gray-600 hover:text-black hover:bg-gray-100" : "text-gray-300 hover:text-white hover:bg-gray-800")
                       )}
                       title="AUTO SCROLL UP (上へ自動スクロール開始/停止)"
                     >
@@ -10726,12 +10782,12 @@ Images imported: ${importedImages}`);
                       onWheel={handleJogWheel}
                       className={cn(
                         "w-full h-36 relative flex flex-col items-center justify-between py-2 cursor-ns-resize select-none transition-colors touch-none",
-                        isPaperTheme ? "border-y border-[#ded7c8]" : isLightTheme ? "border-y border-gray-200" : "border-y border-gray-700/70",
+                        isPaperTheme ? "border-y border-[#ded7c8]" : isCoolGrayTheme ? "border-y border-[#c4cedb]" : isGrayTheme ? "border-y border-[#cccccc]" : isWhiteTheme ? "border-y border-[#9e9e9e]" : isLightTheme ? "border-y border-gray-200" : "border-y border-gray-700/70",
                         jogDragState.active || wheelHudVisible
-                          ? (isPaperTheme ? "bg-[#F2EFE6]" : isLightTheme ? "bg-gray-100" : "bg-gray-800/90")
+                          ? (isPaperTheme ? "bg-[#F2EFE6]" : isCoolGrayTheme ? "bg-[#d4dce6]" : isGrayTheme ? "bg-[#d9d9d9]" : isWhiteTheme ? "bg-[#efefef]" : isLightTheme ? "bg-gray-100" : "bg-gray-800/90")
                           : autoScrollDir !== null
                           ? "bg-amber-500/15"
-                          : (isPaperTheme ? "bg-white hover:bg-[#F2EFE6]" : isLightTheme ? "bg-white hover:bg-gray-50" : "hover:bg-gray-800/50")
+                          : (isPaperTheme ? "bg-white hover:bg-[#F2EFE6]" : isCoolGrayTheme ? "bg-white hover:bg-[#e2e8f0]" : isGrayTheme ? "bg-white hover:bg-[#e5e5e5]" : isWhiteTheme ? "bg-white hover:bg-[#f2f2f2]" : isLightTheme ? "bg-white hover:bg-gray-50" : "hover:bg-gray-800/50")
                       )}
                       title="ホイール回転 / 上下ドラッグ: 向き＆速度を無段階調整 / クリック: 停止"
                     >
@@ -10753,8 +10809,8 @@ Images imported: ${importedImages}`);
                         className={cn(
                           "flex flex-col items-center transition-colors pointer-events-none",
                           autoScrollDir === "up" || jogDragState.dir === "up"
-                            ? (isPaperTheme ? "text-[#d9532f] font-bold" : isLightTheme ? "text-amber-600 font-bold" : "text-amber-500 font-bold")
-                            : (isPaperTheme ? "text-[#8c8071]" : isLightTheme ? "text-gray-400" : "text-gray-500")
+                            ? (isPaperTheme ? "text-[#d9532f] font-bold" : isCoolGrayTheme ? "text-[#0f172a] font-bold" : isGrayTheme ? "text-[#1a1a1a] font-bold" : isWhiteTheme ? "text-[#0a0a0a] font-bold" : isLightTheme ? "text-amber-600 font-bold" : "text-amber-500 font-bold")
+                            : (isPaperTheme ? "text-[#8c8071]" : isCoolGrayTheme ? "text-[#52637a]" : isGrayTheme ? "text-[#616161]" : isWhiteTheme ? "text-[#595959]" : isLightTheme ? "text-gray-400" : "text-gray-500")
                         )}
                       >
                         <ChevronUp
@@ -10769,13 +10825,13 @@ Images imported: ${importedImages}`);
                       {/* Center Knurled Grip & State Badge */}
                       <div className="flex flex-col items-center justify-center gap-0.5 pointer-events-none z-10">
                         <div className="flex items-center gap-0.5">
-                          <div className={cn("w-1 h-3.5", isPaperTheme ? "bg-[#8c8071]" : isLightTheme ? "bg-gray-400" : "bg-gray-500")} />
-                          <div className={cn("w-1 h-3.5", isPaperTheme ? "bg-[#8c8071]" : isLightTheme ? "bg-gray-400" : "bg-gray-500")} />
-                          <div className={cn("w-1 h-3.5", isPaperTheme ? "bg-[#8c8071]" : isLightTheme ? "bg-gray-400" : "bg-gray-500")} />
+                          <div className={cn("w-1 h-3.5", isPaperTheme ? "bg-[#8c8071]" : isCoolGrayTheme ? "bg-[#64748b]" : isGrayTheme ? "bg-[#616161]" : isWhiteTheme ? "bg-[#595959]" : isLightTheme ? "bg-gray-400" : "bg-gray-500")} />
+                          <div className={cn("w-1 h-3.5", isPaperTheme ? "bg-[#8c8071]" : isCoolGrayTheme ? "bg-[#64748b]" : isGrayTheme ? "bg-[#616161]" : isWhiteTheme ? "bg-[#595959]" : isLightTheme ? "bg-gray-400" : "bg-gray-500")} />
+                          <div className={cn("w-1 h-3.5", isPaperTheme ? "bg-[#8c8071]" : isCoolGrayTheme ? "bg-[#64748b]" : isGrayTheme ? "bg-[#616161]" : isWhiteTheme ? "bg-[#595959]" : isLightTheme ? "bg-gray-400" : "bg-gray-500")} />
                         </div>
                         <span className={cn(
                           "font-mono text-[8px] font-bold tracking-tighter uppercase mt-0.5",
-                          isPaperTheme ? "text-[#5e5447]" : isLightTheme ? "text-gray-600" : "text-gray-400"
+                          isPaperTheme ? "text-[#5e5447]" : isCoolGrayTheme ? "text-[#334155]" : isGrayTheme ? "text-[#444444]" : isWhiteTheme ? "text-[#2e2e2e]" : isLightTheme ? "text-gray-600" : "text-gray-400"
                         )}>
                           {jogDragState.active
                             ? "DRAG"
@@ -10790,8 +10846,8 @@ Images imported: ${importedImages}`);
                         className={cn(
                           "flex flex-col items-center transition-colors pointer-events-none",
                           autoScrollDir === "down" || jogDragState.dir === "down"
-                            ? (isPaperTheme ? "text-sky-700 font-bold" : isLightTheme ? "text-sky-600 font-bold" : "text-sky-500 font-bold")
-                            : (isPaperTheme ? "text-[#8c8071]" : isLightTheme ? "text-gray-400" : "text-gray-500")
+                            ? (isPaperTheme ? "text-sky-700 font-bold" : isCoolGrayTheme ? "text-[#0f172a] font-bold" : isGrayTheme ? "text-[#1a1a1a] font-bold" : isWhiteTheme ? "text-[#0a0a0a] font-bold" : isLightTheme ? "text-sky-600 font-bold" : "text-sky-500 font-bold")
+                            : (isPaperTheme ? "text-[#8c8071]" : isCoolGrayTheme ? "text-[#52637a]" : isGrayTheme ? "text-[#616161]" : isWhiteTheme ? "text-[#595959]" : isLightTheme ? "text-gray-400" : "text-gray-500")
                         )}
                       >
                         <ChevronDown
@@ -10810,10 +10866,10 @@ Images imported: ${importedImages}`);
                       onClick={() => setAutoScrollDir((d) => (d === "down" ? null : "down"))}
                       className={cn(
                         "w-full h-7 flex items-center justify-center transition-colors cursor-pointer outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
-                        isPaperTheme ? "border-b border-[#ded7c8]" : isLightTheme ? "border-b border-gray-200" : "border-b border-gray-700/60",
+                        isPaperTheme ? "border-b border-[#ded7c8]" : isCoolGrayTheme ? "border-b border-[#c4cedb]" : isGrayTheme ? "border-b border-[#cccccc]" : isWhiteTheme ? "border-b border-[#9e9e9e]" : isLightTheme ? "border-b border-gray-200" : "border-b border-gray-700/60",
                         autoScrollDir === "down"
-                          ? (isPaperTheme ? "bg-sky-500/20 text-sky-800 font-bold" : isLightTheme ? "bg-sky-500/20 text-sky-700 font-bold" : "bg-sky-500/20 text-sky-400 font-bold")
-                          : (isPaperTheme ? "text-[#5e5447] hover:text-[#2d241e] hover:bg-[#F2EFE6]" : isLightTheme ? "text-gray-600 hover:text-black hover:bg-gray-100" : "text-gray-300 hover:text-white hover:bg-gray-800")
+                          ? (isPaperTheme ? "bg-sky-500/20 text-sky-800 font-bold" : isCoolGrayTheme ? "bg-[#1e293b]/15 text-[#0f172a] font-bold" : isGrayTheme ? "bg-[#262626]/15 text-[#1a1a1a] font-bold" : isWhiteTheme ? "bg-[#111111]/12 text-[#0a0a0a] font-bold" : isLightTheme ? "bg-sky-500/20 text-sky-700 font-bold" : "bg-sky-500/20 text-sky-400 font-bold")
+                          : (isPaperTheme ? "text-[#5e5447] hover:text-[#2d241e] hover:bg-[#F2EFE6]" : isCoolGrayTheme ? "text-[#334155] hover:text-[#0f172a] hover:bg-[#e2e8f0]" : isGrayTheme ? "text-[#444444] hover:text-[#1a1a1a] hover:bg-[#e5e5e5]" : isWhiteTheme ? "text-[#2e2e2e] hover:text-black hover:bg-[#f2f2f2]" : isLightTheme ? "text-gray-600 hover:text-black hover:bg-gray-100" : "text-gray-300 hover:text-white hover:bg-gray-800")
                       )}
                       title="AUTO SCROLL DOWN (下へ自動スクロール開始/停止)"
                     >
@@ -10836,6 +10892,12 @@ Images imported: ${importedImages}`);
                         "w-full h-7 flex items-center justify-center transition-colors outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
                         isPaperTheme
                           ? "text-[#5e5447] hover:text-[#2d241e] hover:bg-[#F2EFE6]"
+                          : isCoolGrayTheme
+                          ? "text-[#334155] hover:text-[#0f172a] hover:bg-[#e2e8f0]"
+                          : isGrayTheme
+                          ? "text-[#444444] hover:text-[#1a1a1a] hover:bg-[#e5e5e5]"
+                          : isWhiteTheme
+                          ? "text-[#2e2e2e] hover:text-black hover:bg-[#f2f2f2]"
                           : isLightTheme
                           ? "text-gray-600 hover:text-black hover:bg-gray-100"
                           : "text-gray-300 hover:text-white hover:bg-gray-800"
@@ -10853,6 +10915,12 @@ Images imported: ${importedImages}`);
                       "flex items-center backdrop-blur-md shadow-md h-7 px-1 rounded-none transition-colors",
                       isPaperTheme
                         ? "bg-white/95 border border-[#ded7c8] text-[#2d241e] shadow-sm"
+                        : isCoolGrayTheme
+                        ? "bg-white/95 border border-[#9aa8ba] text-[#0f172a] shadow-sm"
+                        : isGrayTheme
+                        ? "bg-white/95 border border-[#adadad] text-[#1a1a1a] shadow-sm"
+                        : isWhiteTheme
+                        ? "bg-white/98 border border-[#8c8c8c] text-[#0a0a0a] shadow-sm"
                         : isLightTheme
                         ? "bg-white/95 border border-gray-300 text-gray-800 shadow-sm"
                         : "bg-[#18181b]/95 border border-gray-700/80 text-gray-200"
@@ -10868,6 +10936,12 @@ Images imported: ${importedImages}`);
                           ? "opacity-30 cursor-not-allowed text-gray-400"
                           : isPaperTheme
                           ? "hover:bg-[#F2EFE6] text-[#2d241e] cursor-pointer"
+                          : isCoolGrayTheme
+                          ? "hover:bg-[#e2e8f0] text-[#0f172a] cursor-pointer"
+                          : isGrayTheme
+                          ? "hover:bg-[#e5e5e5] text-[#1a1a1a] cursor-pointer"
+                          : isWhiteTheme
+                          ? "hover:bg-[#f2f2f2] text-[#0a0a0a] cursor-pointer"
                           : isLightTheme
                           ? "hover:bg-gray-100 text-gray-700 cursor-pointer"
                           : "hover:bg-gray-700 text-gray-200 cursor-pointer"
@@ -10880,7 +10954,7 @@ Images imported: ${importedImages}`);
                     <span
                       className={cn(
                         "font-mono font-bold text-[10px] tabular-nums px-1 pointer-events-none min-w-[34px] text-center select-none",
-                        isPaperTheme ? "text-[#2d241e]" : isLightTheme ? "text-gray-800" : "text-gray-200"
+                        isPaperTheme ? "text-[#2d241e]" : isCoolGrayTheme ? "text-[#0f172a]" : isGrayTheme ? "text-[#1a1a1a]" : isWhiteTheme ? "text-[#0a0a0a]" : isLightTheme ? "text-gray-800" : "text-gray-200"
                       )}
                       title={`${autoScrollPxPerSec} px/s`}
                     >
@@ -10897,6 +10971,12 @@ Images imported: ${importedImages}`);
                           ? "opacity-30 cursor-not-allowed text-gray-400"
                           : isPaperTheme
                           ? "hover:bg-[#F2EFE6] text-[#2d241e] cursor-pointer"
+                          : isCoolGrayTheme
+                          ? "hover:bg-[#e2e8f0] text-[#0f172a] cursor-pointer"
+                          : isGrayTheme
+                          ? "hover:bg-[#e5e5e5] text-[#1a1a1a] cursor-pointer"
+                          : isWhiteTheme
+                          ? "hover:bg-[#f2f2f2] text-[#0a0a0a] cursor-pointer"
                           : isLightTheme
                           ? "hover:bg-gray-100 text-gray-700 cursor-pointer"
                           : "hover:bg-gray-700 text-gray-200 cursor-pointer"

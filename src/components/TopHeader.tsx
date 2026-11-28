@@ -68,7 +68,14 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   return (
     <header className="flex justify-between items-center shrink-0 h-10">
       <div className="flex items-center gap-3">
-        <div className="w-8 h-8 bg-panel-border flex items-center justify-center rounded-none text-accent">
+        <div
+          className={cn(
+            "w-8 h-8 flex items-center justify-center rounded-none text-accent",
+            theme === "COOL_GRAY" || theme === "GRAY" || theme === "WHITE"
+              ? "bg-white border border-panel-border"
+              : "bg-panel-border"
+          )}
+        >
           <ScatterChart size={18} />
         </div>
         <div className="flex flex-col mr-8 pt-0.5">
@@ -166,7 +173,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                 : ""
             }`}
           >
-            <Palette size={12} className="shrink-0" /> THEME: {theme === "TRUE_BLACK" ? "T-BLACK" : theme}
+            <Palette size={12} className="shrink-0" /> THEME: {theme === "TRUE_BLACK" ? "T-BLACK" : theme === "COOL_GRAY" ? "C-GRAY" : theme}
           </SolidButton>
         </div>
 

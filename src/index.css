@@ -48,6 +48,36 @@
     --btn-active-text: #090d14;
   }
 
+  :root[data-theme="WHITE"] {
+    --bg-app: #ffffff;
+    --bg-panel: #ffffff;
+    --bg-panel-header: #ffffff;
+    --border-panel: #8c8c8c;
+    --border-inner: #6e6e6e;
+    --text-main: #0a0a0a;
+    --text-sub: #2e2e2e;
+    --text-dim: #595959;
+    --accent: #111111;
+    --accent-glow: rgba(17, 17, 17, 0.16);
+    --accent-text: #ffffff;
+    --folder-icon-color: #d97706;
+
+    --btn-bg: #ffffff;
+    --btn-border: #9e9e9e;
+    --btn-border-b: #525252;
+    --btn-border-r: #737373;
+    --btn-text: #1f1f1f;
+    --btn-hover-bg: #f2f2f2;
+    --btn-hover-text: #000000;
+    --btn-hover-border-t: #737373;
+
+    --btn-active-bg: #111111;
+    --btn-active-border: #333333;
+    --btn-active-border-b: #000000;
+    --btn-active-border-r: #000000;
+    --btn-active-text: #ffffff;
+  }
+
   :root[data-theme="LIGHT"] {
     --bg-app: #e2e8f0;
     --bg-panel: #f8fafc;
@@ -75,6 +105,66 @@
     --btn-active-border: #475569;
     --btn-active-border-b: #000000;
     --btn-active-border-r: #020617;
+    --btn-active-text: #ffffff;
+  }
+
+  :root[data-theme="COOL_GRAY"] {
+    --bg-app: #bfc9d6;
+    --bg-panel: #ffffff;
+    --bg-panel-header: #d4dce6;
+    --border-panel: #9aa8ba;
+    --border-inner: #8292a6;
+    --text-main: #0f172a;
+    --text-sub: #334155;
+    --text-dim: #52637a;
+    --accent: #23344a;
+    --accent-glow: rgba(35, 52, 74, 0.22);
+    --accent-text: #ffffff;
+    --folder-icon-color: #475569;
+
+    --btn-bg: #ffffff;
+    --btn-border: #c4cedb;
+    --btn-border-b: #96a4b8;
+    --btn-border-r: #adb9ca;
+    --btn-text: #273447;
+    --btn-hover-bg: #e2e8f0;
+    --btn-hover-text: #0f172a;
+    --btn-hover-border-t: #ffffff;
+
+    --btn-active-bg: #1e293b;
+    --btn-active-border: #3d4e66;
+    --btn-active-border-b: #0b111c;
+    --btn-active-border-r: #131c2b;
+    --btn-active-text: #ffffff;
+  }
+
+  :root[data-theme="GRAY"] {
+    --bg-app: #c7c7c7;
+    --bg-panel: #ffffff;
+    --bg-panel-header: #d9d9d9;
+    --border-panel: #adadad;
+    --border-inner: #969696;
+    --text-main: #1a1a1a;
+    --text-sub: #444444;
+    --text-dim: #616161;
+    --accent: #262626;
+    --accent-glow: rgba(38, 38, 38, 0.2);
+    --accent-text: #ffffff;
+    --folder-icon-color: #595959;
+
+    --btn-bg: #ffffff;
+    --btn-border: #cccccc;
+    --btn-border-b: #a5a5a5;
+    --btn-border-r: #b8b8b8;
+    --btn-text: #333333;
+    --btn-hover-bg: #e5e5e5;
+    --btn-hover-text: #121212;
+    --btn-hover-border-t: #ffffff;
+
+    --btn-active-bg: #262626;
+    --btn-active-border: #474747;
+    --btn-active-border-b: #111111;
+    --btn-active-border-r: #1c1c1c;
     --btn-active-text: #ffffff;
   }
 
@@ -1141,5 +1231,44 @@ input[type=range]:focus::-webkit-slider-thumb {
 :root[data-theme="MOCHA"] [data-explorer="true"] [data-overlay-badge="true"] svg.text-amber-400 {
   color: #fbbf24 !important;
 }
+
+/* ==========================================================================
+   8. COOL_GRAY THEME: BLUE-SLATE TINT FOR ACTIVE HIGHLIGHTS (BREADCRUMB / SEARCH SCOPE / SIDEBAR)
+   ========================================================================== */
+:root[data-theme="COOL_GRAY"] .bg-accent\/10 {
+  background-color: #eaf1f8 !important;
+}
+:root[data-theme="COOL_GRAY"] .bg-accent\/15 {
+  background-color: #e0eaf5 !important;
+}
+:root[data-theme="COOL_GRAY"] .bg-accent\/20,
+:root[data-theme="COOL_GRAY"] .hover\:bg-accent\/20:hover {
+  background-color: #d4e1f0 !important;
+}
+:root[data-theme="COOL_GRAY"] .bg-accent\/25,
+:root[data-theme="COOL_GRAY"] .hover\:bg-accent\/25:hover {
+  background-color: #c7d8ec !important;
+}
+:root[data-theme="COOL_GRAY"] .bg-accent\/30 {
+  background-color: #bad0e8 !important;
+}
+
+/* ==========================================================================
+   9. WHITE THEME: CRISP PURE-WHITE HIGHLIGHT TINTS & SHARP BORDERS
+   ========================================================================== */
+:root[data-theme="WHITE"] .bg-accent\/10 {
+  background-color: #f5f5f5 !important;
+}
+:root[data-theme="WHITE"] .bg-accent\/15 {
+  background-color: #efefef !important;
+}
+:root[data-theme="WHITE"] .bg-accent\/20,
+:root[data-theme="WHITE"] .hover\:bg-accent\/20:hover {
+  background-color: #e8e8e8 !important;
+}
+:root[data-theme="WHITE"] .bg-accent\/30 {
+  background-color: #dcdcdc !important;
+}
+
 
 
